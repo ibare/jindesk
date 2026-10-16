@@ -1,0 +1,2141 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>[hidden]{display:none!important} body{margin:0} img{max-width:100%}</style>
+<title>IB 학습 앱 시안</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Noto+Serif+KR:wght@600;700&display=swap">
+<script>
+window.MathJax = {
+  tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']] },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-svg.js"></script>
+<style>
+/* 구성: 위에 앱 이름과 탭, 그 아래 Mac 창 시안(사이드바 · 강의 계획 목록 · 학습 페이지 · 인스펙터). 차가운 공책 종이와 잉크 파랑. */
+:root {
+  --bg: #eceff3; --paper: #ffffff; --paper-2: #f5f7f9; --chrome: #e3e7ec;
+  --ink: #16202a; --ink-2: #46525e; --ink-3: #727d89; --line: #d5dbe2; --line-2: #e7ebef;
+  --accent: #1b5fae; --accent-soft: #e2ecf8; --accent-ink: #ffffff;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s7: #6250d6;
+  --good: #1d7a44; --good-soft: #e1f2e7; --bad: #b9382a; --bad-soft: #fae5e2;
+  --el-o: #c43d2c; --el-c: #16202a; --el-h: #7a8590;
+  --subj-math: #2a78d6; --subj-phys: #eb6834; --subj-chem: #1baf7a;
+  --tl-r: #ff5f57; --tl-y: #febc2e; --tl-g: #28c840;
+  --shadow: 0 1px 2px rgba(16, 24, 32, .05), 0 14px 36px rgba(16, 24, 32, .10);
+  --backdrop: rgba(16, 24, 32, .38);
+  --f-display: "Noto Serif KR", "AppleMyungjo", serif;
+  --f-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1318; --paper: #151c23; --paper-2: #1a222a; --chrome: #1c242c;
+    --ink: #e5eaef; --ink-2: #a8b2bc; --ink-3: #7c8792; --line: #2a343e; --line-2: #212a33;
+    --accent: #6ea8ec; --accent-soft: #1b2c41; --accent-ink: #0e1318;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s7: #9085e9;
+    --good: #4cba78; --good-soft: #15301f; --bad: #e66767; --bad-soft: #3a1d1d;
+    --el-o: #ef6b5b; --el-c: #e5eaef; --el-h: #8e99a4;
+    --subj-math: #3987e5; --subj-phys: #d95926; --subj-chem: #199e70;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 14px 36px rgba(0, 0, 0, .35);
+    --backdrop: rgba(0, 0, 0, .55);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1318; --paper: #151c23; --paper-2: #1a222a; --chrome: #1c242c;
+  --ink: #e5eaef; --ink-2: #a8b2bc; --ink-3: #7c8792; --line: #2a343e; --line-2: #212a33;
+  --accent: #6ea8ec; --accent-soft: #1b2c41; --accent-ink: #0e1318;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s7: #9085e9;
+  --good: #4cba78; --good-soft: #15301f; --bad: #e66767; --bad-soft: #3a1d1d;
+  --el-o: #ef6b5b; --el-c: #e5eaef; --el-h: #8e99a4;
+  --subj-math: #3987e5; --subj-phys: #d95926; --subj-chem: #199e70;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 14px 36px rgba(0, 0, 0, .35);
+  --backdrop: rgba(0, 0, 0, .55);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 14px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 56px;
+}
+.page { max-width: 1320px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+h1, h2, h3, h4 { text-wrap: balance; margin: 0; }
+p { margin: 0; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+
+/* 머리 */
+.masthead { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 32px; }
+.masthead .name { font-family: var(--f-display); font-size: 30px; font-weight: 700; letter-spacing: -.01em; display: flex; align-items: baseline; gap: 10px; }
+.masthead .name small { font-family: var(--f-body); font-size: 13px; font-weight: 500; color: var(--ink-3); }
+.masthead .lede { color: var(--ink-2); max-width: 62ch; margin-top: 6px; }
+.tabs { display: inline-flex; background: var(--chrome); border-radius: 8px; padding: 3px; gap: 2px; flex-wrap: wrap; }
+.tabs button { border: 0; background: transparent; padding: 6px 14px; border-radius: 6px; color: var(--ink-2); font-weight: 500; }
+.tabs button[aria-selected="true"] { background: var(--paper); color: var(--ink); box-shadow: 0 1px 2px rgba(16, 24, 32, .12); }
+
+/* 창 */
+.win { background: var(--paper); border: 1px solid var(--line); border-radius: 11px; box-shadow: var(--shadow); overflow: hidden; }
+.titlebar { display: flex; align-items: center; gap: 14px; padding: 9px 14px; background: var(--chrome); border-bottom: 1px solid var(--line); }
+.lights { display: flex; gap: 8px; flex: none; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+.lights i:nth-child(1) { background: var(--tl-r); } .lights i:nth-child(2) { background: var(--tl-y); } .lights i:nth-child(3) { background: var(--tl-g); }
+.titlebar .wtitle { font-weight: 600; font-size: 13px; color: var(--ink-2); }
+.titlebar .spacer { flex: 1; }
+.search { display: flex; align-items: center; gap: 6px; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; min-width: 0; width: 240px; color: var(--ink-3); font-size: 13px; }
+.search input { border: 0; background: transparent; outline: none; width: 100%; min-width: 0; color: var(--ink); }
+.btn { border: 1px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 6px; padding: 4px 12px; font-size: 13px; font-weight: 500; }
+.btn:hover { background: var(--paper-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.06); background: var(--accent); }
+
+.win-body { display: grid; grid-template-columns: 186px 236px minmax(0, 1fr); height: 820px; }
+.side, .list { overflow-y: auto; border-right: 1px solid var(--line); }
+.side { background: var(--paper-2); padding: 14px 10px; display: flex; flex-direction: column; gap: 18px; }
+.side h5, .list h5 { margin: 0 0 4px; padding: 0 8px; font-size: 11px; font-weight: 600; color: var(--ink-3); letter-spacing: .06em; }
+.side ul, .list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.nav { width: 100%; display: flex; align-items: center; gap: 8px; border: 0; background: transparent; text-align: left; padding: 5px 8px; border-radius: 6px; font-size: 13px; color: var(--ink); }
+.nav:hover { background: var(--line-2); }
+.nav[aria-current="true"] { background: var(--accent-soft); color: var(--ink); font-weight: 600; }
+.nav .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.nav .count { margin-left: auto; font-family: var(--f-mono); font-size: 11px; color: var(--ink-3); font-weight: 400; }
+.nav .glyph { width: 14px; text-align: center; color: var(--ink-3); flex: none; font-size: 12px; }
+
+.list { padding: 14px 10px; display: flex; flex-direction: column; gap: 18px; }
+.list .subj-head { padding: 0 8px; display: flex; flex-direction: column; gap: 2px; }
+.list .subj-head strong { font-size: 15px; }
+.list .subj-head span { font-size: 12px; color: var(--ink-3); }
+.legend-cov { display: flex; gap: 12px; padding: 0 8px; font-size: 11px; color: var(--ink-3); }
+.cov { width: 7px; height: 7px; border-radius: 50%; flex: none; border: 1.5px solid var(--ink-3); display: inline-block; }
+.cov.on { background: var(--ink-2); border-color: var(--ink-2); }
+.item { width: 100%; display: grid; grid-template-columns: 52px minmax(0, 1fr) 10px; align-items: center; gap: 6px; border: 0; background: transparent; text-align: left; padding: 6px 8px; border-radius: 6px; font-size: 13px; color: var(--ink); }
+.item .code { font-family: var(--f-mono); font-size: 11px; color: var(--ink-3); }
+.item:hover:not(:disabled) { background: var(--line-2); }
+.item[aria-current="true"] { background: var(--accent-soft); font-weight: 600; }
+.item:disabled { cursor: default; color: var(--ink-3); }
+.item .hl { font-family: var(--f-mono); font-size: 10px; color: var(--s7); margin-left: 4px; font-weight: 500; }
+
+.main-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 248px; min-width: 0; height: 100%; }
+.main { overflow-y: auto; min-width: 0; }
+.insp { overflow-y: auto; border-left: 1px solid var(--line); background: var(--paper-2); padding: 18px 16px; display: flex; flex-direction: column; gap: 18px; font-size: 13px; }
+.insp h6 { margin: 0 0 6px; font-size: 11px; font-weight: 600; color: var(--ink-3); letter-spacing: .06em; }
+.insp ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.insp .src-row { display: flex; flex-direction: column; gap: 1px; }
+.insp .src-row small { color: var(--ink-3); font-size: 12px; }
+.facets { display: flex; flex-wrap: wrap; gap: 5px; }
+.facet { font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--paper); white-space: nowrap; }
+.facet b { font-weight: 500; color: var(--ink-3); margin-right: 4px; }
+.linkbtn { border: 0; background: transparent; padding: 0; color: var(--accent); text-align: left; font-size: 13px; }
+.linkbtn:hover { text-decoration: underline; }
+.flag { display: flex; flex-direction: column; gap: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
+.flag select, .flag textarea { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); padding: 5px 8px; font-size: 13px; }
+.flag textarea { resize: vertical; min-height: 54px; }
+.flag p { font-size: 12px; color: var(--ink-3); }
+/* 학습 페이지 */
+.concept { max-width: 760px; margin: 0 auto; padding: 28px 32px 48px; display: flex; flex-direction: column; gap: 20px; }
+.crumb { font-size: 12px; color: var(--ink-3); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.crumb .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.concept h2 { font-family: var(--f-display); font-size: 28px; line-height: 1.3; font-weight: 700; letter-spacing: -.01em; }
+.concept h2 .en { display: block; font-family: var(--f-body); font-size: 14px; font-weight: 500; color: var(--ink-3); letter-spacing: 0; margin-top: 2px; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 12px; padding: 1px 8px; border-radius: 4px; background: var(--paper-2); border: 1px solid var(--line); color: var(--ink-2); white-space: nowrap; }
+.chip.lv { font-family: var(--f-mono); color: var(--s7); border-color: var(--s7); background: transparent; }
+.prose { display: flex; flex-direction: column; gap: 10px; max-width: 66ch; }
+.prose p { line-height: 1.75; }
+.prov { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 3px; vertical-align: 1px; margin-right: 6px; }
+.prov.src { background: var(--accent-soft); color: var(--accent); }
+.prov.add { border: 1px dashed var(--ink-3); color: var(--ink-3); }
+.srcchip { border: 1px solid var(--line); background: var(--paper); border-radius: 4px; padding: 0 6px; font-family: var(--f-mono); font-size: 11px; color: var(--ink-2); vertical-align: 1px; margin-left: 4px; }
+.srcchip:hover { border-color: var(--accent); color: var(--accent); }
+
+.blk { border: 1px solid var(--line); border-radius: 8px; background: var(--paper); display: flex; flex-direction: column; min-width: 0; }
+.blk-head { display: flex; align-items: baseline; gap: 10px; padding: 10px 14px 0; flex-wrap: wrap; }
+.blk-kind { font-family: var(--f-mono); font-size: 11px; color: var(--ink-3); }
+.blk-title { font-weight: 600; font-size: 14px; }
+.blk-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.blk-foot { border-top: 1px solid var(--line-2); padding: 7px 14px; font-size: 12px; color: var(--ink-3); display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.ok { color: var(--good); font-weight: 500; }
+.ok::before { content: "✓ "; }
+.math-display { overflow-x: auto; padding: 4px 0; text-align: center; font-size: 15px; }
+.fig { width: 100%; max-width: 100%; height: auto; display: block; }
+.figwrap { overflow-x: auto; }
+.canvas-wrap { width: 100%; position: relative; }
+.canvas-wrap canvas { width: 100%; height: 280px; display: block; border-radius: 6px; background: var(--paper-2); }
+
+.controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px 18px; }
+.ctl { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ctl label { font-size: 12px; color: var(--ink-2); display: flex; justify-content: space-between; gap: 8px; }
+.ctl label output { font-family: var(--f-mono); color: var(--ink); font-variant-numeric: tabular-nums; }
+.ctl input[type="range"] { width: 100%; accent-color: var(--accent); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; flex-wrap: wrap; }
+.seg button { border: 0; background: var(--paper); padding: 3px 10px; font-size: 12px; color: var(--ink-2); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--ink); font-weight: 600; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.readout { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.readout div { background: var(--paper-2); border-radius: 6px; padding: 6px 10px; display: flex; flex-direction: column; }
+.readout small { font-size: 11px; color: var(--ink-3); }
+.readout b { font-family: var(--f-mono); font-weight: 500; font-size: 15px; font-variant-numeric: tabular-nums; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 18px; height: 0; border-top: 2px solid; display: inline-block; }
+.legend i.dash { border-top-style: dashed; }
+
+.steps { display: flex; flex-direction: column; gap: 2px; }
+.step { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 15em); gap: 14px; align-items: center; padding: 6px 8px; border-radius: 6px; transition: opacity .2s; }
+.step .why { font-size: 12px; color: var(--ink-2); }
+.step .m { overflow-x: auto; }
+.steps.stepping .step.later { opacity: .18; }
+.steps.stepping .step.now { background: var(--accent-soft); }
+
+.note { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; padding: 10px 12px; border-radius: 8px; background: var(--bad-soft); }
+.note .ic { font-weight: 700; color: var(--bad); font-size: 12px; white-space: nowrap; }
+.note.term { background: var(--accent-soft); }
+.note.term .ic { color: var(--accent); }
+.note p { font-size: 13px; }
+
+details.check { border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; background: var(--paper); }
+details.check summary { cursor: pointer; font-weight: 500; }
+details.check summary .blk-kind { margin-right: 8px; }
+details.check .ans { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ink-2); }
+
+.linkcard { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; align-items: baseline; padding: 10px 14px; border: 1px dashed var(--line); border-radius: 8px; }
+.linkcard .blk-kind { grid-row: span 2; }
+.linkcard p { font-size: 13px; color: var(--ink-2); }
+
+table.data { border-collapse: collapse; width: 100%; font-size: 13px; }
+table.data th, table.data td { padding: 5px 10px; text-align: right; border-bottom: 1px solid var(--line-2); font-variant-numeric: tabular-nums; }
+table.data th { font-weight: 500; color: var(--ink-3); font-size: 12px; }
+table.data th:first-child, table.data td:first-child { text-align: left; }
+table.data tr.pair td { background: var(--accent-soft); }
+.tablewrap { overflow-x: auto; }
+
+/* 반응식 */
+.eq { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 8px; font-size: 18px; padding: 6px 0; }
+.sp { display: inline-flex; align-items: center; gap: 4px; }
+.stepper { display: inline-flex; flex-direction: column; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.stepper button { border: 0; background: var(--paper-2); font-size: 10px; line-height: 1; padding: 2px 6px; color: var(--ink-2); }
+.stepper button:hover { background: var(--line-2); }
+.coef { font-family: var(--f-mono); font-size: 18px; min-width: 1.2ch; text-align: center; color: var(--accent); font-weight: 500; }
+.formula sub { font-size: .7em; }
+.arrow { color: var(--ink-3); padding: 0 4px; }
+.tally { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.tally div { border-radius: 6px; padding: 6px 10px; background: var(--paper-2); display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.tally div.good { background: var(--good-soft); }
+.tally div.bad { background: var(--bad-soft); }
+.tally b { font-family: var(--f-mono); font-weight: 500; }
+.status { font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; }
+.status.good { background: var(--good-soft); color: var(--good); }
+.status.bad { background: var(--bad-soft); color: var(--bad); }
+
+/* 전자 배치 */
+.orb { display: flex; flex-wrap: wrap; gap: 14px 18px; align-items: flex-end; }
+.sub { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.sub .boxes { display: flex; }
+.sub .box { width: 30px; height: 34px; border: 1.5px solid var(--ink-2); display: flex; align-items: center; justify-content: center; font-size: 15px; letter-spacing: -2px; color: var(--accent); font-weight: 600; }
+.sub .box + .box { border-left: 0; }
+.sub small { font-family: var(--f-mono); font-size: 12px; color: var(--ink-2); }
+.config { font-family: var(--f-mono); font-size: 15px; }
+
+/* 구조 탭 */
+.doc { display: flex; flex-direction: column; gap: 34px; }
+.doc section { display: flex; flex-direction: column; gap: 14px; }
+.doc h3 { font-family: var(--f-display); font-size: 22px; font-weight: 700; }
+.doc .sub-lede { color: var(--ink-2); max-width: 70ch; }
+.principles { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.pr { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.pr .from { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--ink-3); }
+.pr .from.new { color: var(--accent); }
+.pr strong { font-size: 14px; }
+.pr p { font-size: 13px; color: var(--ink-2); }
+figure { margin: 0; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+figure .figwrap svg { min-width: 760px; }
+figcaption { font-size: 13px; color: var(--ink-2); max-width: 80ch; }
+table.jobs { border-collapse: collapse; width: 100%; font-size: 13px; background: var(--paper); }
+table.jobs th, table.jobs td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line-2); }
+table.jobs th { font-size: 12px; color: var(--ink-3); font-weight: 600; background: var(--paper-2); }
+table.jobs td:first-child { font-weight: 600; white-space: nowrap; }
+table.jobs td .mono { font-size: 12px; color: var(--ink-3); }
+.tablebox { border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; }
+.tablebox table { min-width: 760px; }
+pre.tree { margin: 0; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; font-family: var(--f-mono); font-size: 12px; line-height: 1.7; overflow-x: auto; color: var(--ink); }
+pre.tree .c { color: var(--ink-3); }
+.decide { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.decide div { border: 1px dashed var(--ink-3); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+.decide strong { font-size: 14px; }
+.decide p { font-size: 13px; color: var(--ink-2); }
+pre.spec { margin: 0; background: var(--paper-2); border-radius: 6px; padding: 10px 12px; font-family: var(--f-mono); font-size: 12px; line-height: 1.6; overflow-x: auto; color: var(--ink); }
+pre.spec .c { color: var(--ink-3); }
+.specs { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+
+/* 시트 · 알림 */
+.overlay { position: fixed; inset: 0; background: var(--backdrop); display: flex; align-items: center; justify-content: center; z-index: 30;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.sheet { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); width: 560px; max-width: 100%; max-height: 100%; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.sheet h4 { font-size: 16px; }
+.sheet .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.sheet label { font-size: 12px; color: var(--ink-2); display: flex; flex-direction: column; gap: 3px; }
+.sheet select { border: 1px solid var(--line); border-radius: 6px; background: var(--paper); padding: 4px 8px; font-size: 13px; }
+.drop { border: 1.5px dashed var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.file { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 13px; padding: 4px 0; }
+.file .ext { font-family: var(--f-mono); font-size: 10px; text-align: center; border: 1px solid var(--line); border-radius: 4px; padding: 2px 0; color: var(--ink-2); }
+.file small { display: block; color: var(--ink-3); font-size: 12px; }
+.file.skip { color: var(--ink-3); }
+.file .tag { font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+.sheet .acts { display: flex; justify-content: flex-end; gap: 8px; }
+.slide { background: var(--paper-2); border: 1px solid var(--line); border-radius: 6px; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(20px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--paper); padding: 8px 16px; border-radius: 8px; font-size: 13px; z-index: 40; max-width: calc(100% - 32px); box-shadow: var(--shadow); }
+
+/* 좁은 화면 */
+@media (max-width: 1180px) {
+  .main-wrap { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
+  .main { overflow: visible; }
+  .insp { overflow: visible; border-left: 0; border-top: 1px solid var(--line); }
+}
+@media (max-width: 820px) {
+  .win-body { display: block; height: auto; }
+  .side, .list { border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
+  .side { flex-direction: row; flex-wrap: wrap; gap: 10px; }
+  .side > div { flex: 1 1 150px; min-width: 0; }
+  .main-wrap { height: auto; overflow: visible; }
+  .concept { padding: 22px 16px 36px; }
+  .search { display: none; }
+  .step { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .tally { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+<style>
+/* 문단: 영어 원문 + 문단 곁 한국어 + 코멘트 */
+.para { position: relative; min-width: 0; }
+.para > .en { margin: 0; }
+.pc { display: inline-flex; gap: 4px; margin-left: 6px; vertical-align: 1px; white-space: nowrap; }
+.pc button { height: 18px; min-width: 22px; padding: 0 5px; border: 1px solid var(--line); background: var(--paper); border-radius: 4px; font-size: 11px; line-height: 16px; color: var(--ink-3); font-family: var(--f-body); font-weight: 500; }
+.pc button:hover, .pc button[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
+.pc .g-cm.has { color: var(--ink-2); border-color: var(--ink-3); }
+.ko { margin: 6px 0 0; padding: 1px 0 1px 12px; border-left: 2px solid var(--line); color: var(--ink-2); font-size: 13.5px; line-height: 1.75; }
+.ko::before { content: "한국어"; display: block; font-size: 10.5px; font-weight: 600; letter-spacing: .06em; color: var(--ink-3); }
+.why .ko, .note .ko { font-size: 12.5px; }
+.para.flash > .en { background: var(--accent-soft); border-radius: 3px; }
+.term { font-style: normal; border-bottom: 1px dotted var(--ink-3); cursor: help; position: relative; }
+.term:hover::after, .term:focus::after { content: attr(data-ko); position: absolute; left: 50%; bottom: calc(100% + 4px); transform: translateX(-50%); background: var(--ink); color: var(--paper); font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 4px; white-space: nowrap; z-index: 5; pointer-events: none; }
+.open-count { font-size: 12px; color: var(--ink-3); display: inline-flex; gap: 8px; align-items: center; }
+.open-count button { border: 0; background: transparent; color: var(--accent); padding: 0; font-size: 12px; }
+
+.thread { margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper-2); padding: 10px 12px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; line-height: 1.6; }
+.cm { display: flex; flex-direction: column; gap: 3px; }
+.cm-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.cm-head b { font-weight: 600; font-size: 12.5px; }
+.cm-head time, .cm-head .st { font-size: 11px; color: var(--ink-3); }
+.kind { font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 3px; white-space: nowrap; }
+.kind.memo { background: var(--line-2); color: var(--ink-2); }
+.kind.ask { background: var(--accent-soft); color: var(--accent); }
+.kind.flag { background: var(--bad-soft); color: var(--bad); }
+.reply { margin-left: 12px; padding-left: 10px; border-left: 2px solid var(--line); display: flex; flex-direction: column; gap: 3px; }
+.reply .ko { font-size: 12.5px; }
+.pending { color: var(--ink-3); font-style: italic; }
+.composer { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 10px; }
+.composer textarea { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); padding: 5px 8px; font-size: 13px; min-height: 48px; resize: vertical; }
+.composer .row { justify-content: space-between; }
+.composer small { font-size: 11.5px; color: var(--ink-3); }
+
+.cm-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cm-list button { text-align: left; border: 1px solid var(--line); background: var(--paper); border-radius: 6px; padding: 6px 8px; width: 100%; display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--ink); }
+.cm-list button:hover { border-color: var(--accent); }
+.cm-list q { color: var(--ink-3); font-size: 11px; quotes: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; max-width: 100%; }
+.cm-list .line { display: flex; gap: 6px; align-items: baseline; min-width: 0; }
+.cm-list .line span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.insp .empty { font-size: 12px; color: var(--ink-3); }
+.item .out { font-size: 10px; color: var(--ink-3); font-family: var(--f-mono); }
+.sheet .memo-in { border: 1px solid var(--line); border-radius: 6px; background: var(--paper); padding: 4px 8px; font-size: 13px; }
+.sheet .hint { font-size: 12px; color: var(--ink-2); background: var(--paper-2); border-radius: 6px; padding: 8px 10px; }
+.modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.modes div { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.modes strong { font-size: 14px; }
+.modes p { font-size: 13px; color: var(--ink-2); }
+</style>
+<style>
+/* 부분 다시 만들기 */
+.blk-head .rg-blk { margin-left: auto; border: 1px solid var(--line); background: var(--paper); border-radius: 4px; font-size: 11px; height: 20px; padding: 0 7px; color: var(--ink-3); }
+.blk-head .rg-blk:hover { color: var(--accent); border-color: var(--accent); }
+.pc .g-ly[aria-expanded="true"] { color: var(--s3); border-color: var(--s3); }
+.pc .g-cand { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.pc .g-cand:hover { color: var(--accent-ink); filter: brightness(1.08); }
+.rg-badge { font-size: 11px; color: var(--ink-3); border: 1px dashed var(--ink-3); border-radius: 4px; padding: 0 6px; height: 18px; line-height: 16px; display: inline-block; white-space: nowrap; }
+.layer { margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; }
+.layer > .lab { font-size: 10.5px; font-weight: 600; letter-spacing: .06em; color: var(--s3); }
+.layer .meta-line { font-size: 11.5px; color: var(--ink-3); display: flex; flex-wrap: wrap; gap: 2px 12px; }
+.step-extra { display: flex; flex-direction: column; gap: 8px; padding: 0 8px; }
+.step-extra:empty { display: none; }
+.cmp { border: 1.5px solid var(--accent); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; background: var(--paper); font-size: 13px; }
+.cmp .req { font-size: 12px; color: var(--ink-2); }
+.cmp .req b { color: var(--ink); font-weight: 600; }
+.cmp .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.cmp .col { border-radius: 6px; padding: 8px 10px; background: var(--paper-2); display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cmp .col.new { background: var(--accent-soft); }
+.cmp .col small { font-size: 10.5px; font-weight: 600; letter-spacing: .06em; color: var(--ink-3); }
+.cmp ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 3px 14px; font-size: 12px; }
+.cmp .acts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.rg-note { color: var(--ink-2); }
+.rg-note::before { content: "↻ "; color: var(--ink-3); }
+.sheet .rg-target { font-size: 12px; color: var(--ink-3); font-family: var(--f-mono); }
+.sheet blockquote { margin: 0; padding: 6px 10px; background: var(--paper-2); border-radius: 6px; font-size: 13px; color: var(--ink-2); max-height: 6.5em; overflow: hidden; }
+.sheet textarea { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); padding: 5px 8px; font-size: 13px; min-height: 52px; resize: vertical; color: var(--ink); }
+.rg-ops { display: flex; flex-wrap: wrap; gap: 6px; }
+.rg-ops button { border: 1px solid var(--line); background: var(--paper); border-radius: 999px; padding: 3px 12px; font-size: 13px; color: var(--ink-2); }
+.rg-ops button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); font-weight: 600; }
+.rg-plan { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; font-size: 12.5px; background: var(--paper-2); border-radius: 6px; padding: 8px 10px; }
+.rg-plan dt { color: var(--ink-3); font-weight: 600; }
+.rg-plan dd { margin: 0; color: var(--ink); }
+.ops-table td:nth-child(2) { white-space: normal; }
+.chain-note { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+</style>
+
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <div>
+      <div class="name">Jindesk <small>IB 학습 앱 시안</small></div>
+      <p class="lede">학교에서 받은 PDF, PPT, 판서 사진을 읽어 강의 계획 항목마다 개념을 정리하고, 과목에 맞는 수식·그래프·실험·회로로 펼쳐 보이는 Mac 앱. 학습 내용은 영어가 원문이고, 한국어는 문단마다 곁에서 펼쳐 본다. 아래 화면의 내용은 모두 예시다.</p>
+    </div>
+    <div class="tabs" role="tablist" aria-label="보기">
+      <button role="tab" id="t-app" aria-selected="true" aria-controls="tab-app" data-tab="app">앱 화면</button>
+      <button role="tab" id="t-structure" aria-selected="false" aria-controls="tab-structure" data-tab="structure">구조</button>
+      <button role="tab" id="t-blocks" aria-selected="false" aria-controls="tab-blocks" data-tab="blocks">블록 어휘</button>
+    </div>
+  </header>
+
+  <section id="tab-app" role="tabpanel" aria-labelledby="t-app">
+    <div class="win">
+      <div class="titlebar">
+        <div class="lights" aria-hidden="true"><i></i><i></i><i></i></div>
+        <span class="wtitle">Jindesk</span>
+        <span class="spacer"></span>
+        <label class="search"><span aria-hidden="true">⌕</span><input id="q" type="search" placeholder="개념, 용어, 자료 찾기" aria-label="찾기"></label>
+        <button class="btn primary" id="btn-ingest" type="button">자료 넣기</button>
+      </div>
+      <div class="win-body">
+        <nav class="side" aria-label="사이드바">
+          <div>
+            <h5>오늘</h5>
+            <ul>
+              <li><button class="nav soon" type="button"><span class="glyph">↻</span>다시 볼 개념<span class="count">3</span></button></li>
+              <li><button class="nav soon" type="button"><span class="glyph">＋</span>새로 정리됨<span class="count">5</span></button></li>
+            </ul>
+          </div>
+          <div>
+            <h5>과목</h5>
+            <ul>
+              <li><button class="nav" type="button" data-subj="math"><span class="dot" style="background:var(--subj-math)"></span>Math AA HL<span class="count">12</span></button></li>
+              <li><button class="nav" type="button" data-subj="phys" aria-current="true"><span class="dot" style="background:var(--subj-phys)"></span>Physics HL<span class="count">18</span></button></li>
+              <li><button class="nav" type="button" data-subj="chem"><span class="dot" style="background:var(--subj-chem)"></span>Chemistry SL<span class="count">9</span></button></li>
+            </ul>
+          </div>
+          <div>
+            <h5>모아 보기</h5>
+            <ul>
+              <li><button class="nav soon" type="button"><span class="glyph">⇄</span>과목 사이 연결<span class="count">4</span></button></li>
+              <li><button class="nav soon" type="button"><span class="glyph">▤</span>원래 자료<span class="count">27</span></button></li>
+              <li><button class="nav soon" type="button"><span class="glyph">?</span>확인 문제<span class="count">31</span></button></li>
+              <li><button class="nav soon" type="button"><span class="glyph">✎</span>코멘트<span class="count">4</span></button></li>
+            </ul>
+          </div>
+          <div>
+            <h5>작업</h5>
+            <ul>
+              <li><button class="nav soon" type="button"><span class="glyph">◐</span>자료 읽기 2차<span class="count">1</span></button></li>
+            </ul>
+          </div>
+        </nav>
+
+        <div class="list" id="list">
+          <div data-list="math" hidden>
+            <div class="subj-head"><strong>Math AA HL</strong><span>강의 계획 목차 · 자료 9개 · 개념 12개</span></div>
+            <div class="legend-cov"><span><i class="cov on"></i> 자료 있음</span><span><i class="cov"></i> 아직 없음</span></div>
+            <div>
+              <h5>Topic 2 · Functions</h5>
+              <ul>
+                <li><button class="item" type="button" disabled title="이 시안에는 없는 페이지"><span class="code">SL 2.2</span>Domain and range<i class="cov on"></i></button></li>
+                <li><button class="item" type="button" disabled title="이 시안에는 없는 페이지"><span class="code">SL 2.11</span>Transformations of graphs<i class="cov on"></i></button></li>
+              </ul>
+            </div>
+            <div>
+              <h5>Topic 5 · Calculus</h5>
+              <ul>
+                <li><button class="item" type="button" disabled title="이 시안에는 없는 페이지"><span class="code">SL 5.1</span>Limits and the derivative<i class="cov on"></i></button></li>
+                <li><button class="item" type="button" disabled title="이 시안에는 없는 페이지"><span class="code">SL 5.3</span>Differentiation rules<i class="cov on"></i></button></li>
+                <li><button class="item" type="button" disabled title="아직 받은 자료가 없다"><span class="code">SL 5.5</span>Definite integrals<i class="cov"></i></button></li>
+                <li><button class="item" type="button" data-concept="deriv"><span class="code">AHL 5.12</span><span>First principles<span class="hl">HL</span></span><i class="cov on"></i></button></li>
+              </ul>
+            </div>
+          </div>
+
+          <div data-list="phys">
+            <div class="subj-head"><strong>Physics HL</strong><span>강의 계획 목차 · 자료 11개 · 개념 18개</span></div>
+            <div class="legend-cov"><span><i class="cov on"></i> 자료 있음</span><span><i class="cov"></i> 아직 없음</span></div>
+            <div>
+              <h5>A · Space, time and motion</h5>
+              <ul>
+                <li><button class="item" type="button" data-concept="proj" aria-current="true"><span class="code">A.1</span>Projectile motion<i class="cov on"></i></button></li>
+                <li><button class="item" type="button" disabled title="이 시안에는 없는 페이지"><span class="code">A.2</span>Newton's laws of motion<i class="cov on"></i></button></li>
+                <li><button class="item" type="button" disabled title="아직 받은 자료가 없다"><span class="code">A.3</span>Work, energy and power<i class="cov"></i></button></li>
+              </ul>
+            </div>
+            <div>
+              <h5>B · The particulate nature of matter</h5>
+              <ul>
+                <li><button class="item" type="button" disabled title="이 시안에는 없는 페이지"><span class="code">B.3</span>Gas laws<i class="cov on"></i></button></li>
+                <li><button class="item" type="button" data-concept="circ"><span class="code">B.5</span>Series and parallel circuits<i class="cov on"></i></button></li>
+              </ul>
+            </div>
+            <div>
+              <h5>C · Wave behaviour</h5>
+              <ul>
+                <li><button class="item" type="button" disabled title="아직 받은 자료가 없다"><span class="code">C.1</span>Simple harmonic motion<i class="cov"></i></button></li>
+                <li><button class="item" type="button" disabled title="아직 받은 자료가 없다"><span class="code">C.2</span>Wave model<i class="cov"></i></button></li>
+              </ul>
+            </div>
+            <div>
+              <h5>목차 밖 · 확인할 것</h5>
+              <ul>
+                <li><button class="item" type="button" disabled title="자료 읽기가 강의 계획 목차에서 맞는 항목을 찾지 못했다. 다음 목차 보강 때 다시 본다"><span class="code out">?</span>Lab report checklist<i class="cov on"></i></button></li>
+              </ul>
+            </div>
+          </div>
+
+          <div data-list="chem" hidden>
+            <div class="subj-head"><strong>Chemistry SL</strong><span>강의 계획 목차 · 자료 7개 · 개념 9개</span></div>
+            <div class="legend-cov"><span><i class="cov on"></i> 자료 있음</span><span><i class="cov"></i> 아직 없음</span></div>
+            <div>
+              <h5>Structure 1 · Models of the particulate nature of matter</h5>
+              <ul>
+                <li><button class="item" type="button" disabled title="이 시안에는 없는 페이지"><span class="code">S1.3</span>Electron configurations<i class="cov on"></i></button></li>
+                <li><button class="item" type="button" disabled title="이 시안에는 없는 페이지"><span class="code">S1.4</span>The mole<i class="cov on"></i></button></li>
+              </ul>
+            </div>
+            <div>
+              <h5>Reactivity 1 · What drives chemical reactions?</h5>
+              <ul>
+                <li><button class="item" type="button" disabled title="이 시안에는 없는 페이지"><span class="code">R1.1</span>Calorimetry<i class="cov on"></i></button></li>
+                <li><button class="item" type="button" data-concept="comb"><span class="code">R1.3</span>Combustion of ethanol<i class="cov on"></i></button></li>
+              </ul>
+            </div>
+            <div>
+              <h5>Reactivity 2 · How much, how fast and how far?</h5>
+              <ul>
+                <li><button class="item" type="button" disabled title="아직 받은 자료가 없다"><span class="code">R2.3</span>Equilibrium<i class="cov"></i></button></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="main-wrap">
+          <div class="main" id="main">
+            <article class="concept" data-page="deriv" hidden>
+              <div class="crumb"><span class="dot" style="background:var(--subj-math)"></span>Math AA HL › Topic 5 Calculus › AHL 5.12</div>
+              <h2>Differentiation from first principles<span class="en">첫 원리로 미분하기</span></h2>
+              <div class="meta"><span class="chip lv">HL</span><span class="chip">Command term · Show that</span><span class="chip">자료 3개에서 정리</span><span class="chip">학생 독자 시험 통과</span><span class="open-count" hidden></span></div>
+              <div class="prose">
+                <div class="para" data-pid="deriv-p1"><p class="en"><span class="prov src">자료</span>The derivative is the gradient of a curve at a single point. Draw the <dfn class="term" tabindex="0" data-ko="할선">secant</dfn> through that point and a nearby point, then let the distance \(h\) between them shrink towards 0. The gradient of the secant approaches the gradient of the <dfn class="term" tabindex="0" data-ko="접선">tangent</dfn>.<button class="srcchip" type="button" data-src="Calculus unit 2 slides|7쪽|PPT">slides · 7</button></p><p class="ko" hidden>도함수는 곡선 위 한 점에서의 기울기다. 그 점과 가까운 다른 점을 지나는 할선을 긋고, 두 점 사이의 거리 \(h\)를 0에 가깝게 줄인다. 그러면 할선의 기울기가 접선의 기울기에 다가간다.</p></div>
+              </div>
+              <div class="math-display">\[ f'(x) = \lim_{h \to 0} \frac{f(x+h) - f(x)}{h} \]</div>
+
+              <div class="blk">
+                <div class="blk-head"><span class="blk-kind">plot · 매개변수 2개</span><span class="blk-title">As h shrinks, the secant becomes the tangent</span></div>
+                <div class="blk-body">
+                  <div class="para" data-pid="deriv-plot"><p class="en" style="font-size:13px;color:var(--ink-2)">Drag \(h\) towards 0 and watch the two gradients meet. Hover over the graph to read values.</p><p class="ko" hidden>\(h\)를 0 쪽으로 끌어 두 기울기가 만나는 것을 본다. 그래프 위에 포인터를 올리면 값을 읽을 수 있다.</p></div>
+                  <div class="row">
+                    <div class="seg" id="fn-seg" role="group" aria-label="Function">
+                      <button type="button" data-fn="sq" aria-pressed="true">x²</button>
+                      <button type="button" data-fn="cub" aria-pressed="false">x³ − 3x</button>
+                      <button type="button" data-fn="sin" aria-pressed="false">sin x</button>
+                    </div>
+                    <div class="legend"><span><i style="border-color:var(--ink)"></i>curve f</span><span><i style="border-color:var(--s2)"></i>secant</span><span><i class="dash" style="border-color:var(--s1)"></i>tangent</span></div>
+                  </div>
+                  <div class="figwrap"><svg id="deriv-svg" class="fig" viewBox="0 0 560 300" role="img" aria-label="A curve with the secant and the tangent drawn at one point"></svg></div>
+                  <div class="controls">
+                    <div class="ctl"><label for="d-x0">Point x <output id="d-x0-o">1.0</output></label><input id="d-x0" type="range" min="-2.5" max="2" step="0.1" value="1"></div>
+                    <div class="ctl"><label for="d-h">Distance h <output id="d-h-o">1.50</output></label><input id="d-h" type="range" min="0.01" max="2" step="0.01" value="1.5"></div>
+                  </div>
+                  <div class="readout">
+                    <div><small>Secant gradient</small><b id="d-sec">—</b></div>
+                    <div><small>Tangent gradient f′(x)</small><b id="d-tan">—</b></div>
+                    <div><small>Difference</small><b id="d-gap">—</b></div>
+                  </div>
+                </div>
+                <div class="blk-foot"><span class="ok">식 문법 검사</span><span class="ok">정의역 [−3, 4]에서 값 계산</span><span>출처 · slides 7–9</span></div>
+              </div>
+
+              <div class="blk">
+                <div class="blk-head"><span class="blk-kind">derivation · 4단계</span><span class="blk-title">Differentiate f(x) = x² from first principles</span></div>
+                <div class="blk-body">
+                  <div class="row"><button class="btn" type="button" id="st-mode">Step by step</button><button class="btn" type="button" id="st-next" disabled>Next step</button></div>
+                  <div class="steps" id="steps">
+                    <div class="step"><div class="m">\( f'(x) = \lim_{h\to0} \dfrac{(x+h)^2 - x^2}{h} \)</div><div class="why"><div class="para" data-pid="deriv-s1"><p class="en">Substitute f(x) = x² into the definition.</p><p class="ko" hidden>정의에 f(x) = x²를 넣는다.</p></div></div></div>
+                    <div class="step"><div class="m">\( = \lim_{h\to0} \dfrac{x^2 + 2xh + h^2 - x^2}{h} \)</div><div class="why"><div class="para" data-pid="deriv-s2"><p class="en">Expand the brackets.</p><p class="ko" hidden>괄호를 푼다.</p></div></div></div>
+                    <div class="step"><div class="m">\( = \lim_{h\to0} \dfrac{h(2x + h)}{h} = \lim_{h\to0}(2x + h) \)</div><div class="why"><div class="para" data-pid="deriv-s3"><p class="en">Factor out h and cancel. In the limit h ≠ 0, so dividing by h is allowed.</p><p class="ko" hidden>h로 묶어 약분한다. 극한에서는 h ≠ 0이므로 h로 나눌 수 있다.</p></div></div></div>
+                    <div class="step"><div class="m">\( = 2x \)</div><div class="why"><div class="para" data-pid="deriv-s4"><p class="en">Now let h → 0.</p><p class="ko" hidden>이제 h를 0으로 보낸다.</p></div></div></div>
+                  </div>
+                </div>
+                <div class="blk-foot"><span class="ok">단계마다 수식 파싱</span><span class="ok">마지막 식을 x = 1.5에서 계산해 그래프의 f′과 3.000으로 일치</span><span>출처 · 판서 사진 9월 14일</span></div>
+              </div>
+
+              <div class="note"><span class="ic">Common mistake</span><div class="para" data-pid="deriv-n1"><p class="en"><span class="prov src">자료</span>Substituting h = 0 straight away gives 0/0, which tells you nothing. Cancel the h in the denominator first, then take the limit.<button class="srcchip" type="button" data-src="Worksheet 5.12|2쪽|PDF">worksheet · 2</button></p><p class="ko" hidden>h = 0을 바로 넣으면 0/0이 되어 아무것도 알 수 없다. 분모의 h를 먼저 약분해 없앤 다음 극한을 취한다.</p></div></div>
+              <div class="note term"><span class="ic">Show that</span><div class="para" data-pid="deriv-n2"><p class="en"><span class="prov add">보충</span>Obtain the required result without the formality of proof. Because the result is given in the question, the marks are for the working that leads to it.</p><p class="ko" hidden>형식적인 증명 없이 요구된 결과를 얻는다. 결과가 문제에 이미 주어져 있으므로 점수는 그 결과에 이르는 풀이 과정에 있다.</p></div></div>
+
+              <details class="check">
+                <summary><span class="blk-kind">확인 문제</span>Show that, from first principles, the derivative of f(x) = 3x² is 6x.</summary>
+                <div class="ans">
+                  <div class="para" data-pid="deriv-a1"><div class="en"><p>1. Write the definition: \( \lim_{h\to0} \frac{3(x+h)^2 - 3x^2}{h} \)</p><p>2. Expand to \( \frac{6xh + 3h^2}{h} \) and cancel h to get \( 6x + 3h \).</p><p>3. As h → 0, this gives 6x. The mark scheme follows the steps on worksheet page 2.</p></div><div class="ko" hidden><p>1. 정의를 쓴다.</p><p>2. 전개해 \( \frac{6xh + 3h^2}{h} \)을 얻고, h로 약분해 \( 6x + 3h \)를 얻는다.</p><p>3. h → 0이면 6x가 된다. 채점 기준은 워크시트 2쪽의 풀이 단계를 따른다.</p></div></div>
+                </div>
+              </details>
+
+              <div class="linkcard"><span class="blk-kind">연결</span><button class="linkbtn" type="button" data-go="proj">Physics A.1 · Instantaneous velocity in projectile motion</button><div class="para nocm"><p class="en">The gradient of the tangent to a position–time graph is the instantaneous velocity. Physics writes the same idea as v = ds/dt.</p><p class="ko" hidden>위치-시간 그래프의 접선 기울기가 순간 속도다. 물리에서는 같은 생각을 v = ds/dt로 쓴다.</p></div></div>
+            </article>
+            <article class="concept" data-page="proj">
+              <div class="crumb"><span class="dot" style="background:var(--subj-phys)"></span>Physics HL › A Space, time and motion › A.1 Kinematics</div>
+              <h2>Projectile motion<span class="en">투사체 운동</span></h2>
+              <div class="meta"><span class="chip lv">SL · HL</span><span class="chip">Command term · Determine</span><span class="chip">자료 4개에서 정리</span><span class="chip">학생 독자 시험 통과</span><span class="open-count" hidden></span></div>
+              <div class="prose">
+                <div class="para" data-pid="proj-p1"><p class="en"><span class="prov src">자료</span>Without <dfn class="term" tabindex="0" data-ko="공기 저항">air resistance</dfn>, no force acts horizontally, so the horizontal velocity stays constant. Vertically, gravity gives a constant downward acceleration \(g\). Solve the two directions separately and link them through the time \(t\).<button class="srcchip" type="button" data-src="Kinematics slides|12쪽|PPT">slides · 12</button></p><p class="ko" hidden>공기 저항이 없으면 수평 방향으로는 힘이 작용하지 않아 수평 속도가 그대로다. 수직 방향으로는 중력 때문에 아래로 일정한 가속도 \(g\)를 받는다. 두 방향을 따로 풀고 시간 \(t\)로 잇는다.</p></div>
+              </div>
+              <div class="math-display">\[ x = u\cos\theta\, t \qquad y = u\sin\theta\, t - \tfrac{1}{2} g t^2 \qquad R = \frac{u^2 \sin 2\theta}{g} \]</div>
+
+              <div class="blk">
+                <div class="blk-head"><span class="blk-kind">sim · projectile</span><span class="blk-title">Launch at different angles and speeds</span></div>
+                <div class="blk-body">
+                  <div class="para" data-pid="proj-sim"><p class="en" style="font-size:13px;color:var(--ink-2)">The ball rests at the highest point until you launch it. Compare the solid and dashed paths: complementary angles land at the same place.</p><p class="ko" hidden>공은 던지기 전까지 최고점에 멈춰 있다. 실선과 점선 궤적을 견주어 보면, 더해서 90°가 되는 두 각도는 같은 곳에 떨어진다.</p></div>
+                  <div class="canvas-wrap"><canvas id="proj-cv" aria-label="Trajectory of a projectile with its velocity components" role="img"></canvas></div>
+                  <div class="row">
+                    <button class="btn primary" type="button" id="p-play">Launch ▶</button>
+                    <div class="seg" role="group" aria-label="Gravity"><button type="button" data-g="9.81" aria-pressed="true">Earth 9.81</button><button type="button" data-g="1.62" aria-pressed="false">Moon 1.62</button></div>
+                    <label class="row" style="gap:6px;font-size:13px"><input type="checkbox" id="p-comp" checked> Show 90° − θ</label>
+                  </div>
+                  <div class="legend"><span><i style="border-color:var(--s1)"></i>trajectory</span><span><i class="dash" style="border-color:var(--ink-3)"></i>90° − θ trajectory</span><span><i style="border-color:var(--s3)"></i>horizontal velocity</span><span><i style="border-color:var(--s2)"></i>vertical velocity</span></div>
+                  <div class="controls">
+                    <div class="ctl"><label for="p-u">Initial speed u <output id="p-u-o">20 m/s</output></label><input id="p-u" type="range" min="5" max="40" step="1" value="20"></div>
+                    <div class="ctl"><label for="p-th">Launch angle θ <output id="p-th-o">30°</output></label><input id="p-th" type="range" min="5" max="85" step="1" value="30"></div>
+                  </div>
+                  <div class="readout">
+                    <div><small>Time of flight</small><b id="p-T">—</b></div>
+                    <div><small>Maximum height</small><b id="p-H">—</b></div>
+                    <div><small>Range</small><b id="p-R">—</b></div>
+                  </div>
+                </div>
+                <div class="blk-foot"><span class="ok">매개변수 범위와 단위</span><span class="ok">주장 "θ와 90° − θ의 수평 거리는 같다"를 계산으로 확인</span><span>출처 · slides 10–15</span><span class="rg-note">다시 만들기 요청 "공기 저항이 있을 때와 비교" → 지금 블록 어휘에 없어 아빠에게 새 블록 요청으로 남겼다</span></div>
+              </div>
+
+              <div class="blk">
+                <div class="blk-head"><span class="blk-kind">data · 계산 표</span><span class="blk-title">Range at each angle for the same speed</span></div>
+                <div class="blk-body">
+                  <div class="tablewrap"><table class="data" id="p-table"><thead><tr><th>Angle</th><th>Time of flight (s)</th><th>Maximum height (m)</th><th>Range (m)</th></tr></thead><tbody></tbody></table></div>
+                  <div class="para" data-pid="proj-t1"><p class="en" style="font-size:13px;color:var(--ink-2)">15° and 75° give the same range, and so do 30° and 60°. The longest range is at 45°. Change the speed or gravity above and the table follows.</p><p class="ko" hidden>15°와 75°, 30°와 60°는 수평 거리가 같다. 수평 거리가 가장 긴 각도는 45°다. 위에서 속력이나 중력을 바꾸면 표도 따라 바뀐다.</p></div>
+                </div>
+                <div class="blk-foot"><span class="ok">러너가 같은 식으로 다시 계산해 대조</span></div>
+              </div>
+
+              <div class="note"><span class="ic">Common mistake</span><div class="para" data-pid="proj-n1"><p class="en"><span class="prov src">자료</span>It is tempting to say the velocity is zero at the highest point. Only the vertical component is zero; the horizontal component u cos θ is unchanged. Look at the green arrow at the top of the simulation.<button class="srcchip" type="button" data-src="Kinematics worksheet|3쪽|PDF">worksheet · 3</button></p><p class="ko" hidden>최고점에서 속도가 0이라고 말하기 쉽다. 0이 되는 것은 수직 성분뿐이고, 수평 성분 u cos θ는 그대로다. 위 실험의 최고점에 있는 초록 화살표를 보라.</p></div></div>
+              <div class="note term"><span class="ic">Determine</span><div class="para" data-pid="proj-n2"><p class="en"><span class="prov add">보충</span>Obtain the only possible answer. Write the equation you use, the values substituted, and the final value with its unit.</p><p class="ko" hidden>가능한 답 하나를 구한다. 쓰는 식, 값을 넣은 식, 단위가 붙은 최종 값을 쓴다.</p></div></div>
+
+              <details class="check">
+                <summary><span class="blk-kind">확인 문제</span>A ball is projected at 20 m s⁻¹ at 30° above the horizontal. Determine the maximum height reached (g = 9.81 m s⁻²).</summary>
+                <div class="ans">
+                  <div class="para" data-pid="proj-a1"><div class="en"><p>Vertical component: u sin θ = 20 × 0.5 = 10 m s⁻¹</p><p>\( H = \dfrac{(u\sin\theta)^2}{2g} = \dfrac{10^2}{2 \times 9.81} \approx 5.10\ \text{m} \)</p><p>Set the simulation to 20 m/s and 30° to see the same value.</p></div><div class="ko" hidden><p>수직 성분: u sin θ = 20 × 0.5 = 10 m s⁻¹</p><p>최고 높이는 약 5.10 m다.</p><p>위 실험을 20 m/s, 30°로 두면 같은 값이 나온다.</p></div></div>
+                  <p class="ok">러너가 답 5.10 m를 계산으로 확인했다</p>
+                </div>
+              </details>
+
+              <div class="linkcard"><span class="blk-kind">연결</span><button class="linkbtn" type="button" data-go="deriv">Math AA AHL 5.12 · Differentiation from first principles</button><div class="para nocm"><p class="en">Velocity is the derivative of position, and acceleration is the derivative of velocity. The gradient of a tangent gives the instantaneous velocity.</p><p class="ko" hidden>속도는 위치의 도함수이고, 가속도는 속도의 도함수다. 접선의 기울기가 순간 속도다.</p></div></div>
+            </article>
+            <article class="concept" data-page="comb" hidden>
+              <div class="crumb"><span class="dot" style="background:var(--subj-chem)"></span>Chemistry SL › Reactivity 1 › R1.3 Energy from fuels</div>
+              <h2>Combustion of ethanol and activation energy<span class="en">에탄올의 연소와 활성화 에너지</span></h2>
+              <div class="meta"><span class="chip lv">SL · HL</span><span class="chip">Command term · Deduce</span><span class="chip">자료 3개에서 정리</span><span class="chip">R2.2와 이어짐</span><span class="open-count" hidden></span></div>
+              <div class="prose">
+                <div class="para" data-pid="comb-p1"><p class="en"><span class="prov src">자료</span>When ethanol burns completely, it forms carbon dioxide and water and releases heat. The <dfn class="term" tabindex="0" data-ko="표준 연소 엔탈피">standard enthalpy of combustion</dfn> of ethanol is −1367 kJ mol⁻¹.<button class="srcchip" type="button" data-src="Combustion worksheet|2쪽|PDF">worksheet · 2</button></p><p class="ko" hidden>에탄올이 완전 연소하면 이산화 탄소와 물이 생기고 열이 나온다. 에탄올의 표준 연소 엔탈피는 −1367 kJ mol⁻¹이다.</p></div>
+              </div>
+
+              <div class="blk">
+                <div class="blk-head"><span class="blk-kind">molecule · C₂H₅OH</span><span class="blk-title">Structure of ethanol</span></div>
+                <div class="blk-body">
+                  <div class="seg" id="mol-seg" role="group" aria-label="Model"><button type="button" data-mol="struct" aria-pressed="true">Structural formula</button><button type="button" data-mol="ball" aria-pressed="false">Ball-and-stick</button></div>
+                  <div class="figwrap"><svg id="mol-svg" class="fig" viewBox="0 0 360 170" role="img" aria-label="Structural formula of ethanol: two carbon atoms, one oxygen atom and six hydrogen atoms" style="max-width:420px;margin:0 auto"></svg></div>
+                </div>
+                <div class="blk-foot"><span class="ok">분자식과 원자 수 일치 (C 2, H 6, O 1)</span><span class="ok">원자마다 결합 수 (C 4, O 2, H 1)</span></div>
+              </div>
+
+              <div class="blk">
+                <div class="blk-head"><span class="blk-kind">reaction · 균형 맞추기</span><span class="blk-title">Balance the equation</span></div>
+                <div class="blk-body">
+                  <div class="para" data-pid="comb-r1"><p class="en" style="font-size:13px;color:var(--ink-2)">Change one coefficient at a time. Balance carbon first, then hydrogen, and oxygen last.</p><p class="ko" hidden>계수를 하나씩 바꾼다. 탄소를 먼저, 다음에 수소를 맞추고, 산소는 마지막에 맞춘다.</p></div>
+                  <div class="eq" id="eq"></div>
+                  <div class="tally" id="tally"></div>
+                  <div class="row"><span class="status bad" id="eq-status">Not balanced</span><span class="spacer" style="flex:1"></span><button class="btn" type="button" id="eq-reset">Reset</button><button class="btn" type="button" id="eq-answer">Show answer</button></div>
+                </div>
+                <div class="blk-foot"><span class="ok">러너도 이 방법으로 원자와 전하 보존을 검사한다</span><span>ΔH는 자료 값을 그대로 쓴다</span></div>
+              </div>
+
+              <div class="blk">
+                <div class="blk-head"><span class="blk-kind">energy-profile</span><span class="blk-title">Reaction pathway and activation energy</span></div>
+                <div class="blk-body">
+                  <div class="row">
+                    <div class="seg" id="cat-seg" role="group" aria-label="Catalyst"><button type="button" data-cat="0" aria-pressed="false">Without catalyst</button><button type="button" data-cat="1" aria-pressed="true">Compare with catalyst</button></div>
+                    <div class="legend"><span><i style="border-color:var(--s1)"></i>uncatalysed</span><span id="cat-legend"><i class="dash" style="border-color:var(--s3)"></i>catalysed</span></div>
+                  </div>
+                  <div class="figwrap"><svg id="ep-svg" class="fig" viewBox="0 0 560 300" role="img" aria-label="Energy profile from reactants to products. With a catalyst the activation energy is lower"></svg></div>
+                </div>
+                <div class="blk-foot"><span>모양은 크기를 견주는 그림이고, 축에 적힌 값은 ΔH 하나다</span><span class="ok">ΔH의 부호와 발열 표시 일치</span></div>
+              </div>
+
+              <div class="prose"><div class="para" data-pid="comb-p2"><p class="en"><span class="prov add">보충</span>A <dfn class="term" tabindex="0" data-ko="촉매">catalyst</dfn> provides an alternative pathway with a lower <dfn class="term" tabindex="0" data-ko="활성화 에너지">activation energy</dfn>. The energies of the reactants and products do not change, so ΔH stays the same. Rates of reaction continue in R2.2.</p><p class="ko" hidden>촉매는 활성화 에너지가 더 낮은 다른 경로를 열어 준다. 반응물과 생성물의 에너지는 바뀌지 않으므로 ΔH도 그대로다. 반응 속도는 R2.2에서 이어서 다룬다.</p></div></div>
+
+              <div class="blk">
+                <div class="blk-head"><span class="blk-kind">orbital · 상자 그림</span><span class="blk-title">Electron configuration (prerequisite from S1.3)</span></div>
+                <div class="blk-body">
+                  <div class="para" data-pid="comb-o1"><p class="en" style="font-size:13px;color:var(--ink-2)">Electrons fill the lowest energy sub-levels first. In a p sub-level, each orbital takes one electron before any of them pair up.</p><p class="ko" hidden>전자는 에너지가 낮은 부준위부터 채운다. p 부준위에서는 모든 오비탈에 전자가 하나씩 들어간 뒤에 짝을 짓는다.</p></div>
+                  <div class="ctl" style="max-width:340px"><label for="z">Atomic number Z <output id="z-o">6 · C carbon</output></label><input id="z" type="range" min="1" max="20" step="1" value="6"></div>
+                  <div class="orb" id="orb"></div>
+                  <div class="config" id="config"></div>
+                </div>
+                <div class="blk-foot"><span class="ok">쌓음 원리와 훈트 규칙으로 채움 (러너가 Z마다 계산해 대조)</span></div>
+              </div>
+
+              <div class="note"><span class="ic">Common mistake</span><div class="para" data-pid="comb-n1"><p class="en"><span class="prov src">자료</span>It is tempting to think that breaking bonds releases energy. Breaking bonds absorbs energy, and forming bonds releases it. Combustion is exothermic because the bonds formed are stronger than the bonds broken.<button class="srcchip" type="button" data-src="Energetics slides|6쪽|PPT">slides · 6</button></p><p class="ko" hidden>결합이 끊어질 때 에너지가 나온다고 생각하기 쉽다. 결합을 끊을 때는 에너지가 들고, 결합이 생길 때 에너지가 나온다. 연소가 발열인 것은 새로 생기는 결합이 끊어지는 결합보다 강하기 때문이다.</p></div></div>
+              <div class="note term"><span class="ic">Deduce</span><div class="para" data-pid="comb-n2"><p class="en"><span class="prov add">보충</span>Reach a conclusion from the information given. For an equation, show that every element is balanced.</p><p class="ko" hidden>주어진 정보로 결론을 낸다. 반응식이라면 모든 원소가 맞는다는 것을 보인다.</p></div></div>
+
+              <details class="check">
+                <summary><span class="blk-kind">확인 문제</span>Deduce the balanced equation for the complete combustion of propane, C₃H₈.</summary>
+                <div class="ans">
+                  <div class="para" data-pid="comb-a1"><div class="en"><p class="formula">C<sub>3</sub>H<sub>8</sub> + 5O<sub>2</sub> → 3CO<sub>2</sub> + 4H<sub>2</sub>O</p><p>Balance carbon, then hydrogen, and oxygen last.</p></div><div class="ko" hidden><p>탄소, 수소를 차례로 맞추고 산소는 마지막에 맞춘다.</p></div></div>
+                  <p class="ok">러너가 원자 수 보존 (C 3, H 8, O 10)을 확인했다</p>
+                </div>
+              </details>
+
+              <div class="linkcard"><span class="blk-kind">연결</span><span style="font-weight:500">Physics B.1 · Thermal energy transfers</span><div class="para nocm"><p class="en">Measuring ΔH by heating water with a burning fuel (calorimetry) uses Q = mcΔT. Physics and chemistry share the same equation.</p><p class="ko" hidden>연료를 태워 물을 데우며 ΔH를 재는 실험(열량 측정)은 Q = mcΔT를 쓴다. 물리와 화학이 같은 식을 쓴다.</p></div></div>
+            </article>
+            <article class="concept" data-page="circ" hidden>
+              <div class="crumb"><span class="dot" style="background:var(--subj-phys)"></span>Physics HL › B The particulate nature of matter › B.5 Current and circuits</div>
+              <h2>Series and parallel circuits<span class="en">직렬·병렬 회로</span></h2>
+              <div class="meta"><span class="chip lv">SL · HL</span><span class="chip">Command term · Calculate</span><span class="chip">자료 2개에서 정리</span><span class="chip">학생 독자 시험 통과</span><span class="open-count" hidden></span></div>
+              <div class="prose">
+                <div class="para" data-pid="circ-p1"><p class="en"><span class="prov src">자료</span>Resistors in <dfn class="term" tabindex="0" data-ko="직렬">series</dfn> carry the same current, and the voltage is shared between them. Resistors in <dfn class="term" tabindex="0" data-ko="병렬">parallel</dfn> have the same <dfn class="term" tabindex="0" data-ko="전위차">potential difference</dfn> across them, and the current is shared.<button class="srcchip" type="button" data-src="Circuits slides|5쪽|PPT">slides · 5</button></p><p class="ko" hidden>직렬로 이은 저항에는 같은 전류가 흐르고, 전압은 저항들이 나눠 갖는다. 병렬로 이은 저항에는 같은 전위차가 걸리고, 전류가 나뉜다.</p></div>
+              </div>
+              <div class="math-display">\[ R_{\text{series}} = R_1 + R_2 \qquad \frac{1}{R_{\text{parallel}}} = \frac{1}{R_2} + \frac{1}{R_3} \qquad V = IR \]</div>
+
+              <div class="blk">
+                <div class="blk-head"><span class="blk-kind">circuit · netlist</span><span class="blk-title">Change the voltage and resistances</span></div>
+                <div class="blk-body">
+                  <div class="figwrap"><svg id="circ-svg" class="fig" viewBox="0 0 520 260" role="img" aria-label="A cell with R1 in series and R2 and R3 in parallel. Dot speed shows the size of the current"></svg></div>
+                  <div class="para" data-pid="circ-c1"><p class="en" style="font-size:13px;color:var(--ink-2)">Dot speed is proportional to the current in that wire. Dots move in the direction of conventional current, from + to −.</p><p class="ko" hidden>점의 빠르기는 그 도선에 흐르는 전류에 비례한다. 점은 관례적인 전류의 방향, 곧 +에서 −로 움직인다.</p></div>
+                  <div class="controls">
+                    <div class="ctl"><label for="c-v">Cell voltage V <output id="c-v-o">6.0 V</output></label><input id="c-v" type="range" min="1" max="12" step="0.5" value="6"></div>
+                    <div class="ctl"><label for="c-r1">R1 <output id="c-r1-o">4 Ω</output></label><input id="c-r1" type="range" min="1" max="20" step="1" value="4"></div>
+                    <div class="ctl"><label for="c-r2">R2 <output id="c-r2-o">12 Ω</output></label><input id="c-r2" type="range" min="1" max="20" step="1" value="12"></div>
+                    <div class="ctl"><label for="c-r3">R3 <output id="c-r3-o">12 Ω</output></label><input id="c-r3" type="range" min="1" max="20" step="1" value="12"></div>
+                  </div>
+                  <div class="readout">
+                    <div><small>Total resistance</small><b id="c-rt">—</b></div>
+                    <div><small>Total current I</small><b id="c-i">—</b></div>
+                    <div><small>p.d. across R1</small><b id="c-v1">—</b></div>
+                    <div><small>p.d. across parallel part</small><b id="c-vp">—</b></div>
+                    <div><small>Current in R2</small><b id="c-i2">—</b></div>
+                    <div><small>Current in R3</small><b id="c-i3">—</b></div>
+                  </div>
+                </div>
+                <div class="blk-foot"><span class="ok">명세의 주장 "6 V, 4 Ω, 12 Ω, 12 Ω에서 I = 0.60 A"를 회로를 풀어 확인</span><span class="ok" id="c-kirch">접점의 전류 합 0, 고리의 전압 합 0</span></div>
+              </div>
+
+              <div class="note"><span class="ic">Common mistake</span><div class="para" data-pid="circ-n1"><p class="en"><span class="prov src">자료</span>It is tempting to think current is "used up" as it passes through a resistor. In a series circuit the current is the same everywhere. What drops across a resistor is the potential.<button class="srcchip" type="button" data-src="Circuits worksheet|2쪽|PDF">worksheet · 2</button></p><p class="ko" hidden>전류가 저항을 지나며 "쓰여서" 줄어든다고 생각하기 쉽다. 직렬 회로에서는 어디서 재도 전류가 같다. 저항을 지나며 낮아지는 것은 전위다.</p></div></div>
+              <div class="note term"><span class="ic">Calculate</span><div class="para" data-pid="circ-n2"><p class="en"><span class="prov add">보충</span>Obtain a numerical answer, showing the relevant stages in the working. Give the answer with sensible significant figures and a unit.</p><p class="ko" hidden>풀이의 주요 단계를 보이며 수치 답을 구한다. 알맞은 유효 숫자와 단위를 붙여 쓴다.</p></div></div>
+
+              <details class="check">
+                <summary><span class="blk-kind">확인 문제</span>Calculate the current in R₂ when V = 6.0 V, R₁ = 4.0 Ω and R₂ = R₃ = 12 Ω.</summary>
+                <div class="ans">
+                  <div class="para" data-pid="circ-a1"><div class="en"><p>Parallel part: 1/R = 1/12 + 1/12, so R = 6.0 Ω. Total resistance = 10 Ω.</p><p>I = 6.0 / 10 = 0.60 A, and the p.d. across the parallel part = 0.60 × 6.0 = 3.6 V.</p><p>Current in R₂ = 3.6 / 12 = 0.30 A</p></div><div class="ko" hidden><p>병렬 부분: 1/R = 1/12 + 1/12이므로 R = 6.0 Ω. 전체 저항은 10 Ω.</p><p>I = 6.0 / 10 = 0.60 A이고, 병렬 부분의 전위차는 0.60 × 6.0 = 3.6 V.</p><p>R₂의 전류 = 3.6 / 12 = 0.30 A</p></div></div>
+                  <p class="ok">러너가 회로를 풀어 0.30 A를 확인했다</p>
+                </div>
+              </details>
+            </article>
+          </div>
+          <aside class="insp" aria-label="인스펙터">
+            <div data-insp="deriv" hidden>
+              <h6>출처 · 자료 3개</h6>
+              <ul>
+                <li class="src-row"><button class="linkbtn" type="button" data-src="Calculus unit 2 slides|7–9쪽|PPT">Calculus unit 2 slides</button><small>PPT · 7–9쪽 · 9월 12일 받음</small></li>
+                <li class="src-row"><button class="linkbtn" type="button" data-src="Worksheet 5.12|1–2쪽|PDF">Worksheet 5.12</button><small>PDF · 1–2쪽</small></li>
+                <li class="src-row"><button class="linkbtn" type="button" data-src="Whiteboard photo|1장|사진">Whiteboard photo</button><small>사진 · 받아 적음 · 9월 14일</small></li>
+              </ul>
+            </div>
+            <div data-insp="deriv" hidden>
+              <h6>관점</h6>
+              <div class="facets"><span class="facet"><b>강의 계획</b>AHL 5.12</span><span class="facet"><b>수준</b>HL</span><span class="facet"><b>명령어</b>Show that</span><span class="facet"><b>개념</b>Change</span><span class="facet"><b>개념</b>Approximation</span><span class="facet"><b>TOK</b>Mathematics</span></div>
+            </div>
+            <div data-insp="deriv" hidden>
+              <h6>먼저 알아야 할 것</h6>
+              <ul><li>SL 5.1 Limits and the derivative</li><li>SL 2.2 Domain and range</li></ul>
+            </div>
+            <div data-insp="deriv" hidden>
+              <h6>과목 사이 연결</h6>
+              <ul><li><button class="linkbtn" type="button" data-go="proj">Physics A.1 · Instantaneous velocity</button></li></ul>
+            </div>
+
+            <div data-insp="proj">
+              <h6>출처 · 자료 4개</h6>
+              <ul>
+                <li class="src-row"><button class="linkbtn" type="button" data-src="Kinematics slides|10–15쪽|PPT">Kinematics slides</button><small>PPT · 10–15쪽 · 9월 3일 받음</small></li>
+                <li class="src-row"><button class="linkbtn" type="button" data-src="Kinematics worksheet|1–3쪽|PDF">Kinematics worksheet</button><small>PDF · 1–3쪽</small></li>
+                <li class="src-row"><button class="linkbtn" type="button" data-src="Practical activity guide|1쪽|PDF">Practical activity guide</button><small>PDF · 1쪽</small></li>
+                <li class="src-row"><button class="linkbtn" type="button" data-src="Whiteboard photos|2장|사진">Whiteboard photos</button><small>사진 · 2장 · 받아 적음</small></li>
+              </ul>
+            </div>
+            <div data-insp="proj">
+              <h6>관점</h6>
+              <div class="facets"><span class="facet"><b>강의 계획</b>A.1</span><span class="facet"><b>수준</b>SL · HL</span><span class="facet"><b>명령어</b>Determine</span><span class="facet"><b>NOS</b>Models</span><span class="facet"><b>TOK</b>Natural sciences</span></div>
+            </div>
+            <div data-insp="proj">
+              <h6>먼저 알아야 할 것</h6>
+              <ul><li>MYP 10 Sciences · Speed and acceleration</li><li>MYP 10 Math · Trigonometric ratios</li></ul>
+            </div>
+            <div data-insp="proj">
+              <h6>과목 사이 연결</h6>
+              <ul><li><button class="linkbtn" type="button" data-go="deriv">Math AHL 5.12 · The derivative</button></li></ul>
+            </div>
+
+            <div data-insp="comb" hidden>
+              <h6>출처 · 자료 3개</h6>
+              <ul>
+                <li class="src-row"><button class="linkbtn" type="button" data-src="Energetics slides|4–9쪽|PPT">Energetics slides</button><small>PPT · 4–9쪽</small></li>
+                <li class="src-row"><button class="linkbtn" type="button" data-src="Combustion worksheet|1–2쪽|PDF">Combustion worksheet</button><small>PDF · 1–2쪽</small></li>
+                <li class="src-row"><button class="linkbtn" type="button" data-src="Lab report guide|1쪽|PDF">Lab report guide</button><small>PDF · 1쪽</small></li>
+              </ul>
+            </div>
+            <div data-insp="comb" hidden>
+              <h6>관점</h6>
+              <div class="facets"><span class="facet"><b>강의 계획</b>R1.3</span><span class="facet"><b>강의 계획</b>R2.2</span><span class="facet"><b>수준</b>SL · HL</span><span class="facet"><b>명령어</b>Deduce</span><span class="facet"><b>TOK</b>Natural sciences</span></div>
+            </div>
+            <div data-insp="comb" hidden>
+              <h6>먼저 알아야 할 것</h6>
+              <ul><li>S1.3 Electron configurations</li><li>MYP 10 Sciences · Chemical equations</li></ul>
+            </div>
+            <div data-insp="comb" hidden>
+              <h6>과목 사이 연결</h6>
+              <ul><li>Physics B.1 · Calorimetry</li></ul>
+            </div>
+
+            <div data-insp="circ" hidden>
+              <h6>출처 · 자료 2개</h6>
+              <ul>
+                <li class="src-row"><button class="linkbtn" type="button" data-src="Circuits slides|3–8쪽|PPT">Circuits slides</button><small>PPT · 3–8쪽</small></li>
+                <li class="src-row"><button class="linkbtn" type="button" data-src="Circuits worksheet|1–2쪽|PDF">Circuits worksheet</button><small>PDF · 1–2쪽</small></li>
+              </ul>
+            </div>
+            <div data-insp="circ" hidden>
+              <h6>관점</h6>
+              <div class="facets"><span class="facet"><b>강의 계획</b>B.5</span><span class="facet"><b>수준</b>SL · HL</span><span class="facet"><b>명령어</b>Calculate</span><span class="facet"><b>NOS</b>Models</span></div>
+            </div>
+            <div data-insp="circ" hidden>
+              <h6>먼저 알아야 할 것</h6>
+              <ul><li>MYP 10 Sciences · Electric circuits</li></ul>
+            </div>
+
+            <div class="flag">
+              <h6 id="cm-head">이 페이지의 코멘트</h6>
+              <ul class="cm-list" id="cm-list"></ul>
+              <p>문단 끝의 ✎를 눌러 메모, 질문, "이상해요"를 남긴다. 질문은 물어보기 작업이 출처를 달아 답하고, "이상해요"는 아빠가 지침을 고칠 때 본다.</p>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </section>
+  <style>
+    .dg text { fill: var(--ink); font-family: var(--f-body); font-size: 12px; }
+    .dg .t { font-weight: 600; font-size: 13px; }
+    .dg .s { fill: var(--ink-3); font-size: 11px; }
+    .dg .k { fill: var(--accent); font-size: 10px; font-weight: 600; letter-spacing: .04em; }
+    .dg .lbl { fill: var(--ink-2); font-size: 11px; }
+    .dg .box { fill: var(--paper-2); stroke: var(--line); stroke-width: 1; }
+    .dg .box.hi { stroke: var(--accent); stroke-width: 1.5; }
+    .dg .box.ghost { fill: var(--paper); stroke: var(--ink-3); stroke-dasharray: 4 3; }
+    .dg .ln { stroke: var(--ink-3); stroke-width: 1.5; fill: none; }
+    .dg .ln.dash { stroke-dasharray: 5 4; }
+    .dg .ln.hi { stroke: var(--accent); }
+    .dg .ah { fill: var(--ink-3); }
+    .dg .ah.hi { fill: var(--accent); }
+    .dg .div { stroke: var(--line); stroke-width: 1; }
+  </style>
+  <section id="tab-structure" role="tabpanel" aria-labelledby="t-structure" hidden>
+    <div class="doc">
+      <section>
+        <h3>원칙</h3>
+        <p class="sub-lede">Assayer에서 그대로 가져오는 것과 학습 자료라서 새로 두는 것이다.</p>
+        <div class="principles">
+          <div class="pr"><span class="from">그대로</span><strong>결정적인 일은 러너가</strong><p>입력 고정, 산출물 검증과 배치는 러너 코드가 한다. 에이전트는 작업 공간을 읽고 out/, work/에만 쓴다.</p></div>
+          <div class="pr"><span class="from">그대로</span><strong>기록은 덧붙이기만</strong><p>원시 개념 엔트리는 고치지 않는다. 정리된 개념과 학습 페이지는 다시 만드는 정리층이다.</p></div>
+          <div class="pr"><span class="from">그대로</span><strong>격리된 에이전트</strong><p>작업마다 claude -p --restricted, 설정 디렉터리 분리, 웹 호출 검사 훅. 금지어는 학생·학교·선생님 이름이다.</p></div>
+          <div class="pr"><span class="from new">새로</span><strong>자료에 있는 것과 보탠 것을 나눈다</strong><p>주장마다 자료와 쪽을 단다. 러너가 그 쪽이 있는지, 에이전트가 실제로 읽었는지 대조한다. 출처가 없는 설명은 "보충"으로 따로 보인다.</p></div>
+          <div class="pr"><span class="from new">새로</span><strong>그림은 블록으로 고른다</strong><p>에이전트는 스크립트를 쓰지 않고, 정해 둔 블록의 명세만 쓴다. 움직이는 그림은 앱에 든 렌더러가 그린다. 명세는 러너가 계산으로 확인할 수 있다.</p></div>
+          <div class="pr"><span class="from new">새로</span><strong>뼈대는 강의 계획</strong><p>분류가 아래에서 생기지 않고 목차로 주어진다. 목차는 목차 만들기 작업이 따로 만들고, 자료를 넣을 때는 고르지 않는다. 자료가 없는 항목이 곧 빈 곳이다.</p></div>
+          <div class="pr"><span class="from new">새로</span><strong>영어가 원문, 한국어는 문단 곁에</strong><p>학습 페이지는 늘 영어로 쓴다. 한국어 번역은 문단마다 따로 두고, 그 문단 바로 아래에 펼친다. 문서 전체를 바꾸지 않으니 읽던 자리를 잃지 않는다.</p></div>
+          <div class="pr"><span class="from new">새로</span><strong>코멘트는 문단에 붙는다</strong><p>메모, 질문, "이상해요" 세 가지. 문단 id와 영어 원문 해시, 인용을 함께 남겨 페이지를 다시 만들어도 자리를 찾는다. 질문은 물어보기 작업이 답한다.</p></div>
+          <div class="pr"><span class="from new">새로</span><strong>바뀐 곳만 다시, 요구는 남긴다</strong><p>단위마다 id, 판, 어디서 왔는지의 해시가 있어 바뀐 단위와 그 아래 층만 낡는다. "더 쉽게" 같은 요구는 기록에 남아 나중에 다시 만들 때도 적용된다.</p></div>
+          <div class="pr"><span class="from new">새로</span><strong>쓰는 사람과 고치는 사람이 다르다</strong><p>학생이 고른 "이상해요"·질문 코멘트가 보내기 묶음으로 아빠에게 가고, 아빠는 그것을 보고 지침을 고친다.</p></div>
+        </div>
+      </section>
+
+      <section>
+        <h3>작업의 흐름</h3>
+        <figure>
+          <div class="figwrap">
+            <svg class="dg fig" viewBox="0 0 1000 350" role="img" aria-label="자료 넣기, 자료 읽기, 개념 정리, 학습 페이지 만들기, 앱 화면으로 이어지는 흐름. 개념 정리에서 관점 붙이기가, 학습 페이지에서 번역이 갈라져 앱으로 가고, 앱의 코멘트가 아빠의 지침 고치기로 돌아간다">
+              <defs>
+                <marker id="ah1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+                <marker id="ah1h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah hi" d="M0,0 L10,5 L0,10 z"/></marker>
+              </defs>
+              <rect class="box" x="20" y="20" width="146" height="146" rx="8"/>
+              <text class="t" x="34" y="44">자료 넣기</text><text class="s" x="34" y="62">러너만 · 과목만 고른다</text>
+              <line class="div" x1="34" y1="76" x2="152" y2="76"/>
+              <text class="k" x="34" y="94">러너 검사</text>
+              <text x="34" y="112">내용 해시로 중복 빼기</text><text x="34" y="128">PPT를 PDF로</text><text x="34" y="144">쪽마다 이미지·글자</text>
+
+              <rect class="box" x="226" y="20" width="146" height="146" rx="8"/>
+              <text class="t" x="240" y="44">자료 읽기</text><text class="s" x="240" y="62">에이전트 1차 · 2차</text>
+              <line class="div" x1="240" y1="76" x2="358" y2="76"/>
+              <text class="k" x="240" y="94">러너 검사</text>
+              <text x="240" y="112">출처 쪽이 있는지</text><text x="240" y="128">항목이 목차에 있는지</text><text x="240" y="144">학생 독자 시험</text>
+
+              <rect class="box" x="432" y="20" width="146" height="146" rx="8"/>
+              <text class="t" x="446" y="44">개념 정리</text><text class="s" x="446" y="62">에이전트 · 하나씩 차례로</text>
+              <line class="div" x1="446" y1="76" x2="564" y2="76"/>
+              <text class="k" x="446" y="94">러너 검사</text>
+              <text x="446" y="112">엔트리가 한 곳에만</text><text x="446" y="128">선수 개념이 있는지</text><text x="446" y="144">출현 목록 계산</text>
+
+              <rect class="box hi" x="638" y="20" width="146" height="146" rx="8"/>
+              <text class="t" x="652" y="44">학습 페이지</text><text class="s" x="652" y="62">에이전트 · 영어로</text>
+              <line class="div" x1="652" y1="76" x2="770" y2="76"/>
+              <text class="k" x="652" y="94">러너 검사</text>
+              <text x="652" y="112">블록 스키마</text><text x="652" y="128">주장을 계산으로 확인</text><text x="652" y="144">원문 문장 보존</text>
+
+              <rect class="box" x="844" y="20" width="146" height="146" rx="8"/>
+              <text class="t" x="858" y="44">앱 화면</text><text class="s" x="858" y="62">내장 렌더러</text>
+              <line class="div" x1="858" y1="76" x2="976" y2="76"/>
+              <text class="k" x="858" y="94">앱이 지키는 것</text>
+              <text x="858" y="112">번들 스크립트만</text><text x="858" y="128">바깥 자원 없음</text><text x="858" y="144">코멘트는 기록으로</text>
+
+              <line class="ln" x1="166" y1="104" x2="224" y2="104" marker-end="url(#ah1)"/>
+              <text class="lbl" x="196" y="84" text-anchor="middle">쪽 이미지</text><text class="lbl" x="196" y="97" text-anchor="middle">+ 글자층</text>
+              <line class="ln" x1="372" y1="104" x2="430" y2="104" marker-end="url(#ah1)"/>
+              <text class="lbl" x="402" y="84" text-anchor="middle">원시 개념</text><text class="lbl" x="402" y="97" text-anchor="middle">엔트리</text>
+              <line class="ln" x1="578" y1="104" x2="636" y2="104" marker-end="url(#ah1)"/>
+              <text class="lbl" x="608" y="84" text-anchor="middle">정리된</text><text class="lbl" x="608" y="97" text-anchor="middle">개념 원문</text>
+              <line class="ln hi" x1="784" y1="104" x2="842" y2="104" marker-end="url(#ah1h)"/>
+              <text class="lbl" x="814" y="84" text-anchor="middle">블록 명세</text><text class="lbl" x="814" y="97" text-anchor="middle">(JSON)</text>
+
+              <rect class="box" x="432" y="198" width="146" height="54" rx="8"/>
+              <text class="t" x="446" y="220">관점 붙이기</text><text class="s" x="446" y="238">강의 계획 · 명령어 · TOK</text>
+              <rect class="box" x="638" y="198" width="146" height="54" rx="8"/>
+              <text class="t" x="652" y="220">번역</text><text class="s" x="652" y="238">문단마다 · 용어 어휘</text>
+              <line class="ln" x1="505" y1="166" x2="505" y2="196" marker-end="url(#ah1)"/>
+              <line class="ln" x1="711" y1="166" x2="711" y2="196" marker-end="url(#ah1)"/>
+              <path class="ln" d="M784,225 H935 V168" marker-end="url(#ah1)"/>
+              <text class="lbl" x="796" y="217">문단 번역</text>
+              <path class="ln" d="M505,252 V270 H965 V168" marker-end="url(#ah1)"/>
+              <text class="lbl" x="596" y="286">관점 · 레퍼런스</text>
+
+              <rect class="box ghost" x="226" y="294" width="352" height="46" rx="8"/>
+              <text class="t" x="240" y="315">코멘트 → 물어보기 답 · 아빠의 지침 고치기</text><text class="s" x="240" y="331">질문은 작업이 답하고, "이상해요"는 아빠가 본다</text>
+              <path class="ln dash" d="M880,166 V317 H580" marker-end="url(#ah1)"/>
+              <text class="lbl" x="700" y="310">질문 · "이상해요"</text>
+              <path class="ln dash" d="M299,294 V168" marker-end="url(#ah1)"/>
+              <text class="lbl" x="306" y="200">새 지침</text>
+            </svg>
+          </div>
+          <figcaption>Assayer의 설계안 검토 → 카탈로그 정리 → 패턴 시각화, 기술 추출과 같은 모양이다. 달라지는 곳은 출처와 목차 대조, 블록 명세의 계산 확인, 문단마다의 번역, 그리고 아래쪽 코멘트의 되먹임이다.</figcaption>
+        </figure>
+      </section>
+
+      <section>
+        <h3>강의 계획 목차는 어떻게 만드나</h3>
+        <p class="sub-lede">목차는 자료를 넣을 때 고르는 목록이 아니다. 따로 도는 목차 만들기 작업이 학생이 가진 문서에서 만들고, 자료 읽기는 읽은 뒤 엔트리마다 항목 코드를 제안한다. 러너는 그 코드가 목차에 있는지만 대조한다.</p>
+        <figure>
+          <div class="figwrap">
+            <svg class="dg fig" viewBox="0 0 1000 300" role="img" aria-label="과목 가이드, 공개 과목 요약, 선생님의 안내에서 목차 만들기 작업이 목차를 만들고, 러너가 검사해 목차 파일로 쓴다. 자료 읽기가 제안한 항목 코드는 러너가 목차와 대조해 있으면 그 항목에, 없으면 목차 밖에 둔다">
+              <defs><marker id="ah4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+              <marker id="ah4h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah hi" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+              <rect class="box" x="20" y="16" width="230" height="46" rx="8"/><text class="t" x="34" y="36">과목 가이드</text><text class="s" x="34" y="53">학교가 준 경우 · 항목까지 나온다</text>
+              <rect class="box" x="20" y="76" width="230" height="46" rx="8"/><text class="t" x="34" y="96">IB 공개 과목 요약</text><text class="s" x="34" y="113">큰 주제까지만 나올 수 있다</text>
+              <rect class="box" x="20" y="136" width="230" height="46" rx="8"/><text class="t" x="34" y="156">선생님의 과정·단원 안내</text><text class="s" x="34" y="173">MYP는 이것이 목차다</text>
+              <path class="ln" d="M250,39 H280 V99 H308" marker-end="url(#ah4)"/>
+              <line class="ln" x1="250" y1="99" x2="308" y2="99"/>
+              <path class="ln" d="M250,159 H280 V99"/>
+              <rect class="box" x="310" y="70" width="170" height="58" rx="8"/><text class="t" x="324" y="94">목차 만들기</text><text class="s" x="324" y="112">에이전트 · 학년 초 한 번</text>
+              <line class="ln" x1="480" y1="99" x2="528" y2="99" marker-end="url(#ah4)"/>
+              <rect class="box" x="530" y="40" width="190" height="118" rx="8"/><text class="k" x="544" y="62">러너 검사</text>
+              <text x="544" y="82">코드가 겹치지 않음</text><text x="544" y="100">상위·하위 구조</text><text x="544" y="118">SL/HL 표시</text><text x="544" y="136">항목마다 출처 쪽</text>
+              <line class="ln hi" x1="720" y1="99" x2="768" y2="99" marker-end="url(#ah4h)"/>
+              <rect class="box hi" x="770" y="70" width="210" height="58" rx="8"/><text class="t" x="784" y="94">syllabus/&lt;과목&gt;.yaml</text><text class="s" x="784" y="112">처음 한 번 사람이 확인</text>
+
+              <rect class="box" x="310" y="200" width="200" height="46" rx="8"/><text class="t" x="324" y="220">자료 읽기</text><text class="s" x="324" y="237">엔트리마다 항목 코드 제안</text>
+              <line class="ln" x1="510" y1="223" x2="578" y2="223" marker-end="url(#ah4)"/>
+              <rect class="box" x="580" y="200" width="160" height="46" rx="8"/><text class="t" x="594" y="220">러너 대조</text><text class="s" x="594" y="237">목차에 있는 코드인가</text>
+              <path class="ln dash" d="M875,128 V223 H742" marker-end="url(#ah4)"/>
+              <text class="lbl" x="882" y="180">목차</text>
+              <text x="594" y="268">있음 → 그 항목에 둔다</text>
+              <text x="594" y="286">없음 → 목차 밖, 다음 목차 보강 때 다시 본다</text>
+            </svg>
+          </div>
+          <figcaption>Assayer에서 분류 별칭과 이름표를 정리 작업이 정하고 러너가 쓰는 것과 같은 자리다. 다른 점은 이번에는 목차의 원본이 문서로 있다는 것이다. 그래서 항목마다 어느 문서의 몇 쪽에서 왔는지 남긴다.</figcaption>
+        </figure>
+        <div class="modes">
+          <div><strong>DP 1 · DP 2</strong><p>과목 가이드의 목차가 세계 공통이다. 학년 초에 과목마다 한 번 만들고, 가이드가 바뀔 때만 다시 만든다. 가이드를 구하지 못하면 공개 과목 요약으로 큰 주제만 먼저 만들고, 자료가 쌓이며 들어온 항목 코드로 보강한다.</p></div>
+          <div><strong>MYP 10</strong><p>MYP는 내용을 학교가 정한다. 그래서 목차가 미리 없고, 단원 안내(unit plan)가 올 때마다 단원이 하나씩 더해진다. 핵심 개념, 관련 개념, 글로벌 맥락, 탐구 진술은 단원 안내에서 가져와 관점으로 붙인다.</p></div>
+        </div>
+      </section>
+
+      <section>
+        <h3>그림이 만들어지는 길</h3>
+        <p class="sub-lede">Assayer의 패턴 시각화는 에이전트가 정적 HTML 조각을 쓰고 스크립트를 금지한다. 학습 자료에는 움직이는 그림이 필요하다. 그렇다고 에이전트가 스크립트를 쓰게 하지 않고, 그리는 코드를 앱 쪽으로 옮긴다.</p>
+        <figure>
+          <div class="figwrap">
+            <svg class="dg fig" viewBox="0 0 1000 220" role="img" aria-label="Assayer는 에이전트가 HTML 조각을 써서 그대로 틀에 넣는다. 학생판은 에이전트가 블록 명세를 쓰고, 러너가 계산으로 검사하고, 앱에 든 렌더러가 움직이는 그림을 그린다">
+              <defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+              <marker id="ah2h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah hi" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+              <text class="t" x="20" y="58">Assayer</text><text class="s" x="20" y="75">패턴 시각화</text>
+              <rect class="box" x="140" y="30" width="170" height="56" rx="8"/><text class="t" x="154" y="54">에이전트</text><text class="s" x="154" y="72">HTML 조각을 쓴다</text>
+              <rect class="box" x="370" y="30" width="170" height="56" rx="8"/><text class="t" x="384" y="54">러너 검사</text><text class="s" x="384" y="72">XML · 요소 · 원문 문장</text>
+              <rect class="box" x="600" y="30" width="170" height="56" rx="8"/><text class="t" x="614" y="54">공통 틀에 넣기</text><text class="s" x="614" y="72">스크립트 없는 HTML</text>
+              <line class="ln" x1="310" y1="58" x2="368" y2="58" marker-end="url(#ah2)"/>
+              <line class="ln" x1="540" y1="58" x2="598" y2="58" marker-end="url(#ah2)"/>
+              <text class="lbl" x="784" y="54">보기만 하는 그림</text>
+
+              <text class="t" x="20" y="158">학생판</text><text class="s" x="20" y="175">학습 페이지</text>
+              <rect class="box" x="140" y="130" width="170" height="56" rx="8"/><text class="t" x="154" y="154">에이전트</text><text class="s" x="154" y="172">블록 명세만 쓴다</text>
+              <rect class="box" x="370" y="130" width="170" height="56" rx="8"/><text class="t" x="384" y="154">러너 검사</text><text class="s" x="384" y="172">스키마 + 계산으로 확인</text>
+              <rect class="box hi" x="600" y="130" width="170" height="56" rx="8"/><text class="t" x="614" y="154">앱 내장 렌더러</text><text class="s" x="614" y="172">아빠가 짠 코드 · 번들</text>
+              <line class="ln" x1="310" y1="158" x2="368" y2="158" marker-end="url(#ah2)"/>
+              <line class="ln hi" x1="540" y1="158" x2="598" y2="158" marker-end="url(#ah2h)"/>
+              <text class="lbl" x="569" y="148" text-anchor="middle">통과분</text>
+              <line class="ln hi" x1="770" y1="158" x2="826" y2="158" marker-end="url(#ah2h)"/>
+              <text class="t" x="834" y="154">움직이는 그림</text><text class="s" x="834" y="172">슬라이더 · 실험 · 회로</text>
+            </svg>
+          </div>
+          <figcaption>에이전트가 고르는 것은 "투사체 실험, 속력 5–40 m/s"처럼 블록의 종류와 값뿐이다. 러너는 명세에 적힌 주장(수평 거리가 같다, I = 0.60 A, 반응식이 맞다)을 직접 계산해 대조하고, 틀리면 세션을 이어 한 번 고쳐 쓰게 한다. 렌더러는 WKWebView 안에서 앱 번들의 스크립트(수식은 KaTeX)만 쓴다.</figcaption>
+        </figure>
+      </section>
+
+      <section>
+        <h3>부분 다시 만들기</h3>
+        <p class="sub-lede">페이지는 문단, 블록, 풀이 단계 같은 단위로 이루어지고, 단위마다 id와 판, 어디서 왔는지의 해시가 있다. 다시 만들기는 늘 단위 하나를 대상으로 하고, 요구("더 쉽게", "더 자세히", "그림 다시")는 한 번 쓰고 버리는 프롬프트가 아니라 기록에 남는 데이터다. 그래서 다시 만들어도 다른 곳이 흔들리지 않고, 나중에 페이지 전체를 다시 만들어도 요구가 사라지지 않는다.</p>
+        <figure>
+          <div class="figwrap">
+            <svg class="dg fig" viewBox="0 0 1000 230" role="img" aria-label="원래 자료에서 원시 엔트리, 개념 원문 단위, 페이지 단위, 곁 층으로 해시가 이어진다. proj-p1이 새 판이 되면 그 곁 층만 낡고, proj-sim과 그 번역은 그대로다">
+              <defs><marker id="ah5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+              <marker id="ah5h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah hi" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+              <rect class="box" x="20" y="88" width="140" height="58" rx="8"/><text class="t" x="34" y="112">원래 자료</text><text class="s" x="34" y="130">slides · 12</text>
+              <rect class="box" x="190" y="88" width="140" height="58" rx="8"/><text class="t" x="204" y="112">원시 엔트리</text><text class="s" x="204" y="130">읽은 쪽이 출처</text>
+              <rect class="box" x="360" y="44" width="170" height="146" rx="8"/><text class="t" x="374" y="68">개념 원문 단위</text>
+              <line class="div" x1="374" y1="80" x2="516" y2="80"/>
+              <text x="374" y="104">u3 · a41f</text><text class="s" x="374" y="120">수평·수직을 따로 푼다</text>
+              <text x="374" y="160">u5 · 9c02</text><text class="s" x="374" y="176">각도와 수평 거리</text>
+              <line class="ln" x1="160" y1="117" x2="188" y2="117" marker-end="url(#ah5)"/>
+              <line class="ln" x1="330" y1="117" x2="358" y2="117" marker-end="url(#ah5)"/>
+
+              <rect class="box hi" x="580" y="24" width="180" height="64" rx="8"/><text class="t" x="594" y="48">proj-p1</text><text class="s" x="594" y="66">r1 → r2 · 요구 d7 받아들임</text>
+              <rect class="box" x="580" y="142" width="180" height="64" rx="8"/><text class="t" x="594" y="166">proj-sim</text><text class="s" x="594" y="184">r1 · 그대로</text>
+              <path class="ln hi" d="M530,104 H555 V56 H578" marker-end="url(#ah5h)"/>
+              <path class="ln" d="M530,160 H555 V174 H578" marker-end="url(#ah5)"/>
+              <text class="lbl" x="540" y="38">from u3@a41f</text>
+
+              <rect class="box ghost" x="810" y="6" width="176" height="46" rx="8"/><text class="t" x="824" y="26">한국어 · from r1</text><text class="s" x="824" y="43">낡음 → 이 문단만 다시 번역</text>
+              <rect class="box ghost" x="810" y="62" width="176" height="46" rx="8"/><text class="t" x="824" y="82">쉽게 · 요구 d3</text><text class="s" x="824" y="99">낡음 → 같은 요구로 다시</text>
+              <rect class="box" x="810" y="152" width="176" height="46" rx="8"/><text class="t" x="824" y="172">한국어 · from r1</text><text class="s" x="824" y="189">그대로</text>
+              <path class="ln dash" d="M760,46 H785 V29 H808" marker-end="url(#ah5)"/>
+              <path class="ln dash" d="M760,66 H785 V85 H808" marker-end="url(#ah5)"/>
+              <line class="ln" x1="760" y1="175" x2="808" y2="175" marker-end="url(#ah5)"/>
+            </svg>
+          </div>
+          <figcaption>proj-p1이 "더 자세히" 요구로 새 판 r2가 되면, r1에서 만든 곁 층(한국어, 쉽게)만 낡아서 각자의 요구로 다시 만든다. 같은 페이지의 proj-sim과 그 번역은 건드리지 않는다. 나중에 개념 정리가 새 자료로 원문 u3를 바꾸면 u3에서 온 단위만 다시 만들고, 받아들인 요구 d7을 다시 적용한다. 코멘트는 단위 id, 판, 인용으로 자리를 찾는다.</figcaption>
+        </figure>
+
+        <div class="tablebox">
+          <table class="jobs ops-table">
+            <thead><tr><th>요구</th><th>결과가 놓이는 곳</th><th>원래 내용</th><th>러너 검사</th><th>정하는 사람</th></tr></thead>
+            <tbody>
+              <tr><td>더 쉽게</td><td>곁 층 "쉽게". 한국어처럼 문단 아래에 펼친다</td><td>그대로. 시험에 맞는 원래 설명을 지운다는 뜻이 아니다</td><td>조건과 주장 그대로, 새 주장 없음, MYP 10 독자 시험, 숫자·기호</td><td>바로 보인다</td></tr>
+              <tr><td>더 자세히</td><td>새 판, 또는 곁 층 "자세히"</td><td>받아들이기 전까지 그대로</td><td>원래 주장 모두 포함, 새 주장은 읽은 쪽 출처나 보충 표시, 격리 검증, DP 독자 시험</td><td>학생이 견주어 고른다</td></tr>
+              <tr><td>예시 더</td><td>새 블록 (풀이, 확인 문제)</td><td>그대로</td><td>답을 계산으로 확인, 출처</td><td>바로 보인다</td></tr>
+              <tr><td>그림으로 · 그림 다시</td><td>블록 추가, 또는 블록의 새 판</td><td>이전 판은 남는다</td><td>블록 스키마, 원래 블록의 주장 포함, 주장 계산. 어휘에 없는 그림이면 새 블록 요청</td><td>학생이 견주어 고른다</td></tr>
+              <tr><td>단계 더</td><td>풀이 블록의 새 판</td><td>받아들이기 전까지 그대로</td><td>단계마다 파싱, 이웃 단계가 같은 값인지 계산, 마지막 식 그대로</td><td>학생이 견주어 고른다</td></tr>
+              <tr><td>고치기</td><td>개념 원문 단위를 고치고 아래 층으로 전파</td><td>근거가 있을 때만 바뀐다</td><td>1차·2차가 따로 출처와 대조. 원래가 맞으면 바꾸지 않고 코멘트로 답한다</td><td>근거가 정한다. 아빠에게 기록</td></tr>
+              <tr><td>자유 요구</td><td>위 방식 하나를 고르고, 하고 싶은 말은 메모로</td><td>고른 방식을 따른다</td><td>고른 방식의 검사</td><td>—</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="chain-note">
+          <div class="pr"><span class="from new">엄밀성</span><strong>범위 잠금</strong><p>에이전트는 대상 단위 하나만 out/에 쓴다. 이웃 문단, 기호표, 용어 어휘는 맥락으로 읽기만 한다. 러너가 다른 단위의 해시가 그대로인지 본다.</p></div>
+          <div class="pr"><span class="from new">엄밀성</span><strong>주장 장부</strong><p>단위마다 주장과 출처, 조건("공기 저항 없음")을 둔다. 새 판과 곁 층은 원래 주장을 빠뜨리지 않는다. 새 주장은 읽은 쪽 출처가 있거나 보충으로 표시된다.</p></div>
+          <div class="pr"><span class="from new">엄밀성</span><strong>숫자 · 단위 · 기호</strong><p>숫자, 단위, 수식, 기호를 기계로 뽑아 원래 판과 대조한다. 페이지의 기호표(u, θ, g)에 없는 기호는 그 단위 안에서 정의해야 한다.</p></div>
+          <div class="pr"><span class="from new">엄밀성</span><strong>격리 검증</strong><p>도구 없는 검증 에이전트가 두 판과 출처 쪽만 보고 모순, 빠진 주장, 출처 없는 새 주장을 찾는다. 있으면 한 번 고쳐 쓰고, 그래도 있으면 버린다.</p></div>
+          <div class="pr"><span class="from new">엄밀성</span><strong>요구 수준의 독자 시험</strong><p>"더 쉽게"는 MYP 10 독자가, "더 자세히"는 DP HL 독자가 원래 자료 없이 읽고 이해되는지 판정한다.</p></div>
+          <div class="pr"><span class="from new">엄밀성</span><strong>판은 덧붙이기만</strong><p>이전 판, 요구, 검사 결과를 모두 남긴다. 받아들이기 전에는 아무것도 바뀌지 않고, 받아들인 뒤에도 되돌릴 수 있다.</p></div>
+          <div class="pr"><span class="from">구조</span><strong>요구는 데이터로 남는다</strong><p>요구는 단위 id와 함께 learner/directives.jsonl에 남는다. 개념 정리가 페이지를 다시 만들어도 살아 있는 요구를 입력으로 받는다. 원문 단위가 그대로면 받아들인 판을 그대로 옮기고, 바뀌었으면 같은 요구로 다시 만들어 "다시 확인"으로 표시한다.</p></div>
+          <div class="pr"><span class="from">구조</span><strong>할 수 없는 요구</strong><p>블록 어휘에 없는 그림(공기 저항이 있는 투사체)은 에이전트가 코드를 쓸 수 없으니 "새 블록 요청"으로 아빠에게 간다. 시험에 필요한 식을 빼 달라는 요구는 곁 층으로만 받고 원래 내용은 그대로 둔다.</p></div>
+          <div class="pr"><span class="from">구조</span><strong>겹칠 때</strong><p>같은 페이지의 요청은 차례로, 다른 페이지는 함께 돈다. 그사이 개념 정리가 원문을 바꾸면 기준 해시가 달라지므로 결과를 쓰지 않고 새 기준으로 다시 돈다.</p></div>
+        </div>
+
+        <div class="specs">
+<pre class="spec"><span class="c"># library/concepts/physics/A.1/projectile-motion/page.yaml 의 단위 하나</span>
+- id: proj-p1
+  rev: 2
+  kind: para
+  from: u3@a41f
+  conditions: [no air resistance]
+  claims:
+    - { id: c1, text: no horizontal force, src: [kin-slides#p12] }
+    - { id: c2, text: horizontal velocity constant, src: [kin-slides#p12] }
+    - { id: c3, text: vertical acceleration g downward, src: [kin-slides#p12] }
+  symbols: [g, t]
+  directives: [d7]
+  text: |
+    Without air resistance, no force acts horizontally, …</pre>
+<pre class="spec"><span class="c">// records/regen/&lt;id&gt;/request.json</span>
+{ "target": { "unit": "proj-p1", "rev": "r1", "hash": "5be2…" },
+  "op": "detail",
+  "note": "뉴턴 제1법칙과 이어서 설명해 줘",
+  "by": "learner",
+  "base": { "concept_unit": "u3@a41f",
+            "instructions": "page-build v0.3",
+            "glossary": "e91c…" },
+  "directive": "d7" }   <span class="c">// 받아들이면 살아 있는 요구가 된다</span></pre>
+        </div>
+      </section>
+
+      <section>
+        <h3>맥 두 대, 데이터 폴더, 업데이트</h3>
+        <figure>
+          <div class="figwrap">
+            <svg class="dg fig" viewBox="0 0 1000 285" role="img" aria-label="관리자 맥이 공개 리포에 릴리즈를 올리면 학생 맥의 앱이 작업이 없을 때 스스로 업데이트한다. 학생 맥의 데이터는 그 맥의 데이터 폴더에만 있고, 고른 코멘트와 실행 기록만 보내기 묶음으로 관리자에게 간다">
+              <defs><marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+              <rect class="box hi" x="20" y="20" width="280" height="170" rx="8"/>
+              <text class="t" x="36" y="46">학생 맥</text>
+              <text x="36" y="72">Jindesk 앱 · 작업 실행</text><text x="36" y="92">데이터 폴더 ~/Jindesk (git 없음)</text><text x="36" y="112">캐시: SQLite 색인, 쪽 이미지</text><text x="36" y="132">토큰은 키체인</text><text class="s" x="36" y="160">백업은 폴더 통째 · 앱의 백업 만들기</text>
+              <rect class="box" x="380" y="20" width="240" height="120" rx="8"/>
+              <text class="t" x="396" y="46">공개 리포 ibare/jindesk</text>
+              <text x="396" y="72">Releases: 앱 zip + appcast</text><text x="396" y="92">EdDSA 서명 · 공증된 앱</text><text class="s" x="396" y="120">학생 자료는 올리지 않는다</text>
+              <rect class="box" x="700" y="20" width="280" height="170" rx="8"/>
+              <text class="t" x="716" y="46">관리자(아빠) 맥</text>
+              <text x="716" y="72">앱 소스와 작업 지침</text><text x="716" y="92">빌드 · Developer ID 서명 · 공증</text><text x="716" y="112">릴리즈 올리기</text><text x="716" y="132">보내기 묶음 살펴보기</text><text class="s" x="716" y="160">유지보수 세션은 여기서</text>
+              <line class="ln" x1="700" y1="66" x2="622" y2="66" marker-end="url(#ah3)"/>
+              <text class="lbl" x="661" y="58" text-anchor="middle">릴리즈</text>
+              <line class="ln" x1="380" y1="66" x2="302" y2="66" marker-end="url(#ah3)"/>
+              <text class="lbl" x="341" y="58" text-anchor="middle">자동 업데이트</text><text class="lbl" x="341" y="84" text-anchor="middle">작업 없을 때</text>
+              <path class="ln dash" d="M160,190 V226 H840 V192" marker-end="url(#ah3)"/>
+              <text class="lbl" x="500" y="218" text-anchor="middle">보내기 묶음: "이상해요"·질문 코멘트, 실행 기록, 버전</text>
+              <path class="ln dash" d="M880,190 V258 H120 V192" marker-end="url(#ah3)"/>
+              <text class="lbl" x="500" y="276" text-anchor="middle">가져오기 묶음: 답글</text>
+            </svg>
+          </div>
+          <figcaption>학생 쪽에는 git도 GitHub 계정도 없다. 앱은 공개 리포의 최신 릴리즈를 보고 스스로 업데이트하고, 자료와 기록은 그 맥의 데이터 폴더에만 있다. 관리자에게는 학생이 고른 것만 보내기 묶음으로 간다. 메모 코멘트는 보내지 않는다.</figcaption>
+        </figure>
+      </section>
+
+      <section>
+        <h3>작업 종류</h3>
+        <div class="tablebox">
+          <table class="jobs">
+            <thead><tr><th>작업</th><th>Assayer에서 온 것</th><th>하는 일</th><th>러너 검사</th></tr></thead>
+            <tbody>
+              <tr><td>목차 만들기</td><td>카탈로그 정리의 분류 별칭과 이름표</td><td>과목 가이드, 공개 과목 요약, 선생님의 과정·단원 안내를 읽어 강의 계획 목차를 만든다. MYP는 단원 안내가 올 때마다 단원을 더한다</td><td>코드가 겹치지 않음, 상위·하위 구조, SL/HL 표시, 항목마다 출처 쪽, 이미 쓰인 항목이 사라지지 않음</td></tr>
+              <tr><td>자료 넣기</td><td>설계안 검토 시트의 중복 빼기, PR 리뷰의 diff 나누기</td><td>과목만 고른다. PPT를 PDF로 바꾸고, 쪽마다 이미지와 글자층, INDEX.md를 만든다. 사진은 받아 적는 에이전트 하나</td><td>내용 해시 중복, 20MB 상한, 쪽 수</td></tr>
+              <tr><td>자료 읽기</td><td>설계안 검토 (1차·2차, 격리 시험)</td><td>자료 하나에서 원시 개념 엔트리와 자료 요약을 영어로 쓴다. 주장마다 쪽 출처, 엔트리마다 항목 코드 제안</td><td>출처 쪽이 있는지, 쪽마다 읽었는지(coverage), 항목 코드가 목차에 있는지(없으면 목차 밖), 학생 독자 시험</td></tr>
+              <tr><td>개념 정리</td><td>카탈로그 정리 (나눠 넣기, 하나씩 차례로)</td><td>엔트리를 강의 계획 항목의 개념으로 묶고, 선수 개념과 과목 사이 연결 문서를 쓴다</td><td>엔트리가 빠짐없이 한 곳에, 선수 개념이 있는 개념인지, 출현 목록</td></tr>
+              <tr><td>학습 페이지 만들기</td><td>패턴 시각화 (원문이 기준, 원문 문장 보존)</td><td>정리된 개념을 블록이 든 영어 페이지 명세로 옮긴다. 문단마다 id를 붙인다</td><td>블록 스키마, 수식 파싱, 반응식 균형, 회로 풀기, 답 계산, 원문 문장</td></tr>
+              <tr><td>부분 다시 만들기</td><td>패턴 시각화의 원문 해시, 카탈로그 정리의 고쳐 쓰기</td><td>단위 하나(문단, 블록, 풀이 단계)를 요구와 함께 다시 만든다. 곁 층을 더하거나 새 판을 만들어 견주게 한다. 고치기는 1차·2차로 출처와 대조한다</td><td>범위 잠금, 주장 장부, 숫자·기호, 격리 검증, 요구 수준의 독자 시험, 기준 해시</td></tr>
+              <tr><td>번역</td><td>패턴 시각화 (영어 원문이 기준, 바뀌면 낡음)</td><td>학습 페이지의 문단마다 한국어 번역을 쓴다. 용어 어휘로 같은 영어 용어는 늘 같은 한국어로</td><td>문단마다 하나씩, 숫자·단위·수식이 그대로, 용어 어휘, 한자·일본어 없음, 문단마다 영어 해시</td></tr>
+              <tr><td>관점 붙이기</td><td>기술 추출 (고정 관점, 어휘, 레퍼런스 찾기)</td><td>강의 계획·수준·명령어·개념·NOS·TOK 관점과 좋은 공개 자료를 붙인다</td><td>관점 값, 어휘 밖 이름, 웹 금지어(학생·학교·선생님 이름), 열어 본 주소만</td></tr>
+              <tr><td>물어보기</td><td>새로 (PR 리뷰의 줄 대조와 비슷하다)</td><td>질문 코멘트에, 그 개념의 페이지와 원래 자료만 보고 영어로 답하고 한국어 번역을 붙인다</td><td>출처 쪽이 있는지, 에이전트가 읽은 쪽인지, 자료 밖 내용은 보충으로 표시</td></tr>
+              <tr><td>마이그레이션</td><td>새로 (Assayer의 catalog-regen과 ReplayTests)</td><td>스키마가 바뀐 판으로 업데이트되면 사본에서 모양을 바꾸고 검증한 뒤 바꿔 끼운다. 모양 변경은 코드로, 의미 변경만 에이전트가 한다</td><td>모든 파일 스키마 검증, 수 보존, 학생 글 바이트 그대로, 기록 해시, 주장 수</td></tr>
+              <tr><td>확인 문제 <span class="mono">다음 단계</span></td><td>새로</td><td>명령어로 문제를 내고 자료를 근거로 채점 기준을 쓴다. 푼 기록으로 다시 볼 개념을 고른다</td><td>답 계산, 채점 기준의 출처</td></tr>
+              <tr><td>두지 않는 것</td><td>—</td><td>IA, EE, TOK 에세이처럼 평가받는 글을 대신 쓰는 작업</td><td>—</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h3>데이터 배치</h3>
+<pre class="tree">~/Jindesk/                                   <span class="c">데이터 폴더. 처음 켤 때 고른다 · git 없음 · 통째로 백업</span>
+  meta/schema.yaml                           <span class="c">스키마 버전과 마이그레이션 이력</span>
+  meta/subjects.yaml                         <span class="c">과목 목록과 수준</span>
+  syllabus/&lt;과목&gt;.yaml                       <span class="c">강의 계획 목차</span>
+  sources/&lt;과목&gt;/&lt;자료 id&gt;/                  <span class="c">원본, 쪽마다 글자층, index.md, meta.yaml</span>
+  records/&lt;작업 종류&gt;/&lt;id&gt;/                  <span class="c">작업 기록 (덧붙이기만)</span>
+  library/
+    entries/&lt;과목&gt;/&lt;항목&gt;/&lt;slug&gt;.md          <span class="c">원시 개념 엔트리</span>
+    concepts/&lt;과목&gt;/&lt;항목&gt;/&lt;slug&gt;/
+      concept.yaml                           <span class="c">정리된 개념 원문. 단위마다 id, 주장, 출처</span>
+      page.yaml                              <span class="c">학습 페이지. 단위, 판, 블록 명세, 요구</span>
+      layers.yaml                            <span class="c">곁 층: 한국어, 쉽게, 자세히</span>
+      history.jsonl                          <span class="c">단위의 이전 판</span>
+    links/ · glossary.yaml · facets.yaml     <span class="c">과목 사이 연결, 용어 어휘, 관점 어휘</span>
+  learner/
+    comments.jsonl · directives.jsonl        <span class="c">코멘트와 요구 (덧붙이기만)</span>
+    practice/&lt;id&gt;/                           <span class="c">확인 문제와 푼 기록</span>
+~/Library/Caches/com.mintae.Jindesk/         <span class="c">SQLite 색인, 쪽 이미지. 지워도 다시 만든다</span>
+~/Library/Application Support/com.mintae.Jindesk/
+  work/&lt;작업 id&gt;/                            <span class="c">작업 공간</span>
+  backups/                                   <span class="c">마이그레이션 전 자동 백업</span></pre>
+      </section>
+
+      <section>
+        <h3>구현하면서 정할 것</h3>
+        <div class="decide">
+          <div><strong>Claude 계정</strong><p>누구의 구독 토큰을 쓸지 정한다. 작업, 재생성, 마이그레이션의 사용량이 모두 그 계정에서 나간다.</p></div>
+          <div><strong>과목 가이드를 구할 수 있는지</strong><p>학교가 가이드를 주면 항목까지 미리 만든다. 공개 과목 요약뿐이면 큰 주제만 먼저 만들고 자료로 보강한다.</p></div>
+          <div><strong>과목 목록과 수준</strong><p>DP 과목과 SL/HL, MYP 10 과목을 처음 한 번 넣는다.</p></div>
+          <div><strong>첫 블록 묶음</strong><p>1단계 렌더러에 넣을 블록을 고른다. 수식, 그래프, 풀이, 강조 상자, 확인 문제부터 권한다.</p></div>
+        </div>
+      </section>
+    </div>
+  </section>
+  <section id="tab-blocks" role="tabpanel" aria-labelledby="t-blocks" hidden>
+    <div class="doc">
+      <section>
+        <h3>블록 어휘</h3>
+        <p class="sub-lede">학습 페이지는 영어 문단과 블록으로 이루어진다. 문단마다 id가 있어 한국어 번역과 코멘트가 그 id에 붙는다. 에이전트는 이 목록에 있는 블록만 쓸 수 있고, 블록마다 러너가 하는 검사가 정해져 있다. 새 블록은 아빠가 렌더러와 검사를 함께 만들어 더한다. Assayer의 기술 추출에서 관점을 고정해 둔 것과 같은 방식이다.</p>
+        <div class="tablebox">
+          <table class="jobs">
+            <thead><tr><th>블록</th><th>주로 쓰는 과목</th><th>에이전트가 쓰는 것</th><th>러너 검사</th><th>앱이 그리는 것</th><th>시안</th></tr></thead>
+            <tbody>
+              <tr><td>para <span class="mono">문단</span></td><td>모두</td><td>영어 문단, 출처, 용어 표시</td><td>출처 쪽, 학생 독자 시험, 용어가 어휘에 있는지</td><td>문단 + 문단 곁 한국어 + 코멘트</td><td><button class="linkbtn" type="button" data-go="proj">물리</button></td></tr>
+              <tr><td>math <span class="mono">수식</span></td><td>모두</td><td>TeX 문자열</td><td>파싱, 허용한 명령만</td><td>수식</td><td><button class="linkbtn" type="button" data-go="deriv">수학</button></td></tr>
+              <tr><td>derivation <span class="mono">풀이</span></td><td>수학 · 물리 · 화학</td><td>단계마다 식과 이유</td><td>단계마다 파싱, 마지막 식을 값에 넣어 계산</td><td>한 단계씩 펼치기</td><td><button class="linkbtn" type="button" data-go="deriv">수학</button></td></tr>
+              <tr><td>plot <span class="mono">그래프</span></td><td>수학 · 물리 · 경제</td><td>식, 정의역, 매개변수 범위</td><td>식 문법 허용 목록, 정의역에서 값 계산</td><td>슬라이더 달린 그래프</td><td><button class="linkbtn" type="button" data-go="deriv">수학</button></td></tr>
+              <tr><td>sim <span class="mono">실험</span></td><td>물리</td><td>종류(투사체, 진자, 용수철, 파동, 전기장, 궤도)와 값 범위, 주장</td><td>종류가 목록에 있는지, 범위와 단위, 주장 계산</td><td>움직이는 실험</td><td><button class="linkbtn" type="button" data-go="proj">물리</button></td></tr>
+              <tr><td>data <span class="mono">자료</span></td><td>과학 실험 · 경제</td><td>열, 단위, 값 또는 계산식</td><td>단위, 계산식을 다시 계산</td><td>표, 산점도, 추세선</td><td><button class="linkbtn" type="button" data-go="proj">물리</button></td></tr>
+              <tr><td>molecule <span class="mono">분자</span></td><td>화학 · 생물</td><td>SMILES 또는 원자·결합 목록</td><td>분자식, 원자마다 결합 수</td><td>구조식, 공·막대 모형</td><td><button class="linkbtn" type="button" data-go="comb">화학</button></td></tr>
+              <tr><td>reaction <span class="mono">반응식</span></td><td>화학</td><td>반응식, ΔH</td><td>원자와 전하 보존, 가장 작은 정수비</td><td>균형 맞추기 연습</td><td><button class="linkbtn" type="button" data-go="comb">화학</button></td></tr>
+              <tr><td>energy-profile</td><td>화학</td><td>반응물·생성물 준위, ΔH, 촉매 경로</td><td>ΔH 부호와 준위 차이 일치</td><td>반응 경로 그림</td><td><button class="linkbtn" type="button" data-go="comb">화학</button></td></tr>
+              <tr><td>orbital <span class="mono">전자 배치</span></td><td>화학</td><td>원자 번호</td><td>쌓음 원리와 훈트 규칙으로 다시 채워 대조</td><td>상자 그림</td><td><button class="linkbtn" type="button" data-go="comb">화학</button></td></tr>
+              <tr><td>circuit <span class="mono">회로</span></td><td>물리 · 디자인 기술</td><td>넷리스트(소자, 값, 접점), 주장</td><td>회로를 풀어 주장과 대조</td><td>전류가 흐르는 회로도</td><td><button class="linkbtn" type="button" data-go="circ">물리</button></td></tr>
+              <tr><td>logic <span class="mono">논리 회로</span></td><td>컴퓨터 과학</td><td>게이트와 연결</td><td>진리표 계산</td><td>입력을 눌러 보는 회로</td><td class="mono">—</td></tr>
+              <tr><td>diagram <span class="mono">구조 그림</span></td><td>생물 · 지리 · 경제</td><td>Assayer 시각화 부품(상자, 화살표, 층)</td><td>잘 짜인 XML, 원문 문장</td><td>정적 그림</td><td class="mono">—</td></tr>
+              <tr><td>source <span class="mono">원래 자료</span></td><td>모두</td><td>자료 id와 쪽</td><td>쪽이 있는지, 에이전트가 읽었는지</td><td>쪽 이미지</td><td>출처 칩</td></tr>
+              <tr><td>check <span class="mono">확인 문제</span></td><td>모두</td><td>명령어, 문제, 풀이, 채점 기준</td><td>답 계산, 채점 기준의 출처</td><td>펼치면 보이는 답</td><td><button class="linkbtn" type="button" data-go="circ">물리</button></td></tr>
+              <tr><td>note <span class="mono">오해 · 명령어</span></td><td>모두</td><td>종류와 문장</td><td>출처가 있거나 보충 표시</td><td>강조 상자</td><td><button class="linkbtn" type="button" data-go="proj">물리</button></td></tr>
+              <tr><td>link <span class="mono">연결</span></td><td>모두</td><td>다른 개념 id</td><td>그 개념이 있는지</td><td>연결 카드</td><td><button class="linkbtn" type="button" data-go="deriv">수학</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section>
+        <h3>명세의 예</h3>
+        <p class="sub-lede">개념 원문(마크다운)의 블록 자리에 들어가는 명세다. 러너는 이것을 페이지 JSON으로 바꾸기 전에 검사한다. 주장(claims)은 러너가 직접 계산해 맞는지 본다.</p>
+        <div class="specs">
+<pre class="spec">```sim
+kind: projectile
+params:
+  u:     { value: 20, min: 5, max: 40, unit: m/s }
+  theta: { value: 30, min: 5, max: 85, unit: deg }
+  g:     { choices: [9.81, 1.62], unit: m/s^2 }
+show: [trajectory, components, complement]
+claims:
+  - range(theta) == range(90 - theta)   <span class="c"># 계산으로 확인</span>
+  - max_height(u=20, theta=30) ≈ 5.10 m <span class="c"># 확인 문제의 답</span>
+source: [phys-a1-slides#p12]
+```</pre>
+<pre class="spec">```reaction
+equation: C2H5OH + 3 O2 -> 2 CO2 + 3 H2O
+deltaH: -1367 kJ/mol                    <span class="c"># 자료 값 그대로</span>
+practice: balance                       <span class="c"># 계수를 1로 두고 시작</span>
+source: [chem-r13-worksheet#p2]
+```
+
+```circuit
+nodes: [a, b, c]
+parts:
+  - { id: V,  type: cell,     from: c, to: a, value: 6 V }
+  - { id: R1, type: resistor, from: a, to: b, value: 4 ohm }
+  - { id: R2, type: resistor, from: b, to: c, value: 12 ohm }
+  - { id: R3, type: resistor, from: b, to: c, value: 12 ohm }
+claims:
+  - current(V) ≈ 0.60 A                 <span class="c"># 회로를 풀어 확인</span>
+source: [phys-b5-slides#p5]
+```</pre>
+        </div>
+      </section>
+    </div>
+  </section>
+</div>
+
+<div class="overlay" id="ov-ingest" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="ingest-title">
+    <h4 id="ingest-title">자료 넣기</h4>
+    <div class="fields">
+      <label for="in-subj">과목<select id="in-subj"><option>Physics HL</option><option>Math AA HL</option><option>Chemistry SL</option></select></label>
+      <label for="in-memo">메모 (적지 않아도 된다)<input class="memo-in" id="in-memo" type="text" placeholder="예: 선생님이 A.1 마무리라고 함"></label>
+    </div>
+    <p class="hint">강의 계획 항목은 고르지 않는다. 자료 읽기가 읽은 뒤 엔트리마다 항목을 제안하고, 러너가 목차에 있는 항목인지 대조한다. 목차에서 찾지 못하면 "목차 밖"에 두었다가 다음 목차 보강 때 다시 본다. 메모는 그 판단을 돕는 단서로만 쓴다.</p>
+    <div class="drop">
+      <div class="file"><span class="ext">PPTX</span><span>운동학 슬라이드 2부.pptx<small>슬라이드 18장 · PDF로 바꿔 쪽마다 나눈다</small></span><span class="tag">넣음</span></div>
+      <div class="file"><span class="ext">PDF</span><span>Projectile worksheet B.pdf<small>4쪽 · 글자층 있음</small></span><span class="tag">넣음</span></div>
+      <div class="file"><span class="ext">JPG</span><span>IMG_2041.jpg<small>판서 사진 · 받아 적는 에이전트가 먼저 읽는다</small></span><span class="tag">넣음</span></div>
+      <div class="file skip"><span class="ext">PDF</span><span>Kinematics worksheet.pdf<small>9월 3일에 넣은 자료와 내용이 같다</small></span><span class="tag">뺌</span></div>
+    </div>
+    <div class="acts"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="ingest-go">자료 3개 넣기</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="ov-src" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="src-title">
+    <h4 id="src-title">원래 자료</h4>
+    <p style="font-size:13px;color:var(--ink-2)" id="src-meta"></p>
+    <svg class="slide fig" viewBox="0 0 480 270" role="img" aria-label="원래 자료 쪽의 축소 그림">
+      <rect x="0" y="0" width="480" height="270" style="fill:var(--paper-2)"/>
+      <rect x="28" y="26" width="240" height="16" rx="3" style="fill:var(--ink-2)"/>
+      <rect x="28" y="58" width="190" height="8" rx="2" style="fill:var(--line)"/>
+      <rect x="28" y="74" width="170" height="8" rx="2" style="fill:var(--line)"/>
+      <rect x="28" y="90" width="182" height="8" rx="2" style="fill:var(--line)"/>
+      <rect x="28" y="106" width="140" height="8" rx="2" style="fill:var(--line)"/>
+      <rect x="250" y="58" width="200" height="150" rx="6" style="fill:var(--paper);stroke:var(--line)"/>
+      <path d="M266,190 Q350,40 434,190" style="fill:none;stroke:var(--s1);stroke-width:2"/>
+      <rect x="28" y="230" width="90" height="8" rx="2" style="fill:var(--line)"/>
+    </svg>
+    <p style="font-size:12px;color:var(--ink-3)">실제 앱에서는 자료 넣기 때 만든 쪽 이미지를 보여 주고, 이 개념이 가리키는 곳을 표시한다.</p>
+    <div class="acts"><button class="btn" type="button" data-close>닫기</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="ov-regen" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rg-title">
+    <h4 id="rg-title">다시 만들기</h4>
+    <p class="rg-target" id="rg-target"></p>
+    <blockquote id="rg-quote"></blockquote>
+    <div class="rg-ops" id="rg-ops" role="group" aria-label="방식"></div>
+    <label for="rg-note" style="font-size:12px;color:var(--ink-2);display:flex;flex-direction:column;gap:3px">요구 (적지 않아도 된다)<textarea id="rg-note" placeholder="예: 뉴턴 제1법칙과 이어서 설명해 줘"></textarea></label>
+    <dl class="rg-plan" id="rg-plan"></dl>
+    <p class="hint">이 단위 하나만 다시 만든다. 이웃 문단은 맥락으로 읽기만 하고 바꾸지 않는다. 요구는 기록에 남아, 나중에 페이지 전체를 다시 만들 때도 다시 적용된다.</p>
+    <div class="acts"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="rg-go">요청하기</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" hidden></div>
+<script>
+(function () {
+  'use strict';
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var NS = 'http://www.w3.org/2000/svg';
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function fmt(n, d) { var s = n.toFixed(d); if (s.indexOf('-') === 0 && Number(s) !== 0) s = '−' + s.slice(1); else if (Number(s) === 0) s = (0).toFixed(d); return s; }
+  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  function el(tag, attrs, parent, text) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (text != null) e.textContent = text;
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  window.__folio = { $: $, $$: $$, NS: NS, fmt: fmt, css: css, el: el, reduceMotion: reduceMotion, redraw: {} };
+
+  /* 알림 */
+  var toastTimer = null;
+  function toast(msg) {
+    var t = $('#toast'); t.textContent = msg; t.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.hidden = true; }, 2600);
+  }
+  window.__folio.toast = toast;
+
+  /* 탭 */
+  function showTab(name) {
+    $$('.tabs button').forEach(function (b) { b.setAttribute('aria-selected', String(b.dataset.tab === name)); });
+    $$('[role="tabpanel"]').forEach(function (p) { p.hidden = p.id !== 'tab-' + name; });
+    try { history.replaceState(null, '', '#' + name); } catch (e) {}
+    if (name === 'app') redrawCurrent();
+  }
+  $$('.tabs button').forEach(function (b) { b.addEventListener('click', function () { showTab(b.dataset.tab); }); });
+
+  /* 과목과 개념 */
+  var conceptSubj = { deriv: 'math', proj: 'phys', circ: 'phys', comb: 'chem' };
+  var firstOf = { math: 'deriv', phys: 'proj', chem: 'comb' };
+  var current = 'proj';
+  function showSubject(s) {
+    $$('.nav[data-subj]').forEach(function (b) { b.setAttribute('aria-current', String(b.dataset.subj === s)); });
+    $$('[data-list]').forEach(function (l) { l.hidden = l.dataset.list !== s; });
+  }
+  function redrawCurrent() { var f = window.__folio.redraw[current]; if (f) f(); }
+  function showConcept(c) {
+    current = c;
+    showSubject(conceptSubj[c]);
+    $$('article[data-page]').forEach(function (a) { a.hidden = a.dataset.page !== c; });
+    $$('[data-insp]').forEach(function (a) { a.hidden = a.dataset.insp !== c; });
+    $$('.item[data-concept]').forEach(function (i) { i.setAttribute('aria-current', String(i.dataset.concept === c)); });
+    var m = $('#main'); if (m) m.scrollTop = 0;
+    redrawCurrent();
+    if (window.__folio.onConcept) window.__folio.onConcept(c);
+  }
+  window.__folio.current = function () { return current; };
+  $$('.nav[data-subj]').forEach(function (b) { b.addEventListener('click', function () { showConcept(firstOf[b.dataset.subj]); }); });
+  $$('.item[data-concept]').forEach(function (b) { b.addEventListener('click', function () { showConcept(b.dataset.concept); }); });
+  $$('[data-go]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      showTab('app'); showConcept(b.dataset.go);
+      var w = $('.win'); if (w && w.scrollIntoView) w.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+    });
+  });
+  $$('.nav.soon').forEach(function (b) { b.addEventListener('click', function () { toast('이 시안에서는 과목 화면만 열린다'); }); });
+
+  /* 찾기: 보이는 목록을 거른다 */
+  $('#q').addEventListener('input', function (e) {
+    var q = e.target.value.trim().toLowerCase();
+    $$('[data-list] .item').forEach(function (i) { i.parentElement.hidden = q !== '' && i.textContent.toLowerCase().indexOf(q) < 0; });
+  });
+
+  /* 시트 */
+  function openOv(id) { var o = $(id); o.hidden = false; var f = $('button, select', o); if (f) f.focus(); }
+  function closeOv(o) { o.hidden = true; }
+  $$('.overlay').forEach(function (o) {
+    o.addEventListener('click', function (e) { if (e.target === o || e.target.hasAttribute('data-close')) closeOv(o); });
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') $$('.overlay').forEach(closeOv); });
+  $('#btn-ingest').addEventListener('click', function () { openOv('#ov-ingest'); });
+  $('#ingest-go').addEventListener('click', function () {
+    closeOv($('#ov-ingest'));
+    var jobs = $$('.side .nav').filter(function (n) { return n.textContent.indexOf('자료 읽기') >= 0; })[0];
+    if (jobs) jobs.querySelector('.count').textContent = '4';
+    toast('자료 3개를 넣었다. 자료 읽기 대기열에서 차례를 기다린다');
+  });
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-src]') : null;
+    if (!b) return;
+    var p = b.dataset.src.split('|');
+    $('#src-title').textContent = p[0];
+    $('#src-meta').textContent = p[2] + ' · ' + p[1] + ' · 이 개념이 가리키는 곳';
+    openOv('#ov-src');
+  });
+
+
+  /* 단계별 풀이 */
+  var steps = $('#steps'), stMode = $('#st-mode'), stNext = $('#st-next'), stCur = 0;
+  function paintSteps() {
+    $$('.step', steps).forEach(function (s, i) {
+      s.classList.toggle('now', i === stCur);
+      s.classList.toggle('later', i > stCur);
+    });
+    stNext.disabled = !steps.classList.contains('stepping') || stCur >= $$('.step', steps).length - 1;
+  }
+  stMode.addEventListener('click', function () {
+    var on = !steps.classList.contains('stepping');
+    steps.classList.toggle('stepping', on);
+    stMode.textContent = on ? 'Show all' : 'Step by step';
+    stCur = 0; paintSteps();
+  });
+  stNext.addEventListener('click', function () { stCur++; paintSteps(); });
+
+  /* 도함수 그래프 */
+  var FN = {
+    sq:  { f: function (x) { return x * x; }, d: function (x) { return 2 * x; }, y: [-2, 10], step: 2 },
+    cub: { f: function (x) { return x * x * x - 3 * x; }, d: function (x) { return 3 * x * x - 3; }, y: [-6, 6], step: 2 },
+    sin: { f: Math.sin, d: Math.cos, y: [-1.6, 1.6], step: 0.5 }
+  };
+  var fnKey = 'sq';
+  var dsvg = $('#deriv-svg');
+  var W = 560, H = 300, L = 42, R = 14, T = 12, B = 28, X0 = -3, X1 = 4;
+  function drawDeriv(hoverX) {
+    var F = FN[fnKey], y0 = F.y[0], y1 = F.y[1];
+    var x0 = Number($('#d-x0').value), h = Number($('#d-h').value);
+    $('#d-x0-o').textContent = fmt(x0, 1); $('#d-h-o').textContent = fmt(h, 2);
+    var sx = function (x) { return L + (x - X0) / (X1 - X0) * (W - L - R); };
+    var sy = function (y) { return T + (y1 - y) / (y1 - y0) * (H - T - B); };
+    while (dsvg.firstChild) dsvg.removeChild(dsvg.firstChild);
+    var defs = el('defs', {}, dsvg);
+    var cp = el('clipPath', { id: 'dclip' }, defs);
+    el('rect', { x: L, y: T, width: W - L - R, height: H - T - B }, cp);
+    var g = el('g', {}, dsvg);
+    for (var gx = Math.ceil(X0); gx <= X1; gx++) {
+      el('line', { x1: sx(gx), x2: sx(gx), y1: T, y2: H - B, style: 'stroke:var(--line-2);stroke-width:1' }, g);
+      el('text', { x: sx(gx), y: H - B + 16, 'text-anchor': 'middle', style: 'fill:var(--ink-3);font-size:11px;font-family:var(--f-mono)' }, g, gx < 0 ? '−' + (-gx) : String(gx));
+    }
+    for (var gy = Math.ceil(y0 / F.step) * F.step; gy <= y1 + 1e-9; gy += F.step) {
+      el('line', { x1: L, x2: W - R, y1: sy(gy), y2: sy(gy), style: 'stroke:var(--line-2);stroke-width:1' }, g);
+      el('text', { x: L - 6, y: sy(gy) + 4, 'text-anchor': 'end', style: 'fill:var(--ink-3);font-size:11px;font-family:var(--f-mono)' }, g, fmt(gy, F.step < 1 ? 1 : 0));
+    }
+    el('line', { x1: L, x2: W - R, y1: sy(0), y2: sy(0), style: 'stroke:var(--ink-3);stroke-width:1' }, g);
+    el('line', { x1: sx(0), x2: sx(0), y1: T, y2: H - B, style: 'stroke:var(--ink-3);stroke-width:1' }, g);
+    var c = el('g', { 'clip-path': 'url(#dclip)' }, dsvg);
+    var pts = [];
+    for (var i = 0; i <= 320; i++) { var x = X0 + (X1 - X0) * i / 320; pts.push(sx(x).toFixed(1) + ',' + sy(F.f(x)).toFixed(1)); }
+    el('polyline', { points: pts.join(' '), style: 'fill:none;stroke:var(--ink);stroke-width:2;stroke-linejoin:round' }, c);
+    var fx0 = F.f(x0), msec = (F.f(x0 + h) - fx0) / h, mtan = F.d(x0);
+    el('line', { x1: sx(X0), y1: sy(fx0 + msec * (X0 - x0)), x2: sx(X1), y2: sy(fx0 + msec * (X1 - x0)), style: 'stroke:var(--s2);stroke-width:2' }, c);
+    el('line', { x1: sx(X0), y1: sy(fx0 + mtan * (X0 - x0)), x2: sx(X1), y2: sy(fx0 + mtan * (X1 - x0)), style: 'stroke:var(--s1);stroke-width:2;stroke-dasharray:6 4' }, c);
+    var by = H - B - 10;
+    el('line', { x1: sx(x0), x2: sx(x0 + h), y1: by, y2: by, style: 'stroke:var(--ink-2);stroke-width:1' }, c);
+    el('line', { x1: sx(x0), x2: sx(x0), y1: by - 4, y2: by + 4, style: 'stroke:var(--ink-2);stroke-width:1' }, c);
+    el('line', { x1: sx(x0 + h), x2: sx(x0 + h), y1: by - 4, y2: by + 4, style: 'stroke:var(--ink-2);stroke-width:1' }, c);
+    el('text', { x: (sx(x0) + sx(x0 + h)) / 2, y: by - 6, 'text-anchor': 'middle', style: 'fill:var(--ink-2);font-size:12px;font-style:italic' }, c, 'h');
+    el('circle', { cx: sx(x0 + h), cy: sy(F.f(x0 + h)), r: 5, style: 'fill:var(--s2);stroke:var(--paper);stroke-width:2' }, c);
+    el('circle', { cx: sx(x0), cy: sy(fx0), r: 5.5, style: 'fill:var(--ink);stroke:var(--paper);stroke-width:2' }, c);
+    if (hoverX != null && hoverX >= X0 && hoverX <= X1) {
+      var hy = F.f(hoverX);
+      el('line', { x1: sx(hoverX), x2: sx(hoverX), y1: T, y2: H - B, style: 'stroke:var(--ink-3);stroke-width:1;stroke-dasharray:2 3' }, c);
+      el('circle', { cx: sx(hoverX), cy: sy(hy), r: 4, style: 'fill:var(--paper);stroke:var(--ink);stroke-width:2' }, c);
+      var tx = sx(hoverX) + (hoverX > 2 ? -10 : 10);
+      el('text', { x: tx, y: T + 16, 'text-anchor': hoverX > 2 ? 'end' : 'start', style: 'fill:var(--ink);font-size:12px;font-family:var(--f-mono)' }, c, 'x = ' + fmt(hoverX, 2) + ',  f(x) = ' + fmt(hy, 3));
+    }
+    $('#d-sec').textContent = fmt(msec, 3); $('#d-tan').textContent = fmt(mtan, 3); $('#d-gap').textContent = fmt(Math.abs(msec - mtan), 3);
+  }
+  dsvg.addEventListener('pointermove', function (e) {
+    var r = dsvg.getBoundingClientRect(); var px = (e.clientX - r.left) / r.width * W;
+    drawDeriv(X0 + (px - L) / (W - L - R) * (X1 - X0));
+  });
+  dsvg.addEventListener('pointerleave', function () { drawDeriv(); });
+  $('#d-x0').addEventListener('input', function () { drawDeriv(); });
+  $('#d-h').addEventListener('input', function () { drawDeriv(); });
+  $$('#fn-seg button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      fnKey = b.dataset.fn;
+      $$('#fn-seg button').forEach(function (o) { o.setAttribute('aria-pressed', String(o === b)); });
+      drawDeriv();
+    });
+  });
+  window.__folio.redraw.deriv = function () { drawDeriv(); };
+  window.__folio.showConcept = showConcept;
+  window.__folio.showTab = showTab;
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  var F = window.__folio, $ = F.$, $$ = F.$$;
+  var KIND = { memo: '메모', ask: '질문', flag: '이상해요' };
+  var HINT = { memo: '나만 보는 메모로 남는다', ask: '물어보기 작업이 이 개념의 페이지와 원래 자료만 보고 답한다', flag: '아빠가 지침을 고칠 때 본다' };
+  // 예시 코멘트. 실제 앱에서는 learner/comments.jsonl 에서 읽는다
+  var COMMENTS = {
+    'proj-p1': [{ who: '나', kind: 'ask', time: '9월 20일', text: '중력이 계속 당기는데 왜 수평 속도는 안 바뀌어요?',
+      replies: [{ who: 'Jindesk · 물어보기', time: '9월 20일', src: 'Kinematics slides|12쪽|PPT', srcLabel: 'slides · 12',
+        en: 'Gravity acts only vertically, so it has no horizontal component. With no horizontal force, Newton’s first law says the horizontal velocity stays the same.',
+        ko: '중력은 수직으로만 작용하므로 수평 성분이 없다. 수평으로 작용하는 힘이 없으니 뉴턴 제1법칙에 따라 수평 속도는 그대로다.' }] }],
+    'proj-n1': [{ who: '나', kind: 'memo', time: '9월 26일', text: '9월 퀴즈 3번에 나옴. 최고점 속도를 0으로 써서 틀렸다.', replies: [] }],
+    'deriv-s3': [{ who: '나', kind: 'flag', time: '9월 15일', text: 'h ≠ 0이라서 나눌 수 있다는 게 무슨 뜻인지 모르겠어요.',
+      replies: [{ who: '아빠', time: '9월 16일', text: '극한에서 h는 0에 가까워질 뿐 0이 되지는 않는다는 설명을 먼저 하도록 지침을 고쳤어. 페이지를 다시 만들면 바뀐다.', st: '학습 페이지 지침 v0.3에 반영' }] }],
+    'comb-n1': [{ who: '나', kind: 'ask', time: '오늘', text: 'Why is ΔH negative for combustion?', replies: [{ who: 'Jindesk · 물어보기', pending: true }] }]
+  };
+  function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function btn(cls, label, aria) { var b = document.createElement('button'); b.type = 'button'; b.className = cls; b.textContent = label; b.setAttribute('aria-label', aria); return b; }
+
+  /* 문단마다 번역과 코멘트 단추 */
+  function setupPara(para) {
+    var en = para.querySelector(':scope > .en'), ko = para.querySelector(':scope > .ko');
+    if (!en || para.dataset.ready) return;
+    para.dataset.ready = '1';
+    var clone = en.cloneNode(true);
+    $$('.prov, .srcchip', clone).forEach(function (n) { n.remove(); });
+    para.dataset.excerpt = clone.textContent.replace(/\\\(|\\\)/g, '').replace(/\s+/g, ' ').trim();
+    var pc = document.createElement('span'); pc.className = 'pc';
+    if (ko) {
+      var tb = btn('g-tr', '한', '이 문단의 한국어 번역'); tb.title = '이 문단의 한국어 번역';
+      tb.setAttribute('aria-expanded', 'false');
+      tb.addEventListener('click', function () { ko.hidden = !ko.hidden; tb.setAttribute('aria-expanded', String(!ko.hidden)); openCount(para.closest('article')); });
+      pc.appendChild(tb);
+    }
+    if (para.dataset.pid && !para.classList.contains('nocm')) {
+      var cb = btn('g-cm', '✎', '코멘트'); cb.title = '코멘트';
+      cb.setAttribute('aria-expanded', 'false');
+      cb.addEventListener('click', function () { toggleThread(para); });
+      pc.appendChild(cb);
+    }
+    var host = en.tagName === 'P' ? en : (en.lastElementChild || en);
+    host.appendChild(pc);
+    paintCount(para);
+  }
+  function paintCount(para) {
+    var cb = para.querySelector('.g-cm'); if (!cb) return;
+    var n = (COMMENTS[para.dataset.pid] || []).length;
+    cb.textContent = n ? '✎ ' + n : '✎';
+    cb.classList.toggle('has', n > 0);
+    cb.setAttribute('aria-label', n ? '코멘트 ' + n + '개' : '코멘트 남기기');
+  }
+  function openCount(article) {
+    if (!article) return;
+    var box = article.querySelector('.open-count'); if (!box) return;
+    var open = $$('.ko', article).filter(function (k) { return !k.hidden && !k.closest('.thread'); });
+    box.hidden = open.length === 0;
+    box.innerHTML = '한국어 ' + open.length + '개 펼침 <button type="button">모두 접기</button>';
+    var b = box.querySelector('button');
+    if (b) b.addEventListener('click', function () {
+      open.forEach(function (k) { k.hidden = true; var t = k.parentElement.querySelector('.g-tr'); if (t) t.setAttribute('aria-expanded', 'false'); });
+      openCount(article);
+    });
+  }
+
+  /* 풀이 단계처럼 좁은 칸에 있는 문단은 펼친 것을 그 줄 아래 전체 폭에 둔다 */
+  function slot(para) {
+    var step = para.closest('.step');
+    if (!step) return para;
+    var nx = step.nextElementSibling;
+    if (!nx || !nx.classList.contains('step-extra')) { nx = document.createElement('div'); nx.className = 'step-extra'; step.parentNode.insertBefore(nx, step.nextSibling); }
+    return nx;
+  }
+
+  /* 코멘트 */
+  function toggleThread(para, forceOpen) {
+    var box = slot(para), t = box.querySelector(':scope > .thread'), cb = para.querySelector('.g-cm');
+    if (t && !forceOpen) { t.remove(); cb.setAttribute('aria-expanded', 'false'); return; }
+    if (t) t.remove();
+    box.appendChild(renderThread(para));
+    cb.setAttribute('aria-expanded', 'true');
+  }
+  function renderThread(para) {
+    var pid = para.dataset.pid, list = COMMENTS[pid] || [];
+    var t = document.createElement('div'); t.className = 'thread';
+    var html = '';
+    list.forEach(function (c) {
+      html += '<div class="cm"><div class="cm-head"><span class="kind ' + c.kind + '">' + KIND[c.kind] + '</span><b>' + esc(c.who) + '</b><time>' + esc(c.time) + '</time></div><div>' + esc(c.text) + '</div>';
+      (c.replies || []).forEach(function (r) {
+        html += '<div class="reply"><div class="cm-head"><b>' + esc(r.who) + '</b>' + (r.time ? '<time>' + esc(r.time) + '</time>' : '') + '</div>';
+        if (r.pending) html += '<div class="pending">답을 쓰는 중 · 물어보기 대기열에 있다</div>';
+        if (r.en) html += '<div class="para nocm"><p class="en">' + esc(r.en) + (r.src ? '<button class="srcchip" type="button" data-src="' + esc(r.src) + '">' + esc(r.srcLabel) + '</button>' : '') + '</p><p class="ko" hidden>' + esc(r.ko) + '</p></div>';
+        if (r.text) html += '<div>' + esc(r.text) + '</div>';
+        if (r.st) html += '<div class="cm-head"><span class="st ok">' + esc(r.st) + '</span></div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    });
+    if (!list.length) html += '<div class="pending">아직 코멘트가 없다.</div>';
+    html += '<form class="composer"><div class="seg" role="group" aria-label="코멘트 종류">' +
+      ['memo', 'ask', 'flag'].map(function (k, i) { return '<button type="button" data-k="' + k + '" aria-pressed="' + (i === 0) + '">' + KIND[k] + '</button>'; }).join('') +
+      '</div><textarea aria-label="코멘트 내용" placeholder="이 문단에 남길 말"></textarea><div class="row"><small>' + HINT.memo + '</small><button class="btn" type="submit">남기기</button></div></form>';
+    t.innerHTML = html;
+    $$('.para', t).forEach(setupPara);
+    var kind = 'memo', form = $('form', t);
+    $$('[data-k]', form).forEach(function (b) {
+      b.addEventListener('click', function () {
+        kind = b.dataset.k;
+        $$('[data-k]', form).forEach(function (o) { o.setAttribute('aria-pressed', String(o === b)); });
+        $('small', form).textContent = HINT[kind];
+      });
+    });
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var text = $('textarea', form).value.trim();
+      if (!text) { F.toast('남길 내용을 적은 뒤 누른다'); return; }
+      (COMMENTS[pid] = COMMENTS[pid] || []).push({ who: '나', kind: kind, time: '방금', text: text, replies: kind === 'ask' ? [{ who: 'Jindesk · 물어보기', pending: true }] : [] });
+      paintCount(para); toggleThread(para, true); renderList(F.current());
+      var side = $$('.side .nav').filter(function (n) { return n.textContent.indexOf('코멘트') >= 0; })[0];
+      if (side) { var c = side.querySelector('.count'); c.textContent = String(Number(c.textContent) + 1); }
+      F.toast(kind === 'ask' ? '질문을 물어보기 대기열에 넣었다' : kind === 'flag' ? '"이상해요"를 남겼다. 아빠가 지침을 고칠 때 본다' : '메모를 남겼다');
+    });
+    return t;
+  }
+  function renderList(page) {
+    var art = $('article[data-page="' + page + '"]'), ul = $('#cm-list'), items = [];
+    $$('.para[data-pid]', art).forEach(function (p) { var l = COMMENTS[p.dataset.pid]; if (l && l.length) items.push({ p: p, l: l }); });
+    $('#cm-head').textContent = '이 페이지의 코멘트 · ' + items.reduce(function (a, i) { return a + i.l.length; }, 0);
+    if (!items.length) { ul.innerHTML = '<li class="empty">아직 코멘트가 없다.</li>'; return; }
+    ul.innerHTML = '';
+    items.forEach(function (it) {
+      var c = it.l[it.l.length - 1], li = document.createElement('li'), b = document.createElement('button');
+      b.type = 'button';
+      b.innerHTML = '<span class="line"><span class="kind ' + c.kind + '">' + KIND[c.kind] + '</span><span>' + esc(c.text) + '</span></span><q>' + esc(it.p.dataset.excerpt || '') + '</q>';
+      b.addEventListener('click', function () {
+        var d = it.p.closest('details'); if (d) d.open = true;
+        toggleThread(it.p, true);
+        it.p.scrollIntoView({ behavior: F.reduceMotion ? 'auto' : 'smooth', block: 'center' });
+        it.p.classList.add('flash'); setTimeout(function () { it.p.classList.remove('flash'); }, 1400);
+      });
+      li.appendChild(b); ul.appendChild(li);
+    });
+  }
+  F.setupPara = setupPara; F.slot = slot; F.esc = esc;
+  F.beforeSetup && F.beforeSetup();
+  $$('.para').forEach(setupPara);
+  F.onConcept = renderList;
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  var F = window.__folio, $ = F.$, $$ = F.$$, esc = F.esc;
+  // 예시 곁 층. 실제 앱에서는 <slug>.layers.json 에서 읽는다
+  var LAYERS = {
+    'proj-p1': { easy: {
+      en: 'If we ignore air resistance, think of the two directions as two separate stories. Sideways, nothing pushes or pulls the ball, so its sideways speed stays the same. Up and down, gravity pulls it down the whole time, so its vertical speed changes by the same amount every second. The time t links the two stories.',
+      ko: '공기 저항을 무시하면 두 방향을 따로 떨어진 두 이야기로 생각할 수 있다. 옆으로는 공을 밀거나 당기는 것이 없어 옆 방향 속력이 그대로다. 위아래로는 중력이 계속 아래로 당겨서 수직 속력이 1초마다 같은 만큼 바뀐다. 두 이야기를 잇는 것이 시간 t다.',
+      meta: ['요구 d3 · 더 쉽게 · 9월 21일', '지금 판 r1에서 만듦'],
+      checks: ['조건 "공기 저항 없음" 그대로', '원래 주장 3개 그대로', '새 주장 없음', 'MYP 10 독자 시험 통과'] } }
+  };
+  // 예시 새 판 후보
+  var CANDS = {
+    'deriv-s3': { op: '더 자세히', from: '"이상해요" 코멘트에서 · 9월 16일', note: 'h ≠ 0이라서 나눌 수 있다는 게 무슨 뜻인지',
+      en: 'Factor out h and cancel. A limit describes what happens as h gets closer and closer to 0; h itself is never 0. So h ≠ 0, and dividing by h is allowed.',
+      ko: 'h로 묶어 약분한다. 극한은 h가 0에 한없이 가까워질 때 어떻게 되는지를 말할 뿐, h 자체는 0이 아니다. 그래서 h ≠ 0이고 h로 나눌 수 있다.',
+      checks: ['범위 잠금: 이 단계만 바뀜', '원래 주장 2개 모두 포함', '새 주장 1개 "h 자체는 0이 아니다" · 출처 slides 8', '수식과 기호 그대로 (h)', '격리 검증: 모순 없음', 'DP HL 독자 시험 통과'] }
+  };
+  var OPS = {
+    para: [['easy', '더 쉽게'], ['detail', '더 자세히'], ['example', '예시 더'], ['visual', '그림으로'], ['fix', '고치기']],
+    block: [['redraw', '그림 다시'], ['easy', '더 쉽게'], ['steps', '단계 더'], ['fix', '고치기']]
+  };
+  var PLAN = {
+    easy: ['곁 층 "쉽게". 한국어처럼 문단 아래에 펼친다', '원래 내용은 그대로', '조건과 주장 그대로 · 새 주장 없음 · MYP 10 독자 시험 · 숫자와 기호'],
+    detail: ['새 판을 만들어 지금 판과 견주어 고른다', '받아들이기 전까지 지금 판 그대로', '원래 주장 모두 포함 · 새 주장은 읽은 쪽 출처나 보충 표시 · 격리 검증 · DP 독자 시험'],
+    example: ['이 문단 뒤에 예시 블록을 더한다', '원래 문단은 그대로', '답을 계산으로 확인 · 출처'],
+    visual: ['이 문단 뒤에 블록 어휘 안의 블록을 더한다', '원래 문단은 그대로', '블록 스키마 · 주장 계산 · 어휘에 없는 그림이면 아빠에게 새 블록 요청'],
+    redraw: ['블록의 새 판을 만들어 견주어 고른다', '이전 판은 남고 언제든 되돌린다', '블록 스키마 · 원래 블록의 주장 포함 · 주장 계산 · 어휘에 없으면 새 블록 요청'],
+    steps: ['단계를 더 잘게 나눈 새 판을 만들어 고른다', '받아들이기 전까지 지금 판 그대로', '단계마다 수식 파싱 · 이웃 단계가 이어지는지 계산 · 마지막 식 그대로'],
+    fix: ['원래 자료와 다시 대조한다. 틀렸으면 개념 원문을 고치고 아래 층으로 전파한다', '근거가 없으면 바꾸지 않고 코멘트로 답한다', '1차·2차 출처 대조 · 아빠에게 기록']
+  };
+  function mk(cls, label, aria) { var b = document.createElement('button'); b.type = 'button'; b.className = cls; b.textContent = label; b.setAttribute('aria-label', aria); b.title = aria; return b; }
+
+  /* 문단마다 ↻, 곁 층, 새 판 */
+  $$('.para[data-pid]').forEach(function (para) {
+    if (para.classList.contains('nocm')) return;
+    var pc = para.querySelector('.pc'); if (!pc) return;
+    var pid = para.dataset.pid, ly = LAYERS[pid], cand = CANDS[pid];
+    if (ly && ly.easy) {
+      var lb = mk('g-ly', '쉽게', '쉬운 곁 설명'); lb.setAttribute('aria-expanded', 'false');
+      var tr = pc.querySelector('.g-tr'); pc.insertBefore(lb, tr ? tr.nextSibling : pc.firstChild);
+      lb.addEventListener('click', function () {
+        var box = F.slot(para), ex = box.querySelector(':scope > .layer');
+        if (ex) { ex.remove(); lb.setAttribute('aria-expanded', 'false'); return; }
+        var d = document.createElement('div'); d.className = 'layer';
+        d.innerHTML = '<span class="lab">쉽게 · 곁 설명</span><div class="para nocm"><p class="en">' + esc(ly.easy.en) + '</p><p class="ko" hidden>' + esc(ly.easy.ko) + '</p></div>' +
+          '<div class="meta-line">' + ly.easy.checks.map(function (c) { return '<span class="ok">' + esc(c) + '</span>'; }).join('') + '</div>' +
+          '<div class="meta-line">' + ly.easy.meta.map(esc).map(function (m) { return '<span>' + m + '</span>'; }).join('') + '</div>';
+        var thread = box.querySelector(':scope > .thread');
+        box.insertBefore(d, thread || null);
+        F.setupPara(d.querySelector('.para'));
+        lb.setAttribute('aria-expanded', 'true');
+      });
+    }
+    var rb = mk('g-rg', '↻', '이 문단 다시 만들기');
+    rb.addEventListener('click', function () { openRegen(para, 'para'); });
+    pc.appendChild(rb);
+    if (cand) {
+      var cb = mk('g-cand', '새 판 · 비교', '다시 만든 새 판과 견주기');
+      cb.addEventListener('click', function () { toggleCompare(para, cand, cb); });
+      pc.appendChild(cb);
+    }
+  });
+  /* 블록마다 ↻ */
+  $$('.blk').forEach(function (blk) {
+    var head = blk.querySelector('.blk-head'); if (!head) return;
+    var b = mk('rg-blk', '↻ 다시 만들기', '이 블록 다시 만들기');
+    b.addEventListener('click', function () { openRegen(blk, 'block'); });
+    head.appendChild(b);
+  });
+
+  function toggleCompare(para, c, btnEl) {
+    var box = F.slot(para), ex = box.querySelector(':scope > .cmp');
+    if (ex) { ex.remove(); return; }
+    var en = para.querySelector(':scope > .en'), clone = en.cloneNode(true);
+    $$('.pc, .prov, .srcchip', clone).forEach(function (n) { n.remove(); });
+    var d = document.createElement('div'); d.className = 'cmp';
+    d.innerHTML = '<div class="req"><b>' + esc(c.op) + '</b> · ' + esc(c.from) + ' · "' + esc(c.note) + '"</div>' +
+      '<div class="cols"><div class="col"><small>지금 판 r1</small><div>' + esc(clone.textContent.trim()) + '</div></div>' +
+      '<div class="col new"><small>새 판 r2</small><div>' + esc(c.en) + '</div></div></div>' +
+      '<ul>' + c.checks.map(function (k) { return '<li class="ok">' + esc(k) + '</li>'; }).join('') + '</ul>' +
+      '<div class="req">받아들이면 이 단계만 바뀌고, 이 단계의 한국어 번역만 다시 만든다. 이 단계에 단 코멘트는 "이전 판에 단 코멘트"로 남는다.</div>' +
+      '<div class="acts"><button class="btn" type="button" data-a="keep">지금 판 유지</button><button class="btn primary" type="button" data-a="take">새 판 받아들이기</button></div>';
+    box.insertBefore(d, box.firstChild);
+    d.querySelector('[data-a="keep"]').addEventListener('click', function () {
+      d.remove(); btnEl.remove(); F.toast('지금 판을 그대로 둔다. 요구는 "버림"으로 기록에 남는다');
+    });
+    d.querySelector('[data-a="take"]').addEventListener('click', function () {
+      var pc = en.querySelector('.pc'); en.textContent = c.en + ' '; en.appendChild(pc);
+      btnEl.remove(); d.remove();
+      var ko = para.querySelector(':scope > .ko');
+      if (ko) {
+        ko.innerHTML = '<span class="pending">번역을 다시 만드는 중 · 이 단계만</span>';
+        setTimeout(function () { ko.textContent = c.ko; }, 1600);
+      }
+      F.toast('새 판을 받아들였다. 이 단계의 한국어 번역만 다시 만든다');
+    });
+  }
+
+  /* 다시 만들기 시트 */
+  var target = null, kindOf = 'para', op = null;
+  function paintPlan() {
+    var p = PLAN[op];
+    $('#rg-plan').innerHTML = '<dt>놓이는 곳</dt><dd>' + esc(p[0]) + '</dd><dt>그대로인 것</dt><dd>' + esc(p[1]) + '</dd><dt>검사</dt><dd>' + esc(p[2]) + '</dd>';
+  }
+  function openRegen(el, kind) {
+    target = el; kindOf = kind;
+    var label, quote;
+    if (kind === 'para') {
+      label = '이 문단 · ' + el.dataset.pid;
+      var c = el.querySelector(':scope > .en').cloneNode(true); $$('.pc, .prov, .srcchip', c).forEach(function (n) { n.remove(); });
+      quote = c.textContent.trim();
+    } else {
+      label = '이 블록 · ' + el.querySelector('.blk-kind').textContent;
+      quote = el.querySelector('.blk-title').textContent;
+    }
+    $('#rg-target').textContent = label;
+    $('#rg-quote').textContent = quote;
+    $('#rg-note').value = '';
+    var ops = OPS[kind]; op = ops[0][0];
+    $('#rg-ops').innerHTML = ops.map(function (o, i) { return '<button type="button" data-op="' + o[0] + '" aria-pressed="' + (i === 0) + '">' + o[1] + '</button>'; }).join('');
+    $$('#rg-ops button').forEach(function (b) {
+      b.addEventListener('click', function () { op = b.dataset.op; $$('#rg-ops button').forEach(function (o) { o.setAttribute('aria-pressed', String(o === b)); }); paintPlan(); });
+    });
+    paintPlan();
+    $('#ov-regen').hidden = false; $('#rg-ops button').focus();
+  }
+  $('#rg-go').addEventListener('click', function () {
+    $('#ov-regen').hidden = true;
+    var badge = document.createElement('span'); badge.className = 'rg-badge'; badge.textContent = '↻ 요청함';
+    if (kindOf === 'para') { var pc = target.querySelector('.pc'); if (pc) pc.appendChild(badge); }
+    else { var h = target.querySelector('.blk-head'); h.insertBefore(badge, h.querySelector('.rg-blk')); }
+    F.toast(op === 'fix' ? '고치기를 요청했다. 원래 자료와 다시 대조한다' : '다시 만들기를 요청했다. 부분 다시 만들기 대기열에서 차례를 기다린다');
+  });
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  var F = window.__folio, $ = F.$, $$ = F.$$, fmt = F.fmt, css = F.css;
+  var cv = $('#proj-cv'), ctx = cv.getContext('2d');
+  var g = 9.81, anim = null, ballT = null;
+  function params() { return { u: Number($('#p-u').value), th: Number($('#p-th').value) * Math.PI / 180 }; }
+  function calc(u, th) { var T = 2 * u * Math.sin(th) / g; return { T: T, H: Math.pow(u * Math.sin(th), 2) / (2 * g), R: u * u * Math.sin(2 * th) / g }; }
+  function niceStep(span) { var raw = span / 5, p = Math.pow(10, Math.floor(Math.log10(raw))), n = raw / p; return (n < 1.5 ? 1 : n < 3.5 ? 2 : n < 7.5 ? 5 : 10) * p; }
+  function arrow(x1, y1, x2, y2, color) {
+    var a = Math.atan2(y2 - y1, x2 - x1), len = Math.hypot(x2 - x1, y2 - y1);
+    if (len < 2) return;
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2 - 7 * Math.cos(a), y2 - 7 * Math.sin(a)); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2 - 10 * Math.cos(a - 0.4), y2 - 10 * Math.sin(a - 0.4)); ctx.lineTo(x2 - 10 * Math.cos(a + 0.4), y2 - 10 * Math.sin(a + 0.4)); ctx.closePath(); ctx.fill();
+  }
+  function draw() {
+    var dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+    if (!w) return;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    var p = params(), r = calc(p.u, p.th);
+    $('#p-u-o').textContent = p.u + ' m/s'; $('#p-th-o').textContent = Math.round(p.th * 180 / Math.PI) + '°';
+    $('#p-T').textContent = fmt(r.T, 2) + ' s'; $('#p-H').textContent = fmt(r.H, 2) + ' m'; $('#p-R').textContent = fmt(r.R, 1) + ' m';
+    // 지금 속력에서 어떤 각도로 던져도 들어가는 눈금. 각도를 바꿔 견줄 때는 눈금이 그대로다
+    var maxR = p.u * p.u / g, maxH = p.u * p.u * Math.pow(Math.sin(85 * Math.PI / 180), 2) / (2 * g);
+    var padL = 44, padB = 26, padT = 14, padR = 14;
+    var scale = Math.min((w - padL - padR) / maxR, (h - padT - padB) / maxH);
+    var ox = padL, oy = h - padB;
+    var sx = function (x) { return ox + x * scale; }, sy = function (y) { return oy - y * scale; };
+    var ink3 = css('--ink-3'), line2 = css('--line-2'), ink = css('--ink');
+    ctx.font = '11px ' + css('--f-mono'); ctx.fillStyle = ink3; ctx.lineWidth = 1;
+    var st = niceStep((w - padL - padR) / scale);
+    for (var gx = 0; sx(gx) <= w - padR + 0.5; gx += st) {
+      ctx.strokeStyle = line2; ctx.beginPath(); ctx.moveTo(sx(gx), padT); ctx.lineTo(sx(gx), oy); ctx.stroke();
+      ctx.textAlign = 'center'; ctx.fillText(String(Math.round(gx)), sx(gx), oy + 15);
+    }
+    for (var gy = st; sy(gy) >= padT - 0.5; gy += st) {
+      ctx.strokeStyle = line2; ctx.beginPath(); ctx.moveTo(ox, sy(gy)); ctx.lineTo(w - padR, sy(gy)); ctx.stroke();
+      ctx.textAlign = 'right'; ctx.fillText(String(Math.round(gy)), ox - 6, sy(gy) + 4);
+    }
+    ctx.textAlign = 'right'; ctx.fillText('0', ox - 6, oy + 4);
+    ctx.strokeStyle = ink3; ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(w - padR, oy); ctx.stroke();
+    ctx.textAlign = 'left'; ctx.fillText('m', w - padR - 10, oy - 6);
+    function path(th, color, dash) {
+      var rr = calc(p.u, th); ctx.setLineDash(dash || []); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+      for (var i = 0; i <= 120; i++) { var t = rr.T * i / 120, x = p.u * Math.cos(th) * t, y = p.u * Math.sin(th) * t - 0.5 * g * t * t; if (i) ctx.lineTo(sx(x), sy(y)); else ctx.moveTo(sx(x), sy(y)); }
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+    if ($('#p-comp').checked && Math.abs(p.th - Math.PI / 4) > 1e-6) path(Math.PI / 2 - p.th, ink3, [5, 4]);
+    path(p.th, css('--s1'));
+    // 공: 던지기 중이면 그 시각, 아니면 최고점에서 멈춰 보인다
+    var t = ballT == null ? r.T / 2 : ballT;
+    var bx = p.u * Math.cos(p.th) * t, by = p.u * Math.sin(p.th) * t - 0.5 * g * t * t;
+    var vx = p.u * Math.cos(p.th), vy = p.u * Math.sin(p.th) - g * t, k = 2.2;
+    arrow(sx(bx), sy(by), sx(bx) + vx * k, sy(by), css('--s3'));
+    if (Math.abs(vy) > 0.05) arrow(sx(bx), sy(by), sx(bx), sy(by) - vy * k, css('--s2'));
+    ctx.fillStyle = ink; ctx.strokeStyle = css('--paper-2'); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(sx(bx), sy(by), 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = css('--ink-2'); ctx.font = '12px ' + css('--f-body'); ctx.textAlign = 'left';
+    var lab = ballT == null ? 'At the top: vertical 0, horizontal ' + fmt(vx, 1) + ' m/s' : 't = ' + fmt(t, 2) + ' s';
+    var lx = Math.min(sx(bx) + 12, w - padR - ctx.measureText(lab).width);
+    ctx.fillText(lab, Math.max(ox + 4, lx), Math.max(padT + 12, sy(by) - 14));
+    drawTable();
+  }
+  function drawTable() {
+    var u = Number($('#p-u').value), tb = $('#p-table tbody'), angles = [15, 30, 45, 60, 75], html = '';
+    angles.forEach(function (a) {
+      var r = calc(u, a * Math.PI / 180);
+      html += '<tr' + (a === 45 ? ' class="pair"' : '') + '><td>' + a + '°' + (a === 45 ? ' · longest' : '') + '</td><td class="mono">' + fmt(r.T, 2) + '</td><td class="mono">' + fmt(r.H, 2) + '</td><td class="mono">' + fmt(r.R, 1) + '</td></tr>';
+    });
+    tb.innerHTML = html;
+  }
+  function stop() { if (anim) cancelAnimationFrame(anim); anim = null; ballT = null; }
+  $('#p-play').addEventListener('click', function () {
+    stop();
+    var p = params(), r = calc(p.u, p.th);
+    if (F.reduceMotion) { ballT = r.T; draw(); ballT = null; return; }
+    var dur = Math.min(3200, Math.max(1200, r.T * 380)), start = performance.now();
+    function frame(now) {
+      var k = Math.min(1, (now - start) / dur); ballT = r.T * k; draw();
+      if (k < 1) anim = requestAnimationFrame(frame); else { anim = null; setTimeout(function () { if (!anim) { ballT = null; draw(); } }, 900); }
+    }
+    anim = requestAnimationFrame(frame);
+  });
+  ['#p-u', '#p-th'].forEach(function (s) { $(s).addEventListener('input', function () { stop(); draw(); }); });
+  $('#p-comp').addEventListener('change', draw);
+  $$('[data-g]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      g = Number(b.dataset.g); $$('[data-g]').forEach(function (o) { o.setAttribute('aria-pressed', String(o === b)); }); stop(); draw();
+    });
+  });
+  window.addEventListener('resize', function () { if (F.current() === 'proj') draw(); });
+  F.redraw.proj = draw;
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  var F = window.__folio, $ = F.$, $$ = F.$$, el = F.el;
+
+  /* 분자 */
+  var atoms = [
+    { e: 'H', x: 40, y: 85 }, { e: 'C', x: 110, y: 85 }, { e: 'C', x: 180, y: 85 }, { e: 'O', x: 250, y: 85 }, { e: 'H', x: 314, y: 85 },
+    { e: 'H', x: 110, y: 25 }, { e: 'H', x: 110, y: 145 }, { e: 'H', x: 180, y: 25 }, { e: 'H', x: 180, y: 145 }
+  ];
+  var bonds = [[0, 1], [1, 2], [2, 3], [3, 4], [1, 5], [1, 6], [2, 7], [2, 8]];
+  var molMode = 'struct', msvg = $('#mol-svg');
+  var elColor = { C: 'var(--el-c)', O: 'var(--el-o)', H: 'var(--el-h)' };
+  function drawMol() {
+    while (msvg.firstChild) msvg.removeChild(msvg.firstChild);
+    bonds.forEach(function (b) {
+      var a = atoms[b[0]], c = atoms[b[1]], dx = c.x - a.x, dy = c.y - a.y, len = Math.hypot(dx, dy), ux = dx / len, uy = dy / len;
+      var cut = molMode === 'struct' ? 12 : 0;
+      el('line', { x1: a.x + ux * cut, y1: a.y + uy * cut, x2: c.x - ux * cut, y2: c.y - uy * cut,
+        style: molMode === 'struct' ? 'stroke:var(--ink-2);stroke-width:1.6' : 'stroke:var(--ink-3);stroke-width:6;stroke-linecap:round' }, msvg);
+    });
+    atoms.forEach(function (a) {
+      if (molMode === 'struct') {
+        el('text', { x: a.x, y: a.y + 6, 'text-anchor': 'middle', style: 'fill:' + elColor[a.e] + ';font-size:18px;font-weight:600;font-family:var(--f-body)' }, msvg, a.e);
+      } else {
+        var r = a.e === 'H' ? 10 : 16;
+        var fill = a.e === 'C' ? 'var(--el-c)' : a.e === 'O' ? 'var(--el-o)' : 'var(--paper)';
+        el('circle', { cx: a.x, cy: a.y, r: r, style: 'fill:' + fill + ';stroke:' + (a.e === 'H' ? 'var(--el-h)' : 'var(--paper)') + ';stroke-width:2' }, msvg);
+        el('text', { x: a.x, y: a.y + 4, 'text-anchor': 'middle', style: 'fill:' + (a.e === 'H' ? 'var(--ink)' : 'var(--paper)') + ';font-size:11px;font-weight:600;font-family:var(--f-body)' }, msvg, a.e);
+      }
+    });
+    el('text', { x: 180, y: 168, 'text-anchor': 'middle', style: 'fill:var(--ink-3);font-size:11px;font-family:var(--f-mono)' }, msvg, 'C₂H₅OH · molecular formula C₂H₆O');
+  }
+  $$('#mol-seg button').forEach(function (b) {
+    b.addEventListener('click', function () { molMode = b.dataset.mol; $$('#mol-seg button').forEach(function (o) { o.setAttribute('aria-pressed', String(o === b)); }); drawMol(); });
+  });
+
+  /* 반응식 균형 */
+  var species = [
+    { f: 'C<sub>2</sub>H<sub>5</sub>OH', a: { C: 2, H: 6, O: 1 }, side: 0 },
+    { f: 'O<sub>2</sub>', a: { O: 2 }, side: 0 },
+    { f: 'CO<sub>2</sub>', a: { C: 1, O: 2 }, side: 1 },
+    { f: 'H<sub>2</sub>O', a: { H: 2, O: 1 }, side: 1 }
+  ];
+  var coef = [1, 1, 1, 1], ANSWER = [1, 3, 2, 3];
+  function gcd(a, b) { return b ? gcd(b, a % b) : a; }
+  function buildEq() {
+    var eq = $('#eq'), html = '';
+    species.forEach(function (s, i) {
+      if (i === 2) html += '<span class="arrow">→</span>';
+      else if (i > 0) html += '<span class="arrow">+</span>';
+      html += '<span class="sp"><span class="stepper"><button type="button" data-i="' + i + '" data-d="1" aria-label="계수 올리기">▲</button><button type="button" data-i="' + i + '" data-d="-1" aria-label="계수 내리기">▼</button></span>' +
+        '<span class="coef" id="coef-' + i + '">1</span><span class="formula">' + s.f + '</span></span>';
+    });
+    eq.innerHTML = html;
+    $$('button', eq).forEach(function (b) {
+      b.addEventListener('click', function () { var i = Number(b.dataset.i); coef[i] = Math.max(1, Math.min(9, coef[i] + Number(b.dataset.d))); paintEq(); });
+    });
+  }
+  function paintEq() {
+    coef.forEach(function (c, i) { $('#coef-' + i).textContent = c; });
+    var ok = true, html = '';
+    ['C', 'H', 'O'].forEach(function (e) {
+      var l = 0, r = 0;
+      species.forEach(function (s, i) { var n = (s.a[e] || 0) * coef[i]; if (s.side) r += n; else l += n; });
+      if (l !== r) ok = false;
+      html += '<div class="' + (l === r ? 'good' : 'bad') + '"><span>' + e + ' atoms</span><b>' + l + ' : ' + r + '</b></div>';
+    });
+    $('#tally').innerHTML = html;
+    var g = coef.reduce(gcd), st = $('#eq-status');
+    if (ok && g === 1) { st.className = 'status good'; st.textContent = '✓ Balanced · ΔH = −1367 kJ mol⁻¹'; }
+    else if (ok) { st.className = 'status bad'; st.textContent = '✕ Balanced, but not the smallest whole numbers'; }
+    else { st.className = 'status bad'; st.textContent = '✕ Not balanced (left : right)'; }
+  }
+  $('#eq-reset').addEventListener('click', function () { coef = [1, 1, 1, 1]; paintEq(); });
+  $('#eq-answer').addEventListener('click', function () { coef = ANSWER.slice(); paintEq(); });
+
+  /* 에너지 도표 */
+  var showCat = true, esvg = $('#ep-svg');
+  function drawEP() {
+    while (esvg.firstChild) esvg.removeChild(esvg.firstChild);
+    var W = 560, H = 300, L = 64, R = 20, T = 20, B = 34, y0 = -1500, y1 = 520;
+    var sx = function (p) { return L + p * (W - L - R); }, sy = function (v) { return T + (y1 - v) / (y1 - y0) * (H - T - B); };
+    var tx = 'fill:var(--ink-2);font-size:12px;font-family:var(--f-body)', mono = 'fill:var(--ink-3);font-size:11px;font-family:var(--f-mono)';
+    el('line', { x1: L, x2: L, y1: T, y2: H - B, style: 'stroke:var(--ink-3);stroke-width:1' }, esvg);
+    el('line', { x1: L, x2: W - R, y1: H - B, y2: H - B, style: 'stroke:var(--ink-3);stroke-width:1' }, esvg);
+    el('text', { x: (L + W - R) / 2, y: H - 10, 'text-anchor': 'middle', style: tx }, esvg, 'Reaction progress →');
+    el('text', { x: 16, y: (T + H - B) / 2, 'text-anchor': 'middle', transform: 'rotate(-90 16 ' + (T + H - B) / 2 + ')', style: tx }, esvg, 'Enthalpy H / kJ mol⁻¹');
+    el('text', { x: L - 6, y: sy(0) + 4, 'text-anchor': 'end', style: mono }, esvg, '0');
+    el('text', { x: L - 6, y: sy(-1367) + 4, 'text-anchor': 'end', style: mono }, esvg, '−1367');
+    el('line', { x1: sx(.2), x2: sx(.9), y1: sy(0), y2: sy(0), style: 'stroke:var(--line);stroke-width:1;stroke-dasharray:3 3' }, esvg);
+    function curve(peak, style) {
+      var d = 'M' + sx(.04) + ',' + sy(0) + ' H' + sx(.2) + ' C' + sx(.32) + ',' + sy(0) + ' ' + sx(.36) + ',' + sy(peak) + ' ' + sx(.45) + ',' + sy(peak) +
+        ' C' + sx(.54) + ',' + sy(peak) + ' ' + sx(.6) + ',' + sy(-1367) + ' ' + sx(.72) + ',' + sy(-1367) + ' H' + sx(.96);
+      el('path', { d: d, style: style }, esvg);
+    }
+    function vArrow(x, ya, yb, color) {
+      el('line', { x1: x, x2: x, y1: ya, y2: yb, style: 'stroke:' + color + ';stroke-width:1.5' }, esvg);
+      var dir = yb > ya ? 1 : -1;
+      el('path', { d: 'M' + (x - 4) + ',' + (yb - dir * 7) + ' L' + x + ',' + yb + ' L' + (x + 4) + ',' + (yb - dir * 7) + ' Z', style: 'fill:' + color }, esvg);
+    }
+    var peak = 420, peakCat = 190;
+    curve(peak, 'fill:none;stroke:var(--s1);stroke-width:2.5');
+    vArrow(sx(.47), sy(0), sy(peak) + 2, 'var(--s1)');
+    el('text', { x: sx(.47) + 8, y: sy(peak / 2) + 4, style: 'fill:var(--ink);font-size:12px;font-family:var(--f-body)' }, esvg, 'Ea');
+    if (showCat) {
+      curve(peakCat, 'fill:none;stroke:var(--s3);stroke-width:2.5;stroke-dasharray:7 5');
+      vArrow(sx(.41), sy(0), sy(peakCat) + 2, 'var(--s3)');
+      el('text', { x: sx(.41) - 8, y: sy(peakCat / 2) + 4, 'text-anchor': 'end', style: 'fill:var(--ink);font-size:12px;font-family:var(--f-body)' }, esvg, 'Ea (catalysed)');
+    }
+    vArrow(sx(.84), sy(0), sy(-1367) - 2, 'var(--ink-2)');
+    el('text', { x: sx(.84) + 8, y: sy(-683) + 4, style: 'fill:var(--ink);font-size:12px;font-family:var(--f-body)' }, esvg, 'ΔH = −1367');
+    el('text', { x: sx(.84) + 8, y: sy(-683) + 19, style: 'fill:var(--ink-3);font-size:11px;font-family:var(--f-body)' }, esvg, 'exothermic');
+    el('text', { x: sx(.05), y: sy(0) - 8, style: 'fill:var(--ink-2);font-size:12px;font-family:var(--f-body)' }, esvg, 'C₂H₅OH + 3O₂');
+    el('text', { x: sx(.62), y: sy(-1367) - 8, style: 'fill:var(--ink-2);font-size:12px;font-family:var(--f-body)' }, esvg, '2CO₂ + 3H₂O');
+    $('#cat-legend').hidden = !showCat;
+  }
+  $$('#cat-seg button').forEach(function (b) {
+    b.addEventListener('click', function () { showCat = b.dataset.cat === '1'; $$('#cat-seg button').forEach(function (o) { o.setAttribute('aria-pressed', String(o === b)); }); drawEP(); });
+  });
+
+  /* 전자 배치 */
+  var ELS = ['H hydrogen', 'He helium', 'Li lithium', 'Be beryllium', 'B boron', 'C carbon', 'N nitrogen', 'O oxygen', 'F fluorine', 'Ne neon', 'Na sodium', 'Mg magnesium', 'Al aluminium', 'Si silicon', 'P phosphorus', 'S sulfur', 'Cl chlorine', 'Ar argon', 'K potassium', 'Ca calcium'];
+  var SUBS = [['1s', 1], ['2s', 1], ['2p', 3], ['3s', 1], ['3p', 3], ['4s', 1]];
+  var SUP = ['⁰', '¹', '²', '³', '⁴', '⁵', '⁶'];
+  function drawOrb() {
+    var z = Number($('#z').value), left = z, html = '', conf = [];
+    $('#z-o').textContent = z + ' · ' + ELS[z - 1];
+    SUBS.forEach(function (s) {
+      var boxes = s[1], n = Math.min(left, boxes * 2); left -= n;
+      var cells = [];
+      for (var b = 0; b < boxes; b++) { var up = b < n, down = b + boxes < n; cells.push((up ? '↑' : '') + (down ? '↓' : '')); }
+      html += '<div class="sub"><div class="boxes">' + cells.map(function (c) { return '<span class="box">' + c + '</span>'; }).join('') + '</div><small>' + s[0] + '</small></div>';
+      if (n) conf.push(s[0] + SUP[n]);
+    });
+    $('#orb').innerHTML = html;
+    $('#config').textContent = ELS[z - 1].split(' ')[0] + ' : ' + conf.join(' ');
+  }
+  $('#z').addEventListener('input', drawOrb);
+
+  F.redraw.comb = function () { drawMol(); drawEP(); };
+  buildEq(); paintEq(); drawMol(); drawEP(); drawOrb();
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  var F = window.__folio, $ = F.$, $$ = F.$$, el = F.el, fmt = F.fmt;
+  var svg = $('#circ-svg'), dotsG = null, running = false, last = 0, offs = { main: 0, b2: 0, b3: 0, ret: 0 }, cur = {};
+  var PATHS = {
+    main: [[60, 125], [60, 50], [300, 50]],
+    b2: [[300, 50], [300, 220]],
+    b3: [[300, 50], [440, 50], [440, 220], [300, 220]],
+    ret: [[300, 220], [60, 220], [60, 145]]
+  };
+  function solve() {
+    var V = Number($('#c-v').value), r1 = Number($('#c-r1').value), r2 = Number($('#c-r2').value), r3 = Number($('#c-r3').value);
+    var rp = 1 / (1 / r2 + 1 / r3), rt = r1 + rp, I = V / rt, vp = I * rp;
+    return { V: V, r1: r1, r2: r2, r3: r3, rp: rp, rt: rt, I: I, v1: I * r1, vp: vp, i2: vp / r2, i3: vp / r3 };
+  }
+  function txt(x, y, s, anchor, style) { return el('text', { x: x, y: y, 'text-anchor': anchor || 'start', style: style || 'fill:var(--ink);font-size:12px;font-family:var(--f-body)' }, svg, s); }
+  function build() {
+    cur = solve();
+    $('#c-v-o').textContent = fmt(cur.V, 1) + ' V'; $('#c-r1-o').textContent = cur.r1 + ' Ω'; $('#c-r2-o').textContent = cur.r2 + ' Ω'; $('#c-r3-o').textContent = cur.r3 + ' Ω';
+    $('#c-rt').textContent = fmt(cur.rt, 2) + ' Ω'; $('#c-i').textContent = fmt(cur.I, 2) + ' A'; $('#c-v1').textContent = fmt(cur.v1, 2) + ' V';
+    $('#c-vp').textContent = fmt(cur.vp, 2) + ' V'; $('#c-i2').textContent = fmt(cur.i2, 2) + ' A'; $('#c-i3').textContent = fmt(cur.i3, 2) + ' A';
+    var kI = cur.I - cur.i2 - cur.i3, kV = cur.V - cur.v1 - cur.vp;
+    $('#c-kirch').textContent = '접점의 전류 합 ' + fmt(Math.abs(kI), 3) + ' A, 고리의 전압 합 ' + fmt(Math.abs(kV), 3) + ' V';
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    var wire = 'fill:none;stroke:var(--ink-2);stroke-width:2;stroke-linejoin:round';
+    el('path', { d: 'M60,125 V50 H440 V220 H60 V145', style: wire }, svg);
+    el('path', { d: 'M300,50 V220', style: wire }, svg);
+    // 전지: 긴 판이 +
+    el('rect', { x: 40, y: 126, width: 40, height: 18, style: 'fill:var(--paper)' }, svg);
+    el('line', { x1: 44, x2: 76, y1: 128, y2: 128, style: 'stroke:var(--ink);stroke-width:2' }, svg);
+    el('line', { x1: 52, x2: 68, y1: 142, y2: 142, style: 'stroke:var(--ink);stroke-width:4' }, svg);
+    txt(84, 124, '+', 'start', 'fill:var(--ink-3);font-size:12px;font-family:var(--f-mono)');
+    txt(34, 139, fmt(cur.V, 1) + ' V', 'end', 'fill:var(--ink);font-size:12px;font-family:var(--f-mono)');
+    // 저항
+    function res(x, y, w, h) { el('rect', { x: x, y: y, width: w, height: h, rx: 2, style: 'fill:var(--paper);stroke:var(--ink);stroke-width:2' }, svg); }
+    res(140, 40, 80, 20); res(290, 105, 20, 60); res(430, 105, 20, 60);
+    txt(180, 30, 'R1 = ' + cur.r1 + ' Ω', 'middle');
+    txt(284, 130, 'R2 = ' + cur.r2 + ' Ω', 'end');
+    txt(284, 147, fmt(cur.i2, 2) + ' A', 'end', 'fill:var(--ink-3);font-size:11px;font-family:var(--f-mono)');
+    txt(458, 130, 'R3 = ' + cur.r3 + ' Ω', 'start');
+    txt(458, 147, fmt(cur.i3, 2) + ' A', 'start', 'fill:var(--ink-3);font-size:11px;font-family:var(--f-mono)');
+    txt(100, 76, 'I = ' + fmt(cur.I, 2) + ' A', 'start', 'fill:var(--ink-3);font-size:11px;font-family:var(--f-mono)');
+    el('circle', { cx: 300, cy: 50, r: 4, style: 'fill:var(--ink)' }, svg);
+    el('circle', { cx: 300, cy: 220, r: 4, style: 'fill:var(--ink)' }, svg);
+    txt(306, 44, 'a', 'start', 'fill:var(--ink-3);font-size:11px;font-family:var(--f-mono)');
+    txt(306, 236, 'b', 'start', 'fill:var(--ink-3);font-size:11px;font-family:var(--f-mono)');
+    dotsG = el('g', {}, svg);
+    paintDots();
+  }
+  function along(path, d) {
+    for (var i = 1; i < path.length; i++) {
+      var a = path[i - 1], b = path[i], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (d <= len) return [a[0] + (b[0] - a[0]) * d / len, a[1] + (b[1] - a[1]) * d / len];
+      d -= len;
+    }
+    return null;
+  }
+  function plen(path) { var s = 0; for (var i = 1; i < path.length; i++) s += Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]); return s; }
+  var GAP = 22;
+  function paintDots() {
+    if (!dotsG) return;
+    while (dotsG.firstChild) dotsG.removeChild(dotsG.firstChild);
+    Object.keys(PATHS).forEach(function (k) {
+      var p = PATHS[k], L = plen(p);
+      for (var d = offs[k] % GAP; d < L; d += GAP) {
+        var pt = along(p, d);
+        // 저항 상자 안은 점을 그리지 않는다
+        if (!pt || (k === 'main' && pt[1] === 50 && pt[0] > 140 && pt[0] < 220) || (pt[1] > 105 && pt[1] < 165 && (pt[0] === 300 || pt[0] === 440)) || (pt[0] === 60 && pt[1] > 124 && pt[1] < 146)) continue;
+        el('circle', { cx: pt[0], cy: pt[1], r: 3, style: 'fill:var(--s2)' }, dotsG);
+      }
+    });
+  }
+  var K = 40; // 1 A 당 초당 40 px
+  function loop(now) {
+    if (F.current() !== 'circ' || $('#tab-app').hidden) { running = false; return; }
+    var dt = last ? Math.min(0.05, (now - last) / 1000) : 0; last = now;
+    offs.main += cur.I * K * dt; offs.ret += cur.I * K * dt; offs.b2 += cur.i2 * K * dt; offs.b3 += cur.i3 * K * dt;
+    paintDots();
+    requestAnimationFrame(loop);
+  }
+  function start() { if (running || F.reduceMotion) return; running = true; last = 0; requestAnimationFrame(loop); }
+  ['#c-v', '#c-r1', '#c-r2', '#c-r3'].forEach(function (s) { $(s).addEventListener('input', build); });
+  F.redraw.circ = function () { build(); start(); };
+  build();
+})();
+</script>
+<script>
+(function () {
+  var F = window.__folio, h = (location.hash || '').replace('#', '');
+  F.showConcept('proj');
+  if (h === 'structure' || h === 'blocks') F.showTab(h);
+})();
+</script>
+
+</body>
+</html>

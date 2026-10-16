@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jindesk/1/privacy",
+  "title": "meta/privacy.yaml",
+  "description": "웹 금지어: 학생·학교·선생님 이름. 데이터 폴더에만 있다",
+  "type": "object",
+  "required": ["kind", "v", "terms"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": { "const": "privacy" },
+    "v": { "const": 1 },
+    "terms": { "type": "array", "items": { "type": "string", "minLength": 2 } }
+  }
+}

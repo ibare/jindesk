@@ -1,0 +1,145 @@
+# Jindesk Mac 앱. xcodegen generate 로 Jindesk.xcodeproj 를 만든다 (생성물은 커밋하지 않는다).
+name: Jindesk
+options:
+  bundleIdPrefix: com.mintae
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    # 학생 맥에 배포하므로 처음부터 Developer ID 로 서명한다. 번들 id 와 팀 id 를 바꾸지 않는다.
+    # 키체인 항목의 접근 허용이 이 서명에 묶여, 같은 서명의 새 판은 승인 창 없이 토큰을 읽는다.
+    DEVELOPMENT_TEAM: 5NK357FRB5
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "Developer ID Application"
+    ENABLE_HARDENED_RUNTIME: YES
+    # claude, ditto, Keynote 를 실행하고 학생이 고른 데이터 폴더를 읽고 써야 하므로 샌드박스를 쓰지 않는다.
+    ENABLE_APP_SANDBOX: NO
+    DEAD_CODE_STRIPPING: YES
+packages:
+  Yams:
+    url: https://github.com/jpsim/Yams
+    exactVersion: 6.2.2
+  swift-argument-parser:
+    url: https://github.com/apple/swift-argument-parser
+    exactVersion: 1.8.2
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.0
+targets:
+  # 엔진. 화면 코드(AppKit, SwiftUI)에 의존하지 않는다.
+  JindeskKit:
+    type: framework
+    platform: macOS
+    sources: [JindeskKit]
+    dependencies:
+      - package: Yams
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mintae.JindeskKit
+        GENERATE_INFOPLIST_FILE: YES
+        SKIP_INSTALL: YES
+  # 외부 호출 검사 훅. claude 가 WebSearch/WebFetch 직전에 실행한다. 앱 번들 Contents/MacOS 에 들어간다.
+  jindesk-guard:
+    type: tool
+    platform: macOS
+    sources: [JindeskGuard]
+    dependencies:
+      - target: JindeskKit
+        embed: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mintae.Jindesk.guard
+        LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
+        SKIP_INSTALL: YES
+  # 앱. 인자를 주면 명령줄 모드로 동작한다 (Jindesk doctor, Jindesk migrate --check …).
+  Jindesk:
+    type: application
+    platform: macOS
+    sources:
+      - path: Jindesk
+        excludes: [Info.plist]
+    dependencies:
+      - target: JindeskKit
+      - target: jindesk-guard
+        embed: true
+        codeSign: true
+        copy:
+          destination: executables
+      - package: swift-argument-parser
+        product: ArgumentParser
+      - package: Sparkle
+        product: Sparkle
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mintae.Jindesk
+        PRODUCT_NAME: Jindesk
+        GENERATE_INFOPLIST_FILE: YES
+        # Sparkle 설정 (SUFeedURL 등). 만들어지는 Info.plist 에 합쳐진다.
+        INFOPLIST_FILE: Jindesk/Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: Jindesk
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.education
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        # 사람이 읽는 판과 릴리즈마다 1씩 오르는 빌드 번호. Sparkle 은 빌드 번호(CFBundleVersion)로 새것을 가린다.
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
+        # Sparkle EdDSA 공개 키 (mac/scripts/release.sh 의 안내대로 generate_keys 로 만든다)
+        SPARKLE_PUBLIC_KEY: "JCg7L9ZpgEV/mzqeLFfHN3hoy3VqMqmFXPwQRJjxR7g="
+        # 아래 "작업 지침 넣기"가 리포의 jobs/ 와 git 이력을 읽는다
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    # 작업 지침과 스키마는 앱의 일부다. 리포의 jobs/ 와 schemas/ 를 앱 번들(Contents/Resources)에 넣고,
+    # 지침마다 마지막으로 바꾼 커밋과 미커밋 변경 여부를 jobs/build.json 에 남긴다. 러너는 이 값을 산출물의 provenance 에 적는다.
+    # 미커밋 변경을 빌드마다 다시 보도록 늘 실행한다.
+    postCompileScripts:
+      - name: 작업 지침과 스키마 넣기
+        basedOnDependencyAnalysis: false
+        script: |
+          set -eu
+          repo="$SRCROOT/.."
+          resources="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
+          dest="$resources/jobs"
+          rm -rf "$dest"
+          mkdir -p "$dest"
+          json="{"
+          sep=""
+          for dir in "$repo"/jobs/*/; do
+            [ -f "$dir/INSTRUCTIONS.md" ] || continue
+            kind=$(basename "$dir")
+            rel="jobs/$kind/INSTRUCTIONS.md"
+            mkdir -p "$dest/$kind"
+            cp "$repo/$rel" "$dest/$kind/INSTRUCTIONS.md"
+            commit=$(git -C "$repo" log -1 --format=%H -- "$rel" 2>/dev/null || true)
+            dirty=false
+            if [ -z "$commit" ]; then
+              commit=uncommitted
+              dirty=true
+            elif [ -n "$(git -C "$repo" status --porcelain -- "$rel" 2>/dev/null || true)" ]; then
+              dirty=true
+            fi
+            json="$json$sep\"$kind\":{\"commit\":\"$commit\",\"dirty\":$dirty}"
+            sep=","
+          done
+          printf '%s}\n' "$json" > "$dest/build.json"
+          rm -rf "$resources/schemas"
+          cp -R "$repo/schemas" "$resources/schemas"
+  JindeskKitTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [JindeskKitTests]
+    dependencies:
+      - target: JindeskKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mintae.JindeskKitTests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Jindesk:
+    build:
+      targets:
+        Jindesk: all
+        JindeskKitTests: [test]
+    test:
+      targets: [JindeskKitTests]

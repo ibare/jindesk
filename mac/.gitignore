@@ -1,0 +1,6 @@
+# xcodegen 이 만드는 프로젝트와 빌드 산출물
+*.xcodeproj/
+build/
+DerivedData/
+# release.sh 가 만드는 릴리즈 파일
+release/

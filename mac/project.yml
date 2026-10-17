@@ -37,6 +37,8 @@ targets:
     sources: [JindeskKit]
     dependencies:
       - package: Yams
+      # 색인과 검색 (캐시의 index.sqlite)
+      - sdk: libsqlite3.tbd
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mintae.JindeskKit

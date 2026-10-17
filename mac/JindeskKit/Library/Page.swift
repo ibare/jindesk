@@ -106,7 +106,7 @@ public struct PageUnit: Sendable, Equatable {
 }
 
 public struct Page: Sendable, Equatable {
-  public let concept: String
+  public var concept: String
   public var titleKo: String?
   public var nextID: Int
   public var units: [PageUnit]
@@ -179,7 +179,7 @@ public struct LayerText: Sendable, Equatable {
 }
 
 public struct Layers: Sendable, Equatable {
-  public let concept: String
+  public var concept: String
   // 단위 id → 한국어
   public var ko: [String: LayerText]
 

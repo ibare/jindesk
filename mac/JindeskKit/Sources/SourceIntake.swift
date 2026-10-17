@@ -136,6 +136,12 @@ public enum SourceIntake {
     for id in added where await context.queueFollowUp("자료 읽기", { try SourceReading.prepare(sourceID: id, $0) }) != nil {
       await context.log(.info, "자료 읽기를 대기열에 넣었습니다: \(id)")
     }
+    // 목차의 근거로 표시했으면 목차 만들기도 넣는다
+    if request.syllabusBasis, let subject = labels.subjectID,
+      await context.queueFollowUp("목차 만들기", { try SyllabusBuild.prepare(subject: subject, $0) }) != nil
+    {
+      await context.log(.info, "목차 만들기를 대기열에 넣었습니다")
+    }
   }
 
   // 자료 하나를 만든다. 돌려주는 값은 자료 id.

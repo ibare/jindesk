@@ -36,11 +36,11 @@ git 을 쓰지 않는다. 모든 산출물은 파일로 쓰고, 백업은 데이
     labels.yaml                 학생이 붙인 것: 꼬리표(학년, 과목, 수준), 메모, 목차의 근거 표시. 고칠 수 있다
   records/
     runs/<YYYY-MM>.jsonl        모든 작업의 실행 요약 (작업 id, 종류, 시작·끝, 결과, 사용량, 지침 판, 모델)
-    syllabus-build/<작업 id>/   근거 문서 목록, 결정, 검사 결과
+    syllabus-build/<작업 id>/   decisions.json(근거 문서, 목차 밖 개념을 옮긴 곳), report.md
     source-reading/<작업 id>/   request.md, report.md, report.first-pass.md, coverage.json
     concept-curation/<작업 id>/ plan.json, report.md, apply.json
     ask/<작업 id>/              question.json, answer.json, coverage.json
-    regen/<작업 id>/            request.json, base.json, candidate.json, checks.json, decision.json
+    regen/<작업 id>/            request.json, base.json, candidate.json, checks.json, figures/(그림 후보), decision.json(고치기)
     migration/<시작 버전>-<끝 버전>/  plan.json, checks.json
   library/
     entries/<과목 id>/<항목>/<slug>.md       원시 개념 엔트리. 영어 본문과 머리말 YAML. 고치지 않는다
@@ -52,15 +52,15 @@ git 을 쓰지 않는다. 모든 산출물은 파일로 쓰고, 백업은 데이
       history.jsonl             페이지 단위의 이전 판
       figures/<단위 id>-r<판>.html  그림 블록 코드. 판마다 파일 하나이고 고치지 않는다
     unplaced/<과목 id>/<slug>/  목차 밖 개념. concepts 와 같은 모양
-    links/<slug>.yaml           과목 사이 연결
     glossary.yaml               용어 어휘: 영어 용어 → 한국어
-    facets.yaml                 관점 어휘
-    references.yaml             레퍼런스 (관점 붙이기가 찾는다)
+    facets.yaml                 관점 어휘: 과목별 관련 개념과 NOS 값 (kind: facet-vocab)
+    references.yaml             레퍼런스 (관점 붙이기가 찾는다). 찾았는데 없으면 빈 목록으로 남아 다시 찾지 않는다
+    moves.jsonl                 옮긴 개념·엔트리·과목의 옛 id → 새 id. 덧붙이기만 한다. 코멘트와 요구가 이것으로 새 자리를 찾는다
     vendor/<호스트>/<경로>       그림 블록이 쓰는 바깥 라이브러리 사본. 그림을 만들 때 받는다. 질의가 있는 주소는 끝에 질의 해시를 붙인다
     vendor/index.jsonl          받은 주소, 파일, 형식(Content-Type), 해시, 받은 때. 덧붙이기만 한다
   learner/
     comments.jsonl              코멘트와 답글
-    directives.jsonl            요구
+    directives.jsonl            요구 (REGENERATION.md). 상태가 바뀌면 같은 id 의 줄을 더한다
     practice/<id>/              확인 문제와 푼 기록
 ```
 
@@ -70,7 +70,7 @@ git 을 쓰지 않는다. 모든 산출물은 파일로 쓰고, 백업은 데이
 
 **기록과 정리층.**
 - 기록: `records/`, `library/entries/`, `learner/*.jsonl`, `sources/`, `library/vendor/`. 고치지 않는다. 다만 자료의 `labels.yaml`은 학생이 꼬리표를 고치거나 합칠 때 다시 쓴다.
-- 정리층: `syllabus/`, `library/concepts/`, `library/unplaced/`, `links/`, `glossary.yaml`, `facets.yaml`, `references.yaml`. 작업이 다시 만든다.
+- 정리층: `syllabus/`, `library/concepts/`, `library/unplaced/`, `glossary.yaml`, `facets.yaml`, `references.yaml`. 작업이 다시 만든다. 선수 개념과 과목 사이 연결은 `concept.yaml`의 `prerequisites`, `links`에 둔다. 아직 없는 선수 개념은 `missing:<제목>`이다.
 - `history.jsonl`은 정리층 폴더 안에 있지만 덧붙이기만 한다.
 - `figures/`의 코드 파일도 정리층 폴더 안에 있지만 판마다 새로 쓰고 고치지 않는다.
 
@@ -264,7 +264,9 @@ item: "A.1"
 level: "SL+HL"
 occurrences:                     # 러너가 계산한다
   - { entry: "physics/a.1/projectile-motion--20260903-1412", source: "20260903-3fa2c1d0", pages: [10, 11, 12, 13, 14, 15] }
-prerequisites: ["sciences/speed-and-acceleration", "math/trigonometric-ratios"]
+prerequisites: ["sciences/unplaced/speed-and-acceleration", "missing:Trigonometric ratios"]
+links:
+  - { concept: "math-aa/ahl-5.12/first-principles", note: "Velocity is the derivative of position; the gradient of a tangent gives it." }
 symbols:
   - { symbol: "u", meaning: "initial speed", unit: "m s^-1" }
   - { symbol: "θ", meaning: "launch angle above the horizontal" }

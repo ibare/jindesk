@@ -1,12 +1,16 @@
 // 자료 읽기 (source-reading, JOBS.md). 자료 하나를 에이전트가 쪽 이미지 중심으로 읽고, 개념 엔트리(영어)와 자료 요약(한국어)을 쓴다.
-// 입력 고정 → 실행 → 러너 검사(틀리면 같은 세션으로 한 번 고쳐 쓰기) → 엔트리 반영과 기록 → 개념 정리를 뒤따라 넣는다.
-// 지금은 1차 한 번만 돈다. 2차와 학생 독자 시험은 다음에 붙인다.
+// 입력 고정 → 1차 → 2차(새 에이전트가 먼저 혼자 읽은 뒤 1차를 반박·보완) → 러너 검사(틀리면 2차 세션으로 한 번 고쳐 쓰기)
+// → 학생 독자 시험(실패한 엔트리는 한 번 고쳐 쓰고, 그래도 실패하면 넣지 않는다) → 엔트리 반영과 기록 → 개념 정리를 뒤따라 넣는다.
 import Foundation
 
 public enum SourceReading {
   static let prompt =
-    "input/request.md 의 자료를 지침대로 읽어라. 먼저 input/index.md 를 읽고, 쪽마다 input/pages/ 의 쪽 이미지(.png)를 본다. "
+    "input/request.md 의 자료를 지침대로 읽어라 (1차). 먼저 input/index.md 를 읽고, 쪽마다 input/pages/ 의 쪽 이미지(.png)를 본다. "
     + "out/source.json, out/entries/<slug>.json, out/report.md 를 쓴다."
+
+  static let secondPrompt =
+    "너는 2차 읽기다. 지침의 \"2차 절차\"대로 input/request.md 의 자료를 먼저 혼자 읽은 뒤, input/first-pass/ 의 1차 결과를 열어 반박·보완하라. "
+    + "최종 out/source.json, out/entries/<slug>.json, out/report.md 를 쓴다."
 
   public static func prepare(sourceID: String, _ ctx: PrepareContext) throws -> PreparedJob {
     let folder = SourceFolder(id: sourceID, in: ctx.data)
@@ -46,8 +50,13 @@ public enum SourceReading {
     try ctx.checkCancellation()
 
     await ctx.setPhase("running")
-    let options = AgentStep.options(ctx, dirs, instructions: instructionsFile, prompt: prompt, events: "read")
-    let result = try await AgentStep.run(options, ctx, label: "자료 읽기")
+    let first = AgentStep.options(ctx, dirs, instructions: instructionsFile, prompt: prompt, events: "read")
+    _ = try await AgentStep.run(first, ctx, label: "자료 읽기 1차")
+    let firstPass = try handOff(dirs)
+    await ctx.log(.info, "1차: 엔트리 \(firstPass.entries)개. 2차가 먼저 혼자 읽은 뒤 1차를 반박·보완합니다")
+
+    let options = AgentStep.options(ctx, dirs, instructions: instructionsFile, prompt: secondPrompt, events: "read2")
+    let result = try await AgentStep.run(options, ctx, label: "자료 읽기 2차")
 
     await ctx.setPhase("checking")
     let math = ctx.config.katex.flatMap(MathChecker.init(katex:))
@@ -61,14 +70,35 @@ public enum SourceReading {
       checked = check(out: dirs.out, meta: meta, math: math)
     }
     if !checked.problems.isEmpty { throw ToolError("자료 읽기 검사 실패: " + checked.problems.joined(separator: " · ")) }
+
+    // 학생 독자 시험: 엔트리 본문만으로 그 학년·수준의 학생이 이해하는가
+    let level = ReaderTest.level(labelsFile.labels)
+    let subjectName = labelsFile.labels.subject ?? subject
+    var readerFailed = await readerTest(checked.entries, level: level, subject: subjectName, ctx: ctx, scratch: dirs.run.appending(path: "reader-1"))
+    if !readerFailed.isEmpty {
+      await ctx.log(.warn, "학생 독자 시험에서 엔트리 \(readerFailed.count)개가 실패해 고쳐 쓰게 합니다")
+      await ctx.setPhase("fixing")
+      let problems = readerFailed.sorted { $0.key < $1.key }.flatMap { file, lines in lines.map { "out/entries/\(file): \($0)" } }
+      try await AgentStep.fix(options, session: result.sessionID, problems: problems, ctx: ctx, label: "자료 읽기", events: "read-reader-fix")
+      await ctx.setPhase("checking")
+      checked = check(out: dirs.out, meta: meta, math: math)
+      if !checked.problems.isEmpty { throw ToolError("자료 읽기 검사 실패: " + checked.problems.joined(separator: " · ")) }
+      let again = checked.entries.filter { readerFailed[$0.file] != nil }
+      readerFailed = await readerTest(again, level: level, subject: subjectName, ctx: ctx, scratch: dirs.run.appending(path: "reader-2"))
+      for (file, lines) in readerFailed {
+        checked.entries.removeAll { $0.file == file }
+        checked.rejected.append((file, lines))
+      }
+    }
     var warnings: [String] = []
     for (file, problems) in checked.rejected {
       warnings.append("엔트리 \(file) 를 넣지 않았습니다: \(problems.joined(separator: " · "))")
     }
 
     await ctx.setPhase("finalizing")
+    let events = ["read", "read2", "read-fix", "read-reader-fix"].map(dirs.events)
     let coverage = Coverage.make(
-      meta: meta, read: EventCoverage.readFiles([dirs.events("read"), dirs.events("read-fix")], workspace: dirs.workspace),
+      meta: meta, read: EventCoverage.readFiles(events, workspace: dirs.workspace).union(EventCoverage.readFiles(events, workspace: firstPass.workspace)),
       cited: Set(checked.entries.flatMap(\.pages)), skipped: checked.note?.skipped ?? [])
     if !coverage.unread.isEmpty { warnings.append("읽지 않은 쪽: \(coverage.unread.map(String.init).joined(separator: ", "))") }
     for w in warnings { await ctx.log(.warn, w) }
@@ -83,6 +113,9 @@ public enum SourceReading {
     let report = reportMarkdown(checked.report ?? "", entries: placed, coverage: coverage, warnings: warnings, note: checked.note, instructions: instructions, ctx: ctx)
     try FileOps.writeNew(report, to: record.appending(path: "report.md"))
     try FileOps.writeNew(JSONText.record(coverage.json(source: sourceID)), to: record.appending(path: "coverage.json"))
+    if let firstReport = FileOps.readIfExists(dirs.input.appending(path: "first-pass/report.md")) {
+      try FileOps.writeNew(firstReport, to: record.appending(path: "report.first-pass.md"))
+    }
 
     let unplaced = placed.filter { $0.item == nil }.count
     await ctx.report(
@@ -97,6 +130,40 @@ public enum SourceReading {
     if !placed.isEmpty, await ctx.queueFollowUp("개념 정리", { try ConceptCuration.prepare(subject: subject, $0) }) != nil {
       await ctx.log(.info, "개념 정리를 대기열에 넣었습니다")
     }
+  }
+
+  // 1차 결과를 2차의 입력(input/first-pass/)으로 넘기고, 1차의 out/ 과 작업 메모는 작업 공간 밖(pass1/)으로 옮긴다.
+  struct FirstPass {
+    let entries: Int
+    let workspace: URL
+  }
+
+  static func handOff(_ dirs: AgentDirs) throws -> FirstPass {
+    let pass1 = dirs.run.appending(path: "pass1")
+    FileOps.remove(pass1)
+    try FileOps.makeDirectory(pass1)
+    let firstInput = dirs.input.appending(path: "first-pass")
+    FileOps.remove(firstInput)
+    try FileOps.copy(dirs.out, to: firstInput)
+    try FileOps.move(dirs.out, to: pass1.appending(path: "out"))
+    try FileOps.move(dirs.work, to: pass1.appending(path: "work"))
+    try FileOps.makeDirectory(dirs.out)
+    try FileOps.makeDirectory(dirs.work)
+    let entries = FileOps.list(firstInput.appending(path: "entries")).filter { $0.hasSuffix(".json") }.count
+    return FirstPass(entries: entries, workspace: dirs.workspace)
+  }
+
+  // 엔트리마다 학생 독자 시험. 실패한 엔트리의 파일 이름 → 문제 줄
+  static func readerTest(_ entries: [Draft], level: String, subject: String, ctx: JobContext, scratch: URL) async -> [String: [String]] {
+    guard !entries.isEmpty else { return [:] }
+    let items = entries.map { ReaderTest.Item(key: $0.file, text: "# \($0.title)\n\n\($0.body)") }
+    let (verdicts, error) = await ReaderTest.check(items, level: level, subject: subject, config: ctx.config, scratch: scratch)
+    if let error {
+      await ctx.log(.warn, "학생 독자 시험을 하지 못했습니다: \(error)")
+      return [:]
+    }
+    for v in verdicts where !v.pass { await ctx.log(.warn, "학생 독자: \(v.key) — \(v.reason)") }
+    return ReaderTest.problems(verdicts)
   }
 
   // MARK: - 입력
@@ -182,7 +249,11 @@ public enum SourceReading {
 
     let entriesDir = out.appending(path: "entries")
     let files = FileOps.list(entriesDir).filter { $0.hasSuffix(".json") }.sorted()
-    if files.isEmpty && c.note?.assessment != true { c.problems.append("out/entries/ 에 엔트리가 없습니다") }
+    // 개념이 없는 자료(단원 계획서 같은 것)는 엔트리가 없어도 된다. 그때는 모든 쪽이 skipped_pages 에 까닭과 함께 있어야 한다.
+    let allSkipped = Set(1...max(meta.pages, 1)).isSubset(of: Set(c.note?.skipped ?? []))
+    if files.isEmpty && c.note?.assessment != true && !allSkipped {
+      c.problems.append("out/entries/ 에 엔트리가 없습니다. 개념이 없는 자료이면 모든 쪽을 out/source.json 의 skipped_pages 에 까닭과 함께 적는다")
+    }
     for file in files {
       switch AgentJSON.read(entriesDir.appending(path: file), label: "out/entries/\(file)") {
       case .failure(let p): c.rejected.append((file, [p.message]))

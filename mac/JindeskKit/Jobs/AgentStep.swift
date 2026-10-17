@@ -123,6 +123,10 @@ enum AgentJSON {
     (v?.arrayValue ?? []).compactMap { $0.numberValue.flatMap { $0.rounded() == $0 ? Int($0) : nil } }
   }
 
+  static func numbers(_ v: JSONValue?) -> [Double] {
+    (v?.arrayValue ?? []).compactMap(\.numberValue)
+  }
+
   static func symbols(_ v: JSONValue?) -> [SymbolDef] {
     (v?.arrayValue ?? []).compactMap { s in
       guard let symbol = string(s["symbol"]), let meaning = string(s["meaning"]) else { return nil }

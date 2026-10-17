@@ -204,6 +204,8 @@ public enum Translation {
   static func leftoverEnglish(_ ko: String) -> String? {
     var plain = TexText.strip(ko)
     plain = plain.replacingOccurrences(of: #"\([^()]*\)"#, with: " ", options: .regularExpression)
+    // 모두 대문자인 낱말(계산기 단추 이름, 약어)은 옮기지 않는 이름이라 세지 않는다
+    plain = plain.replacingOccurrences(of: #"\b[A-Z][A-Z0-9-]+\b"#, with: " ", options: .regularExpression)
     let regex = try! NSRegularExpression(pattern: #"(?:[A-Za-z][A-Za-z'’-]*[\s,]+){5,}[A-Za-z][A-Za-z'’-]*"#)
     guard let m = regex.firstMatch(in: plain, range: NSRange(plain.startIndex..., in: plain)), let r = Range(m.range, in: plain) else { return nil }
     return FileOps.prefix(String(plain[r]), 80)

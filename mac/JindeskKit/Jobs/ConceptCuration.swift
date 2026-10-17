@@ -45,6 +45,8 @@ public enum ConceptCuration {
     // k01 → 개념
     let concepts: [(key: String, concept: Concept)]
     let conceptHashes: [String: String]
+    // 다른 과목의 개념 (과목 사이 연결의 후보)
+    var others: [Concept] = []
   }
 
   static func run(subject: String, _ ctx: JobContext) async throws {
@@ -60,7 +62,8 @@ public enum ConceptCuration {
     let input = Input(
       subject: subject, entries: chosen.enumerated().map { (String(format: "e%02d", $0.offset + 1), $0.element) },
       concepts: concepts.enumerated().map { (String(format: "k%02d", $0.offset + 1), $0.element) },
-      conceptHashes: Dictionary(concepts.compactMap { c in ConceptStore.fileHash(ctx.data, id: c.cid).map { (c.id, $0) } }, uniquingKeysWith: { a, _ in a }))
+      conceptHashes: Dictionary(concepts.compactMap { c in ConceptStore.fileHash(ctx.data, id: c.cid).map { (c.id, $0) } }, uniquingKeysWith: { a, _ in a }),
+      others: ConceptStore.everything(ctx.data).filter { $0.subject != subject })
     let dirs = AgentDirs(ctx.folders, ctx.id)
     try dirs.make()
     let (instructions, instructionsFile) = try await AgentStep.fixInstructions(.conceptCuration, ctx, into: dirs.run)
@@ -83,8 +86,29 @@ public enum ConceptCuration {
       await ctx.setPhase("checking")
       checked = check(out: dirs.out, input: input, math: math)
     }
-    guard checked.problems.isEmpty, let plan = checked.plan else {
+    guard checked.problems.isEmpty, var plan = checked.plan else {
       throw ToolError("개념 정리 검사 실패: " + checked.problems.prefix(10).joined(separator: " · "))
+    }
+
+    // 학생 독자 시험: 새로 쓰거나 바뀐 단위만. 실패하면 한 번 고쳐 쓰게 하고, 그래도 실패하면 기록에 남긴다.
+    let labels = SourceLibrary.load(ctx.data).sources.first { $0.labels.labels.subjectID == subject }?.labels.labels
+    let level = ReaderTest.level(labels)
+    var readerWarnings: [String] = []
+    var failed = await readerTest(plan, input: input, level: level, subject: labels?.subject ?? subject, ctx: ctx, scratch: dirs.run.appending(path: "reader-1"))
+    if !failed.isEmpty {
+      await ctx.log(.warn, "학생 독자 시험에서 단위 \(failed.count)개가 실패해 고쳐 쓰게 합니다")
+      await ctx.setPhase("fixing")
+      let problems = failed.sorted { $0.key < $1.key }.flatMap { key, lines in lines.map { "\(key): \($0)" } }
+      try await AgentStep.fix(options, session: result.sessionID, problems: problems, ctx: ctx, label: "개념 정리", events: "curate-reader-fix")
+      await ctx.setPhase("checking")
+      checked = check(out: dirs.out, input: input, math: math)
+      guard checked.problems.isEmpty, let fixed = checked.plan else {
+        throw ToolError("개념 정리 검사 실패: " + checked.problems.prefix(10).joined(separator: " · "))
+      }
+      plan = fixed
+      failed = await readerTest(plan, input: input, level: level, subject: labels?.subject ?? subject, ctx: ctx, scratch: dirs.run.appending(path: "reader-2"))
+      readerWarnings = failed.sorted { $0.key < $1.key }.map { "학생 독자 시험 실패: \($0.key) — \($0.value.first ?? "")" }
+      for w in readerWarnings { await ctx.log(.warn, w) }
     }
 
     await ctx.setPhase("finalizing")
@@ -103,10 +127,11 @@ public enum ConceptCuration {
     try FileOps.writeNew(FrontMatter.render(head) + "\n" + report.trimmingCharacters(in: .whitespacesAndNewlines) + "\n", to: record.appending(path: "report.md"))
 
     let created = plan.concepts.filter { $0.existing == nil }.count
-    await ctx.report(counts: [
-      JobCount(key: "entries", label: "엔트리", count: chosen.count), JobCount(key: "created", label: "새 개념", count: created),
-      JobCount(key: "updated", label: "보강", count: plan.concepts.count - created), JobCount(key: "held", label: "보류", count: plan.held.count),
-    ])
+    await ctx.report(
+      counts: [
+        JobCount(key: "entries", label: "엔트리", count: chosen.count), JobCount(key: "created", label: "새 개념", count: created),
+        JobCount(key: "updated", label: "보강", count: plan.concepts.count - created), JobCount(key: "held", label: "보류", count: plan.held.count),
+      ], warnings: readerWarnings.isEmpty ? nil : readerWarnings)
     for c in written { await ctx.log(.info, "개념: \(c.id) (단위 \(c.units.count)개)") }
     for h in plan.held { await ctx.log(.info, "보류: \(h.entry) — \(h.reason)") }
 
@@ -116,6 +141,26 @@ public enum ConceptCuration {
     if all.count > chosen.count, await ctx.queueFollowUp("개념 정리", { try prepare(subject: subject, $0) }) != nil {
       await ctx.log(.info, "남은 엔트리 \(all.count - chosen.count)개의 개념 정리를 대기열에 넣었습니다")
     }
+  }
+
+  // 새로 쓰거나 바뀐 단위의 학생 독자 시험. 실패한 단위 → 문제 줄. 키는 "concepts[i].units[j]".
+  static func readerTest(_ plan: Plan, input: Input, level: String, subject: String, ctx: JobContext, scratch: URL) async -> [String: [String]] {
+    let conceptByKey = Dictionary(input.concepts.map { ($0.key, $0.concept) }, uniquingKeysWith: { a, _ in a })
+    var items: [ReaderTest.Item] = []
+    for (i, p) in plan.concepts.enumerated() {
+      let old = p.existing.flatMap { conceptByKey[$0] }
+      for (j, u) in p.units.enumerated() {
+        if let id = u.id, old?.units.first(where: { $0.id == id })?.text == u.text { continue }
+        items.append(ReaderTest.Item(key: "concepts[\(i)].units[\(j)]", text: "(\(p.title))\n\n\(u.text)"))
+      }
+    }
+    guard !items.isEmpty else { return [:] }
+    let (verdicts, error) = await ReaderTest.check(items, level: level, subject: subject, config: ctx.config, scratch: scratch)
+    if let error {
+      await ctx.log(.warn, "학생 독자 시험을 하지 못했습니다: \(error)")
+      return [:]
+    }
+    return ReaderTest.problems(verdicts)
   }
 
   // MARK: - 입력
@@ -143,6 +188,9 @@ public enum ConceptCuration {
       request.append("| \(key) | \(c.title) | \(c.item ?? c.itemProposed ?? "") | \(c.units.count) |")
       try FileOps.write(YAML.stringify(c.yaml), to: dirs.input.appending(path: "concepts/\(key).yaml"))
     }
+    request += ["", "## 다른 과목의 개념 (과목 사이 연결에 쓴다)", ""]
+    if input.others.isEmpty { request.append("아직 없다.") }
+    for c in input.others { request.append("- `\(c.id)` \(c.title)") }
     try FileOps.write(request.joined(separator: "\n") + "\n", to: dirs.input.appending(path: "request.md"))
     if FileOps.exists(data.syllabusFile(input.subject)) { try FileOps.copy(data.syllabusFile(input.subject), to: dirs.input.appending(path: "syllabus.yaml")) }
     try AgentStep.writeGlossary(data, into: dirs.input)
@@ -167,6 +215,9 @@ public enum ConceptCuration {
     let symbols: [SymbolDef]
     let units: [PlannedUnit]
     let removed: [(id: String, reason: String)]
+    // 키(k01), 개념 id, "new:<slug>", "missing:<제목>"
+    var prerequisites: [String] = []
+    var links: [ConceptLink] = []
   }
 
   struct Plan: Sendable {
@@ -292,6 +343,18 @@ public enum ConceptCuration {
       }
       let symbols = AgentJSON.symbols(raw["symbols"])
       let item = AgentJSON.string(raw["item"])
+      let prerequisites = AgentJSON.strings(raw["prerequisites"])
+      for p in prerequisites {
+        let known = conceptByKey[p] != nil || p.hasPrefix("new:") || p.hasPrefix("missing:") || ConceptID(p) != nil
+        if !known { problems.append("\(at).prerequisites: \(p) 는 개념 키(k01), 개념 id, \"new:<slug>\", \"missing:<제목>\" 가운데 하나다") }
+      }
+      var links: [ConceptLink] = []
+      for l in raw["links"]?.arrayValue ?? [] {
+        guard let target = AgentJSON.string(l["concept"]), let note = AgentJSON.string(l["note"]) else { continue }
+        if !input.others.contains(where: { $0.id == target }) { problems.append("\(at).links: 다른 과목의 개념 목록에 없는 id 입니다 (\(target))") }
+        problems += TextChecks.englishProblems(note, field: "\(at).links.note")
+        links.append(ConceptLink(concept: target, note: note))
+      }
       if let title { problems += TextChecks.englishProblems(title, field: "\(at).title") }
       if let item { problems += TextChecks.englishProblems(item, field: "\(at).item") }
       for s in symbols { problems += TextChecks.englishProblems(s.meaning, field: "\(at).symbols \(s.symbol)") }
@@ -300,7 +363,7 @@ public enum ConceptCuration {
         concepts.append(
           PlannedConcept(
             existing: existing == nil ? nil : existingKey, slug: slug, title: title, item: item, entries: entries, symbols: symbols, units: units,
-            removed: removed))
+            removed: removed, prerequisites: prerequisites, links: links))
       }
     }
 
@@ -370,6 +433,16 @@ public enum ConceptCuration {
       if !p.symbols.isEmpty { concept.symbols = p.symbols }
       concept.provenance = provenance
       out.append(concept)
+    }
+    // 선수 개념: 키와 새 개념의 slug 를 id 로 바꾼다
+    let slugToID = Dictionary(zip(plan.concepts, out).map { ($0.slug, $1.id) }, uniquingKeysWith: { a, _ in a })
+    for (i, p) in zip(out.indices, plan.concepts) {
+      out[i].prerequisites = p.prerequisites.compactMap { ref -> String? in
+        if let c = conceptByKey[ref] { return c.id }
+        if ref.hasPrefix("new:") { return slugToID[String(ref.dropFirst(4))] }
+        return ref
+      }.filter { $0 != out[i].id }
+      out[i].links = p.links
     }
     occurrences(&out, plan: plan, input: input, data: data)
     for c in out { try c.write(data) }

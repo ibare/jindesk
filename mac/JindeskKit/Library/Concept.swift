@@ -77,14 +77,35 @@ public struct Occurrence: Sendable, Equatable {
   }
 }
 
+// 과목 사이 연결: 다른 과목의 개념과 그 관계 한 문장 (영어)
+public struct ConceptLink: Sendable, Equatable {
+  public let concept: String
+  public let note: String
+
+  public init(concept: String, note: String) {
+    self.concept = concept
+    self.note = note
+  }
+
+  var yaml: YAMLValue { .map(["concept": .string(concept), "note": .string(note)]) }
+
+  init?(yaml: YAMLValue) {
+    guard let c = yaml["concept"]?.string, let n = yaml["note"]?.string else { return nil }
+    self.init(concept: c, note: n)
+  }
+}
+
 public struct Concept: Sendable, Equatable, Identifiable {
-  public let cid: ConceptID
+  public var cid: ConceptID
   public var title: String
   // 목차 밖 개념의 단원·주제 제안 (목록에서 묶어 보인다)
   public var itemProposed: String?
   public var level: String?
   public var occurrences: [Occurrence]
   public var symbols: [SymbolDef]
+  // 먼저 알아야 할 개념의 id. 아직 없는 개념은 "missing:<제목>"
+  public var prerequisites: [String] = []
+  public var links: [ConceptLink] = []
   public var nextID: Int
   public var units: [ConceptUnit]
   public var provenance: YAMLMap
@@ -129,6 +150,8 @@ public struct Concept: Sendable, Equatable, Identifiable {
       "level": level.map(YAMLValue.string) ?? .null,
       "occurrences": .array(occurrences.map(\.yaml)),
       "symbols": .array(symbols.map(\.yaml)),
+      "prerequisites": .array(prerequisites.map(YAMLValue.string)),
+      "links": .array(links.map(\.yaml)),
       "next_id": .int(nextID),
       "units": .array(units.map(\.yaml)),
       "provenance": .map(provenance),
@@ -140,11 +163,14 @@ public struct Concept: Sendable, Equatable, Identifiable {
     guard v["kind"]?.string == "concept", let idText = v["id"]?.string, let cid = ConceptID(idText), let title = v["title"]?.string else {
       throw ToolError("\(url.path) 의 모양이 맞지 않습니다")
     }
-    return Concept(
+    var c = Concept(
       cid: cid, title: title, itemProposed: v["item_proposed"]?.string, level: v["level"]?.string,
       occurrences: (v["occurrences"]?.array ?? []).compactMap(Occurrence.init(yaml:)),
       symbols: (v["symbols"]?.array ?? []).compactMap(SymbolDef.init(yaml:)), nextID: v["next_id"]?.int ?? 1,
       units: (v["units"]?.array ?? []).compactMap(ConceptUnit.init(yaml:)), provenance: v["provenance"]?.map ?? YAMLMap([]))
+    c.prerequisites = v["prerequisites"]?.strings ?? []
+    c.links = (v["links"]?.array ?? []).compactMap(ConceptLink.init(yaml:))
+    return c
   }
 
   public func write(_ data: DataFolder) throws {
@@ -171,6 +197,11 @@ public enum ConceptStore {
 
   public static func load(_ data: DataFolder, id: ConceptID) -> Concept? {
     try? Concept.read(ConceptFolder(id, in: data).concept)
+  }
+
+  // 모든 과목의 개념
+  public static func everything(_ data: DataFolder) -> [Concept] {
+    subjects(data).flatMap { all(data, subject: $0) }
   }
 
   // 개념이 있는 과목 id

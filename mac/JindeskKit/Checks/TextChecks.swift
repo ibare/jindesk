@@ -93,6 +93,30 @@ public enum TexText {
     return out + rest
   }
 
+  // TeX 밖에 글자로 쓴 수식 (7^(-1), log_7, sqrt(8)). 학습 페이지의 글에서는 \( \) 안에 TeX 로 써야 그려진다.
+  public static func asciiMath(_ s: String, field: String) -> [String] {
+    let plain = strip(s).replacingOccurrences(of: #"`[^`]*`"#, with: " ", options: .regularExpression)
+    let pattern = #"[A-Za-z0-9)\]]\^[-+({A-Za-z0-9]|\blog_[A-Za-z0-9({]|\bsqrt\("#
+    guard let r = plain.range(of: pattern, options: .regularExpression) else { return [] }
+    let from = plain.index(r.lowerBound, offsetBy: -12, limitedBy: plain.startIndex) ?? plain.startIndex
+    let to = plain.index(r.upperBound, offsetBy: 12, limitedBy: plain.endIndex) ?? plain.endIndex
+    return ["\(field): 수식을 TeX 밖에 글자로 썼습니다 (…\(plain[from..<to])…). 수식은 \\( \\) 안에 TeX 로 쓴다"]
+  }
+
+  // 목록과 찾기 결과에 보일 글: 수식 구분자와 마크다운 표시를 걷고 흔한 TeX 명령을 읽을 수 있게 바꾼다
+  public static func plain(_ s: String) -> String {
+    var t = s
+    for (a, b) in [(#"\\\(|\\\)|\\\[|\\\]"#, ""), (#"\\(?:dfrac|tfrac|frac)\{([^{}]*)\}\{([^{}]*)\}"#, "$1/$2"),
+      (#"\\(?:left|right|displaystyle)\b"#, ""), (#"\\(?:,|;|!|quad\b|qquad\b)"#, " "), (#"\\times\b"#, "×"), (#"\\cdot\b"#, "·"),
+      (#"\\div\b"#, "÷"), (#"\\approx\b"#, "≈"), (#"\\(?:neq|ne)\b"#, "≠"), (#"\\(?:leq|le)\b"#, "≤"), (#"\\(?:geq|ge)\b"#, "≥"),
+      (#"\\pm\b"#, "±"), (#"\\infty\b"#, "∞"), (#"\\sqrt\b"#, "√"), (#"\\text\{([^{}]*)\}"#, "$1"), (#"\\([A-Za-z]+)"#, "$1"),
+      (#"[{}]"#, ""), (#"\*\*|__|`"#, ""), (#"\s+"#, " ")]
+    {
+      t = t.replacingOccurrences(of: a, with: b, options: .regularExpression)
+    }
+    return t.trimmingCharacters(in: .whitespaces)
+  }
+
   // 수식 밖의 숫자 (번역 대조용). 1,000 과 1000 은 같게 본다.
   public static func numbers(_ s: String) -> [String] {
     let plain = strip(s)

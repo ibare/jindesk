@@ -53,6 +53,8 @@ public struct JobSnapshot: Sendable, Codable, Equatable, Identifiable {
   public var usageEnd: UsageReading?
   // 함께 돈 작업의 id
   public var companions: [String]?
+  // 작업을 넣은 데이터 폴더 (실제 경로). 작업 화면과 중단 정리는 지금 폴더의 작업만 본다.
+  public var dataFolder: String?
 
   public struct PhaseMark: Sendable, Codable, Equatable {
     public let phase: String

@@ -1,7 +1,7 @@
 import JindeskKit
 import SwiftUI
 
-// 메인 창: 사이드바(오늘, 과목, 모아 보기, 작업)와 그 내용
+// 메인 창: 세 칸이다. 사이드바(오늘, 과목, 모아 보기, 작업) · 목록 · 내용(학습 페이지, 자료, 작업 기록)
 struct MainView: View {
   @Environment(AppModel.self) private var model
 
@@ -15,35 +15,80 @@ struct MainView: View {
       }
       .navigationSplitViewColumnWidth(min: 180, ideal: 200)
       .safeAreaInset(edge: .bottom) { StatusFooter().padding(10) }
+    } content: {
+      Group {
+        if !model.searchText.trimmingCharacters(in: .whitespaces).isEmpty {
+          SearchResultsView()
+        } else {
+          listColumn
+        }
+      }
+      .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 460)
+      // 툴바 항목은 열마다 따로 건다. 목록 칸에 항목이 하나라도 있어야 SwiftUI 가 목록|내용 경계에서 툴바 칸을 나눠,
+      // 내용 칸 가운데의 진행 표시가 열 경계선 위에 걸치지 않는다 (Assayer 와 같다).
+      .toolbar { ToolbarSpacer(.flexible) }
     } detail: {
-      if !model.searchText.trimmingCharacters(in: .whitespaces).isEmpty {
-        SearchResultsView()
-      } else {
-        sectionView
+      Group {
+        if model.section == .jobs && model.searchText.trimmingCharacters(in: .whitespaces).isEmpty {
+          JobDetail(id: model.selectedJob)
+        } else {
+          SelectionDetail()
+        }
+      }
+      .toolbar {
+        // 진행 표시는 Xcode 의 활동 표시처럼 내용 칸 가운데에 단추 테두리 없이 둔다
+        ToolbarItem(placement: .principal) { ActivityStatus() }
+          .sharedBackgroundVisibility(.hidden)
+        // 진행 표시가 비어 있을 때도 자료 넣기 단추가 오른쪽 끝에 남게 한다
+        ToolbarSpacer(.flexible)
+        ToolbarItem(placement: .primaryAction) {
+          Button("자료 넣기", systemImage: "tray.and.arrow.down") { model.showIntake = true }
+            .help("그날 받은 자료를 넣습니다")
+        }
       }
     }
     .searchable(text: $model.searchText, placement: .sidebar, prompt: "개념 찾기 (영어·한국어)")
-    .toolbar {
-      ToolbarItem(placement: .primaryAction) {
-        Button("자료 넣기", systemImage: "tray.and.arrow.down") { model.showIntake = true }
-          .help("그날 받은 자료를 넣습니다")
-      }
-    }
     .sheet(isPresented: $model.showIntake) { IntakeSheet() }
+    .sheet(item: $model.peek) { SourcePeekSheet(peek: $0) }
+    .sheet(item: $model.regenTarget) { RegenSheet(target: $0) }
   }
 
   @ViewBuilder
-  private var sectionView: some View {
-      switch model.section {
-      case .jobs:
-        JobsView()
-      case .today:
-        TodayView()
-      case .subjects:
-        SubjectsView()
-      case .collections:
-        CollectionsView()
+  private var listColumn: some View {
+    switch model.section {
+    case .jobs:
+      JobsView()
+    case .today:
+      TodayView()
+    case .subjects:
+      SubjectsView()
+    case .collections:
+      CollectionsView()
+    }
+  }
+}
+
+// 내용 칸: 고른 개념의 학습 페이지나 자료의 쪽 (오늘, 과목, 모아 보기, 찾기가 같이 쓴다)
+struct SelectionDetail: View {
+  @Environment(AppModel.self) private var model
+
+  var body: some View {
+    switch model.selection {
+    case .concept(let id)?:
+      if let concept = model.concept(id) {
+        ConceptPageView(concept: concept)
+      } else {
+        ContentUnavailableView("개념을 찾지 못했어요", systemImage: "questionmark.folder")
       }
+    case .source(let id)?:
+      if let source = model.library.source(id) {
+        SourceViewer(source: source).id(source.id)
+      } else {
+        ContentUnavailableView("자료를 찾지 못했어요", systemImage: "questionmark.folder")
+      }
+    case nil:
+      ContentUnavailableView("개념이나 자료를 고르세요", systemImage: "doc.text.magnifyingglass")
+    }
   }
 }
 
@@ -58,9 +103,7 @@ struct SearchResultsView: View {
     } else {
       List(hits) { hit in
         Button {
-          model.section = .subjects
           model.selection = .concept(hit.concept)
-          model.searchText = ""
         } label: {
           VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {

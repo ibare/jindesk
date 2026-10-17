@@ -293,15 +293,28 @@ final class Gates: @unchecked Sendable {
   @Test func 앱이_끝나_진행_중으로_남은_작업을_중단됨으로_고친다() throws {
     let t = TempPlace()
     try t.data.initialize(app: testApp)
-    try FileOps.write(
-      #"{"id":"20261016-1000-h","type":"source-reading","typeLabel":"자료 읽기","title":"x","phase":"running","phaseLabel":"실행","queuedAt":"q","logs":[]}"#,
-      to: t.folders.workDir("20261016-1000-h").appending(path: "run.json"))
-    try FileOps.write(
-      #"{"id":"20261016-1000-i","type":"source-reading","typeLabel":"자료 읽기","title":"x","phase":"done","phaseLabel":"완료","queuedAt":"q","logs":[]}"#,
-      to: t.folders.workDir("20261016-1000-i").appending(path: "run.json"))
+    func run(_ id: String, _ phase: String, data: String?) throws {
+      let folder = data.map { #","dataFolder":"\#($0)""# } ?? ""
+      try FileOps.write(
+        #"{"id":"\#(id)","type":"source-reading","typeLabel":"자료 읽기","title":"x","phase":"\#(phase)","phaseLabel":"실행","queuedAt":"q","logs":[]\#(folder)}"#,
+        to: t.folders.workDir(id).appending(path: "run.json"))
+    }
+    try run("20261016-1000-h", "running", data: t.data.url.path)
+    try run("20261016-1000-i", "done", data: t.data.url.path)
+    // 다른 데이터 폴더(명령줄의 --data)에서 돌다 멈춘 작업과 그 폴더의 끝난 작업
+    try run("20261016-1000-j", "running", data: "/somewhere/else")
+    try run("20261016-1000-k", "done", data: "/somewhere/else")
     #expect(JobManager.markInterrupted(data: t.data, folders: t.folders) == ["20261016-1000-h"])
     #expect(RunHistory.load(t.folders, id: "20261016-1000-h")?.snapshot.phase == "interrupted")
+    #expect(RunHistory.load(t.folders, id: "20261016-1000-j")?.snapshot.phase == "running")
     #expect(try JSONLines.read(t.data.runsLog()).values.first?["result"] == .string("interrupted"))
+    // 작업 화면의 최근 작업은 이 데이터 폴더의 것만
+    #expect(RunHistory.load(t.folders, data: t.data).map(\.snapshot.id) == ["20261016-1000-i", "20261016-1000-h"])
+    // 데이터 폴더를 적기 전의 기록은 이 폴더의 실행 요약에 있을 때만
+    try run("20261016-0900-old", "done", data: nil)
+    #expect(!RunHistory.load(t.folders, data: t.data).contains { $0.snapshot.id == "20261016-0900-old" })
+    try FileOps.appendLine(#"{"v":1,"id":"20261016-0900-old","result":"done"}"#, to: t.data.runsLog())
+    #expect(RunHistory.load(t.folders, data: t.data).contains { $0.snapshot.id == "20261016-0900-old" })
   }
 }
 

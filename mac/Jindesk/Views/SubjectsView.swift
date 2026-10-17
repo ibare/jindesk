@@ -17,50 +17,27 @@ struct SubjectsView: View {
         Button("자료 넣기…") { model.showIntake = true }
       }
     } else {
-      HSplitView {
-        VStack(spacing: 0) {
-          if !model.waitingWork.isEmpty { PendingBanner() }
-          List(selection: $model.selection) {
-            ForEach(library.subjects) { subject in
-              Section {
-                ConceptRows(subject: subject.id)
-                DisclosureGroup("자료 \(subject.sources.count)개") {
-                  ForEach(subject.sources) { SourceRow(source: $0).tag(SubjectSelection.source($0.id)) }
-                }
-              } header: {
-                SubjectHeader(subject: subject)
+      // 목록 칸. 고른 개념·자료는 내용 칸(SelectionDetail)에 보인다.
+      VStack(spacing: 0) {
+        if !model.waitingWork.isEmpty { PendingBanner() }
+        List(selection: $model.selection) {
+          ForEach(library.subjects) { subject in
+            Section {
+              ConceptRows(subject: subject.id)
+              DisclosureGroup("자료 \(subject.sources.count)개") {
+                ForEach(subject.sources) { SourceRow(source: $0).tag(SubjectSelection.source($0.id)) }
               }
+            } header: {
+              SubjectHeader(subject: subject)
             }
-            if !library.unlabeled.isEmpty {
-              Section("과목 꼬리표가 없는 자료") {
-                ForEach(library.unlabeled) { SourceRow(source: $0).tag(SubjectSelection.source($0.id)) }
-              }
+          }
+          if !library.unlabeled.isEmpty {
+            Section("과목 꼬리표가 없는 자료") {
+              ForEach(library.unlabeled) { SourceRow(source: $0).tag(SubjectSelection.source($0.id)) }
             }
           }
         }
-        .frame(minWidth: 280, idealWidth: 320, maxWidth: 420)
-        Group {
-          switch model.selection {
-          case .concept(let id)?:
-            if let concept = model.concept(id) {
-              ConceptPageView(concept: concept)
-            } else {
-              ContentUnavailableView("개념을 찾지 못했어요", systemImage: "questionmark.folder")
-            }
-          case .source(let id)?:
-            if let source = library.source(id) {
-              SourceViewer(source: source).id(source.id)
-            } else {
-              ContentUnavailableView("자료를 찾지 못했어요", systemImage: "questionmark.folder")
-            }
-          case nil:
-            ContentUnavailableView("개념이나 자료를 고르세요", systemImage: "doc.text.magnifyingglass")
-          }
-        }
-        .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
       }
-      .sheet(item: $model.peek) { SourcePeekSheet(peek: $0) }
-      .sheet(item: $model.regenTarget) { RegenSheet(target: $0) }
     }
   }
 }

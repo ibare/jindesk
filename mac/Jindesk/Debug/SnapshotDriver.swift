@@ -38,8 +38,11 @@
         },
         Scenario(name: "jobs") { m in
           m.phase = .ready
+          fakeUsage(m)
           await startFakeJobs(m)
           m.section = .jobs
+          m.selectedJob = m.jobs?.active.first?.id
+          try? await Task.sleep(for: .seconds(2))
         },
         Scenario(name: "jobs-dark", dark: true) { m in
           m.phase = .ready
@@ -215,6 +218,16 @@
         guard window.identifier?.rawValue.hasPrefix("admin") != true else { continue }
         window.setFrame(NSRect(x: -6000, y: 200, width: 1200, height: 760), display: true)
       }
+    }
+
+    // 상태 막대의 사용량을 보려고 지어낸 사용량 (5시간 42%, 주간 69%)
+    static func fakeUsage(_ model: AppModel) {
+      let now = Date().timeIntervalSince1970
+      let reading = UsageReading(
+        fiveHour: UsageWindow(utilization: 0.42, resetsAt: now + 3 * 3600), sevenDay: UsageWindow(utilization: 0.69, resetsAt: now + 3 * 86400),
+        at: Clock.isoLocal())
+      if let data = try? JSONEncoder().encode(reading) { try? FileOps.write(data, to: model.folders.usageFile) }
+      model.jobs?.reloadUsage()
     }
 
     // 작업 화면을 보려고 에이전트 없이 기록만 남기는 가짜 작업: 둘이 돌고 하나가 기다린다

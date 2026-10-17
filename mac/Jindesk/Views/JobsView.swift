@@ -1,36 +1,31 @@
 import JindeskKit
 import SwiftUI
 
-// 작업 화면: 진행 중, 대기열, 최근에 끝난 작업
+// 작업 화면의 목록 칸: 진행 중, 대기열, 최근에 끝난 작업. 고른 작업의 기록은 내용 칸(JobDetail)에 보인다.
 struct JobsView: View {
   @Environment(AppModel.self) private var model
-  @State private var selected: String?
 
   var body: some View {
+    @Bindable var model = model
     let jobs = model.jobs
     let active = jobs?.active ?? []
     let queue = jobs?.queue ?? []
     let recent = model.history.map(\.snapshot).filter { s in !active.contains { $0.id == s.id } }
-    HSplitView {
-      List(selection: $selected) {
-        Section("진행 중") {
-          if active.isEmpty { Text("쉬는 중").foregroundStyle(.secondary) }
-          ForEach(active) { JobRow(snapshot: $0).tag($0.id) }
-        }
-        Section("대기열") {
-          if queue.isEmpty { Text("비어 있습니다").foregroundStyle(.secondary) }
-          ForEach(queue) { s in
-            JobRow(snapshot: s, reason: jobs?.blocker(s.id).map(BlockerText.short)).tag(s.id)
-          }
-        }
-        Section("최근") {
-          if recent.isEmpty { Text("아직 끝난 작업이 없습니다").foregroundStyle(.secondary) }
-          ForEach(recent.prefix(30)) { JobRow(snapshot: $0).tag($0.id) }
+    List(selection: $model.selectedJob) {
+      Section("진행 중") {
+        if active.isEmpty { Text("쉬는 중").foregroundStyle(.secondary) }
+        ForEach(active) { JobRow(snapshot: $0).tag($0.id) }
+      }
+      Section("대기열") {
+        if queue.isEmpty { Text("비어 있습니다").foregroundStyle(.secondary) }
+        ForEach(queue) { s in
+          JobRow(snapshot: s, reason: jobs?.blocker(s.id).map(BlockerText.short)).tag(s.id)
         }
       }
-      .frame(minWidth: 320)
-      JobDetail(id: selected)
-        .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+      Section("최근") {
+        if recent.isEmpty { Text("아직 끝난 작업이 없습니다").foregroundStyle(.secondary) }
+        ForEach(recent.prefix(30)) { JobRow(snapshot: $0).tag($0.id) }
+      }
     }
   }
 }
@@ -44,12 +39,29 @@ struct JobRow: View {
       HStack {
         Text(snapshot.typeLabel).font(.callout.weight(.medium))
         Spacer()
-        Text(snapshot.phaseLabel).font(.caption).foregroundStyle(color)
+        if snapshot.isActive {
+          // 도는 작업: 단계, 지난 시간, 턴 수
+          TimelineView(.periodic(from: .now, by: 1)) { ctx in
+            Text(activeLine(now: ctx.date)).font(.caption).foregroundStyle(color).monospacedDigit()
+          }
+        } else {
+          Text(snapshot.phaseLabel).font(.caption).foregroundStyle(color)
+        }
+      }
+      if snapshot.isActive, let kind = snapshot.kind {
+        PhaseBar(kind: kind, phase: snapshot.phase, pulse: false).padding(.vertical, 2)
       }
       Text(snapshot.title).font(.caption).foregroundStyle(.secondary).lineLimit(1)
       if let reason { Text(reason).font(.caption2).foregroundStyle(.tertiary) }
     }
     .padding(.vertical, 2)
+  }
+
+  private func activeLine(now: Date) -> String {
+    var parts = [snapshot.phaseLabel]
+    if let start = snapshot.startedAt.flatMap(Clock.parse) { parts.append(ActivityFormat.clock(now.timeIntervalSince(start))) }
+    if let t = snapshot.shownTurns, t > 0 { parts.append("\(t)턴") }
+    return parts.joined(separator: " · ")
   }
 
   private var color: Color {

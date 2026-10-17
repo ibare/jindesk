@@ -170,7 +170,7 @@ public final class JobManager {
       }
       let snapshot = JobSnapshot(
         id: job.id, type: job.kind.rawValue, typeLabel: job.kind.label, title: job.title, target: job.target, phase: "queued", phaseLabel: "대기",
-        queuedAt: Clock.isoLocal())
+        queuedAt: Clock.isoLocal(), dataFolder: data.url.path)
       pending.append(Pending(snapshot: snapshot, job: job, config: config))
       out.append(job.id)
     }
@@ -504,8 +504,9 @@ public final class JobManager {
     defer { lock.release() }
     for id in FileOps.list(folders.work) where JobID.isValid(id) {
       let file = folders.workDir(id).appending(path: "run.json")
+      // 다른 데이터 폴더(명령줄의 --data)의 작업은 건드리지 않는다
       guard let content = try? Data(contentsOf: file), var record = try? JSONDecoder().decode(RunRecord.self, from: content),
-        record.snapshot.isActive
+        record.snapshot.isActive, record.snapshot.dataFolder == data.url.path
       else { continue }
       record.snapshot.phase = "interrupted"
       record.snapshot.phaseLabel = "중단됨"
@@ -573,11 +574,30 @@ struct ManagerSink: JobSink {
 }
 
 // 지난 실행 (앱 지원 폴더의 work/<id>/run.json). 작업 화면의 "최근 작업" 목록에 쓴다.
+// 앱 지원 폴더는 데이터 폴더마다 따로가 아니다. 이 데이터 폴더에서 넣은 작업만 고른다.
 public enum RunHistory {
-  public static func load(_ folders: AppFolders, limit: Int = 50) -> [RunRecord] {
-    FileOps.list(folders.work).filter(JobID.isValid).sorted(by: >).prefix(limit).compactMap { id in
-      load(folders, id: id)
+  public static func load(_ folders: AppFolders, data: DataFolder, limit: Int = 50) -> [RunRecord] {
+    let path = data.url.path
+    let logged = loggedIDs(data)
+    var out: [RunRecord] = []
+    for id in FileOps.list(folders.work).filter(JobID.isValid).sorted(by: >) {
+      guard out.count < limit, let r = load(folders, id: id) else { continue }
+      // 데이터 폴더를 적기 전의 기록은 이 폴더의 실행 요약에 있는지로 가린다
+      if r.snapshot.dataFolder.map({ $0 == path }) ?? logged.contains(id) { out.append(r) }
     }
+    return out
+  }
+
+  // 데이터 폴더의 records/runs/*.jsonl 에 있는 작업 id
+  static func loggedIDs(_ data: DataFolder) -> Set<String> {
+    var ids = Set<String>()
+    let dir = data.records.appending(path: "runs")
+    for name in FileOps.list(dir) where name.hasSuffix(".jsonl") {
+      for v in (try? JSONLines.read(dir.appending(path: name)).values) ?? [] {
+        if let id = v["id"]?.stringValue { ids.insert(id) }
+      }
+    }
+    return ids
   }
 
   public static func load(_ folders: AppFolders, id: String) -> RunRecord? {

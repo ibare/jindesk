@@ -93,7 +93,6 @@ struct CollectionsView: View {
         case .sources:
           ForEach(model.library.sources) { s in
             Button {
-              model.section = .subjects
               model.selection = .source(s.id)
             } label: {
               SourceRow(source: s).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
@@ -126,8 +125,8 @@ struct OpenConceptRow: View {
 
   var body: some View {
     Button {
+      // 내용 칸에 연다. 지금 화면(오늘, 모아 보기)에 머문다.
       guard model.concept(concept) != nil else { return }
-      model.section = .subjects
       model.selection = .concept(concept)
     } label: {
       VStack(alignment: .leading, spacing: 2) {
@@ -149,7 +148,6 @@ struct OpenConceptButton: View {
 
   var body: some View {
     Button {
-      model.section = .subjects
       model.selection = .concept(concept)
     } label: {
       VStack(alignment: .leading, spacing: 0) {

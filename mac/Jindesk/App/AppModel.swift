@@ -79,6 +79,8 @@ final class AppModel {
   private(set) var admin: AdminSettings
   private(set) var tokenSaved = ClaudeToken.exists
   var section: SidebarSection = .today
+  // 작업 화면에서 고른 작업 (상태 막대를 누르면 그 작업을 연다)
+  var selectedJob: String?
   var adminTab: AdminTab = .run
   // 백업을 만드는 중이면 그 안내
   private(set) var backupStatus: String?
@@ -221,7 +223,7 @@ final class AppModel {
     manager.onFinish = { [weak self] _ in self?.jobsChanged() }
     manager.onPhase = { [weak self] _ in self?.jobsChanged() }
     jobs = manager
-    history = RunHistory.load(folders)
+    history = RunHistory.load(folders, data: data)
     phase = .ready
     Task { await runDoctor() }
   }
@@ -235,7 +237,7 @@ final class AppModel {
   func jobsChanged() {
     commentsVersion += 1
     sleepGuard.update(active: !(jobs?.active.isEmpty ?? true) || backupStatus != nil)
-    history = RunHistory.load(folders)
+    if let data { history = RunHistory.load(folders, data: data) }
     reloadLibrary()
     updater?.installIfIdle()
   }

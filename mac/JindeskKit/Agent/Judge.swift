@@ -142,3 +142,95 @@ public enum ReaderTest {
     return out
   }
 }
+
+// 학습 목표 시험 (DECISIONS.md 25): 자료가 밝힌 학습 목표를, 이 글만 읽은 그 학년 학생이 해낼 수 있는가.
+// 목표마다 이 글의 개념에 해당하는지, 해낼 수 있는지(met), 그것을 연습하는 확인 문제가 있는지(practiced)를 본다.
+public enum OutcomeTest {
+  public struct Goal: Sendable, Equatable {
+    public let key: String
+    public let text: String
+
+    public init(key: String, text: String) {
+      self.key = key
+      self.text = text
+    }
+  }
+
+  public struct Verdict: Sendable, Equatable {
+    public let key: String
+    public let applies: Bool
+    public let met: Bool
+    public let practiced: Bool
+    // 해낼 수 없거나 연습할 문제가 없을 때 빠진 것 (한국어)
+    public let missing: String
+  }
+
+  static let schema = """
+    {"type":"object","properties":{"outcomes":{"type":"array","items":{"type":"object","properties":{"key":{"type":"string"},"applies":{"type":"boolean"},"met":{"type":"boolean"},"practiced":{"type":"boolean"},"missing":{"type":"string"}},"required":["key","applies","met","practiced","missing"]}}},"required":["outcomes"]}
+    """
+
+  // others: 같은 과목의 다른 개념 제목. 그 개념이 맡는 내용은 이 글에 없어도 된다.
+  public static func prompt(text: String, goals: [Goal], level: String, subject: String, others: [String] = []) -> String {
+    let list = goals.map { "- \($0.key): \($0.text)" }.joined(separator: "\n")
+    let siblings = others.isEmpty ? "없다." : others.map { "- \($0)" }.joined(separator: "\n")
+    return """
+      너는 \(level) 이다. 과목은 \(subject) 다. 영어로 수업을 듣는다. 아래 학습 글만 읽었다. 수업 자료나 다른 글은 볼 수 없다.
+      그 학년에서 이미 배운 것(앞 단원의 기초 용어와 계산)은 안다고 가정한다. 수식은 TeX 로 적혀 있다.
+      선생님이 이 수업의 학습 목표를 밝혀 두었다. 목표마다 판정한다.
+
+      - applies: 이 글의 개념이 이 목표에 속하면 true. 다른 개념에 대한 목표면 false 이고, 그때 met 과 practiced 는 true 로 둔다.
+        목표가 여러 개념을 묶어 말하면(여러 통계값을 나열하거나, 분류·계산·적용을 함께 말하는 목표), 이 글의 개념이 맡는 부분이 있을 때만 true 이고
+        met 과 practiced 는 그 부분으로만 판정한다. 아래 "같은 과목의 다른 개념"이 맡는 부분은 이 글에 없어도 된다. 그것을 빠졌다고 하지 않는다.
+      - met: 이 글만 읽고 그 목표를 해낼 수 있으면 true. 목표의 동사를 따른다. calculate 나 classify 는 글의 절차대로 따라 할 수 있는가.
+        interpret, compare, make inferences, explain 은 결과가 무엇을 뜻하는지, 왜 그런지, 자료가 바뀌면 어떻게 되는지를 글에 근거해 말할 수 있는가.
+        글이 계산만 보이고 그 뜻이나 까닭을 말하지 않으면 false 다.
+      - practiced: 그 목표를 연습하는 확인 문제(Check)가 글에 있으면 true. 목표가 해석·비교·설명을 요구하는데 계산 문제만 있으면 false 다.
+        글에 확인 문제가 하나도 없으면(개념 원문만 받은 경우) true 로 둔다.
+      - missing: met 이나 practiced 가 false 면 무엇이 빠졌는지 한국어 한두 문장. 목표의 범위 안에서, 이 개념이 맡는 부분만 말한다.
+        그 학년 수업을 넘는 내용이나, 다른 개념이 맡는 내용을 요구하지 않는다.
+
+      학습 목표:
+      \(list)
+
+      같은 과목의 다른 개념 (각자 자기 페이지가 있다):
+      \(siblings)
+
+      <text>
+      \(text)
+      </text>
+      """
+  }
+
+  public static func check(
+    text: String, goals: [Goal], level: String, subject: String, others: [String] = [], config: RunnerConfig, scratch: URL
+  ) async -> (verdicts: [Verdict], error: String?) {
+    guard !goals.isEmpty else { return ([], nil) }
+    let r = await Judge.run(
+      prompt: prompt(text: text, goals: goals, level: level, subject: subject, others: others), schema: schema, config: config, scratch: scratch)
+    guard let v = r.value else { return ([], r.error) }
+    // 판정을 받지 못한 목표는 통과로 둔다
+    let verdicts = (v["outcomes"]?.arrayValue ?? []).compactMap { o -> Verdict? in
+      guard let key = o["key"]?.stringValue else { return nil }
+      return Verdict(
+        key: key, applies: o["applies"]?.boolValue ?? false, met: o["met"]?.boolValue ?? true, practiced: o["practiced"]?.boolValue ?? true,
+        missing: o["missing"]?.stringValue ?? "")
+    }
+    return (verdicts, nil)
+  }
+
+  // 해당하는데 해낼 수 없는 목표 → 문제 줄
+  public static func unmet(_ verdicts: [Verdict], goals: [Goal]) -> [String] {
+    let text = Dictionary(goals.map { ($0.key, $0.text) }, uniquingKeysWith: { a, _ in a })
+    return verdicts.filter { $0.applies && !$0.met }.map {
+      "학습 목표 \"\(text[$0.key] ?? $0.key)\"에서 이 개념이 맡는 부분을 이 글만 읽고 해낼 수 없다: \($0.missing) 자료의 수준 안에서 그 부분을 해낼 수 있게 설명한다(자료에 없는 설명은 보충으로). 새 개념이나 공식을 더하지 않고, 다른 개념이 맡는 내용은 다시 쓰지 않는다."
+    }
+  }
+
+  // 해당하는데 연습할 확인 문제가 없는 목표 → 문제 줄
+  public static func unpracticed(_ verdicts: [Verdict], goals: [Goal]) -> [String] {
+    let text = Dictionary(goals.map { ($0.key, $0.text) }, uniquingKeysWith: { a, _ in a })
+    return verdicts.filter { $0.applies && !$0.practiced }.map {
+      "학습 목표 \"\(text[$0.key] ?? $0.key)\"에서 이 개념이 맡는 부분을 연습하는 확인 문제가 없다: \($0.missing) 그 부분을 묻는 확인 문제를 더한다(해석·비교·설명을 요구하면 계산만 시키지 않는다). 다른 개념이 맡는 내용은 묻지 않는다."
+    }
+  }
+}

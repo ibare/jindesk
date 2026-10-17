@@ -131,6 +131,11 @@ public enum PageBuild {
     if !added.isEmpty {
       request.append("- 학생 요구로 더한 단위 \(added.joined(separator: ", ")): 러너가 그대로 다시 넣는다. input/page.yaml 에서 뺐다. 그 예제나 그림을 다시 만들지 않는다")
     }
+    // 이 개념이 나온 자료가 밝힌 학습 목표: 해당하는 목표마다 그것을 연습하는 확인 문제를 둔다 (지침 3.2)
+    let outcomes = SourceReading.outcomes(ctx.data, sources: Set(concept.occurrences.map(\.source)))
+    let goals = outcomes.enumerated().map { OutcomeTest.Goal(key: "o\($0.offset + 1)", text: $0.element.text) }
+    request += ["", "## 학습 목표 (자료가 밝힌 것)", ""]
+    request += goals.isEmpty ? ["자료가 밝힌 학습 목표가 없다."] : goals.map { "- \($0.text)" }
     try FileOps.write(request.joined(separator: "\n") + "\n", to: dirs.input.appending(path: "request.md"))
 
     let tag = concept.cid.slug
@@ -140,12 +145,29 @@ public enum PageBuild {
     let result = try await AgentStep.run(options, ctx, label: "\(tag) 페이지")
     var checked = check(out: dirs.out, concept: concept, math: math)
     var figures = await checkFigures(checked.draft, ctx: ctx, tag: tag)
-    let first = checked.problems + figures.problems
+    // 학습 목표 시험: 해당하는 목표마다 그것을 연습하는 확인 문제가 있는가. 첫 검사의 문제와 함께 한 번 고쳐 쓰게 한다.
+    let level = ReaderTest.level(SourceLibrary.load(ctx.data).sources.first { $0.labels.labels.subjectID == concept.subject }?.labels.labels)
+    func outcomeGaps(_ draft: Draft?, _ round: Int) async -> [OutcomeTest.Verdict] {
+      guard let draft, !goals.isEmpty else { return [] }
+      let others = ConceptStore.all(ctx.data, subject: concept.subject).filter { $0.id != concept.id }.map(\.title)
+      let (verdicts, error) = await OutcomeTest.check(
+        text: studyText(draft, concept: concept), goals: goals, level: level, subject: labels?.name ?? concept.subject, others: others,
+        config: ctx.config, scratch: dirs.run.appending(path: "outcome-\(round)"))
+      if let error { await ctx.log(.warn, "[\(tag)] 학습 목표 시험을 하지 못했습니다: \(error)") }
+      return verdicts
+    }
+    var outcome = await outcomeGaps(checked.draft, 1)
+    let first = checked.problems + figures.problems + OutcomeTest.unpracticed(outcome, goals: goals)
     if !first.isEmpty {
       await ctx.log(.warn, "[\(tag)] 검사에서 \(first.count)건이 나와 고쳐 쓰게 합니다: \(first.prefix(3).joined(separator: " · "))")
       try await AgentStep.fix(options, session: result.sessionID, problems: first, ctx: ctx, label: "\(tag) 페이지", events: "page-fix")
       checked = check(out: dirs.out, concept: concept, math: math)
       figures = await checkFigures(checked.draft, ctx: ctx, tag: tag)
+      if !OutcomeTest.unpracticed(outcome, goals: goals).isEmpty { outcome = await outcomeGaps(checked.draft, 2) }
+    }
+    // 고쳐 써도 남은 것은 기록에만 남긴다. 페이지만으로 해낼 수 없는 목표도 기록에 남긴다 (문단은 개념 원문이라 여기서 고치지 못한다).
+    for line in OutcomeTest.unpracticed(outcome, goals: goals) + OutcomeTest.unmet(outcome, goals: goals) {
+      await ctx.log(.warn, "[\(tag)] 학습 목표 시험: \(line)")
     }
     guard checked.problems.isEmpty, var draft = checked.draft else {
       return .failed(concept.id, "검사 실패: " + checked.problems.prefix(5).joined(separator: " · "))
@@ -177,6 +199,59 @@ public enum PageBuild {
     let figureCount = built.page.units.filter(\.isFigure).count
     await ctx.log(.info, "[\(tag)] 페이지: 단위 \(built.page.units.count)개\(figureCount > 0 ? ", 그림 \(figureCount)개" : "")")
     return .written(concept.id)
+  }
+
+  // 저장된 페이지의 글 (학습 목표 시험을 다시 돌려 볼 때)
+  public static func studyText(page: Page, concept: Concept) -> String {
+    var out = ["# \(concept.title)"]
+    for u in page.units {
+      switch u.kind {
+      case .para: out.append(u.text ?? "")
+      case .note: out.append("[\(u.note?.rawValue ?? "note")] \(u.text ?? "")")
+      case .step: out.append("  \(u.block?["tex"]?.string ?? "")  — \(u.text ?? "")")
+      case .check:
+        var lines = ["[Check] \(u.text ?? "")"]
+        if let a = u.block?["answer"]?.string { lines.append("Answer: \(a)") }
+        if let s = u.block?["solution"]?.string { lines.append("Solution: \(s)") }
+        out.append(lines.joined(separator: "\n"))
+      case .block:
+        if u.isFigure {
+          out.append("[Figure] \(u.block?["title"]?.string ?? "")\(u.caption.map { " — \($0)" } ?? "")")
+        } else if u.isDerivation {
+          out.append("[Worked solution] \(u.block?["title"]?.string ?? "")")
+        } else if let tex = u.block?["tex"]?.string {
+          out.append("\\[\(tex)\\]")
+        }
+      }
+    }
+    return out.joined(separator: "\n\n")
+  }
+
+  // 학습 목표 시험에 넘길 페이지 글: 문단(개념 원문), 상자, 풀이와 단계의 까닭, 수식, 그림 설명, 확인 문제와 답·풀이
+  static func studyText(_ draft: Draft, concept: Concept) -> String {
+    let unitText = Dictionary(concept.units.map { ($0.id, $0.text) }, uniquingKeysWith: { a, _ in a })
+    var out = ["# \(concept.title)"]
+    for u in draft.units {
+      switch u.kind {
+      case .para: out.append(unitText[u.from] ?? "")
+      case .note: out.append("[\(u.note?.rawValue ?? "note")] \(u.text ?? "")")
+      case .step: out.append("  \(u.spec?["tex"]?.string ?? "")  — \(u.text ?? "")")
+      case .check:
+        var lines = ["[Check] \(u.text ?? "")"]
+        if let a = u.spec?["answer"]?.string { lines.append("Answer: \(a)") }
+        if let s = u.spec?["solution"]?.string { lines.append("Solution: \(s)") }
+        out.append(lines.joined(separator: "\n"))
+      case .block:
+        if let f = u.figure {
+          out.append("[Figure] \(f.title)\(u.caption.map { " — \($0)" } ?? "")")
+        } else if u.spec?["type"]?.string == "derivation" {
+          out.append("[Worked solution] \(u.spec?["title"]?.string ?? "")")
+        } else if let tex = u.tex ?? u.spec?["tex"]?.string {
+          out.append("\\[\(tex)\\]")
+        }
+      }
+    }
+    return out.joined(separator: "\n\n")
   }
 
   struct FigureChecks: Sendable {

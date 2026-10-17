@@ -199,6 +199,8 @@ public enum SourceReading {
     let kind: String?
     let assessment: Bool
     let skipped: [Int]
+    // 자료가 밝힌 학습 목표 (DECISIONS.md 25)
+    var outcomes: [LearningOutcome] = []
   }
 
   struct Draft: Sendable {
@@ -232,9 +234,19 @@ public enum SourceReading {
     case .failure(let p): c.problems.append(p.message)
     case .success(let v):
       let skipped = (v["skipped_pages"]?.arrayValue ?? []).compactMap { $0["page"]?.numberValue.map { Int($0) } ?? $0.numberValue.map { Int($0) } }
-      let note = Note(
+      var note = Note(
         title: AgentJSON.string(v["title"]), kind: AgentJSON.string(v["kind"]), assessment: v["assessment"]?.boolValue ?? false, skipped: skipped)
       if let t = note.title { c.problems += TextChecks.englishProblems(t, field: "out/source.json title") }
+      for (i, o) in (v["outcomes"]?.arrayValue ?? []).enumerated() {
+        guard let text = AgentJSON.string(o["text"]) else {
+          c.problems.append("out/source.json outcomes[\(i)]: text 가 있어야 한다")
+          continue
+        }
+        let pages = AgentJSON.ints(o["pages"])
+        c.problems += TextChecks.englishProblems(text, field: "out/source.json outcomes[\(i)].text")
+        for p in pages where !(1...max(meta.pages, 1)).contains(p) { c.problems.append("out/source.json outcomes[\(i)].pages: 없는 쪽입니다 (\(p))") }
+        note.outcomes.append(LearningOutcome(text: text, pages: pages, source: meta.id))
+      }
       for p in skipped where !(1...max(meta.pages, 1)).contains(p) { c.problems.append("out/source.json skipped_pages: 없는 쪽입니다 (\(p))") }
       c.note = note
     }
@@ -349,6 +361,7 @@ public enum SourceReading {
       "material_title": note?.title.map(YAMLValue.string) ?? .null,
       "material_kind": note?.kind.map(YAMLValue.string) ?? .null,
       "assessment": .bool(note?.assessment ?? false),
+      "outcomes": .array((note?.outcomes ?? []).map { .map(["text": .string($0.text), "pages": .array($0.pages.map(YAMLValue.int))]) }),
       "entries": .array(entries.map { .string($0.id) }),
       "unread_pages": .array(coverage.unread.map(YAMLValue.int)),
       "provenance": .map(AgentStep.provenance(ctx, .sourceReading, instructions)),
@@ -362,6 +375,26 @@ public enum SourceReading {
 
   // MARK: - 상태
 
+  // 자료들이 밝힌 학습 목표 (자료마다 마지막 자료 읽기 기록의 report.md 머리말). 같은 글은 한 번만.
+  public static func outcomes(_ data: DataFolder, sources: Set<String>) -> [LearningOutcome] {
+    let root = data.records.appending(path: JobKind.sourceReading.rawValue)
+    let read = readSources(data)
+    var out: [LearningOutcome] = []
+    var seen = Set<String>()
+    for source in sources.sorted() {
+      guard let job = read[source]?.last, let text = FileOps.readIfExists(root.appending(path: job).appending(path: "report.md")),
+        let (head, _) = FrontMatter.split(text)
+      else { continue }
+      for o in head["outcomes"]?.array ?? [] {
+        guard let t = o["text"]?.string else { continue }
+        let key = t.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard seen.insert(key).inserted else { continue }
+        out.append(LearningOutcome(text: t, pages: (o["pages"]?.array ?? []).compactMap(\.int), source: source))
+      }
+    }
+    return out
+  }
+
   // 자료마다 끝난 자료 읽기 작업 id (기록의 request.md 머리말에서 읽는다)
   public static func readSources(_ data: DataFolder) -> [String: [String]] {
     let root = data.records.appending(path: JobKind.sourceReading.rawValue)
@@ -373,6 +406,19 @@ public enum SourceReading {
       out[source, default: []].append(job)
     }
     return out
+  }
+}
+
+// 자료가 밝힌 학습 목표 하나 (자료의 영어 그대로)
+public struct LearningOutcome: Sendable, Equatable {
+  public let text: String
+  public let pages: [Int]
+  public let source: String
+
+  public init(text: String, pages: [Int], source: String) {
+    self.text = text
+    self.pages = pages
+    self.source = source
   }
 }
 

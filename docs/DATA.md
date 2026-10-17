@@ -37,7 +37,7 @@ git 을 쓰지 않는다. 모든 산출물은 파일로 쓰고, 백업은 데이
   records/
     runs/<YYYY-MM>.jsonl        모든 작업의 실행 요약 (작업 id, 종류, 시작·끝, 결과, 사용량, 지침 판, 모델)
     syllabus-build/<작업 id>/   decisions.json(근거 문서, 목차 밖 개념을 옮긴 곳), report.md
-    source-reading/<작업 id>/   request.md, report.md, report.first-pass.md, coverage.json
+    source-reading/<작업 id>/   request.md, report.md(머리말에 자료 제목·종류·평가 과제 여부·학습 목표), report.first-pass.md, coverage.json
     concept-curation/<작업 id>/ plan.json, report.md, apply.json
     ask/<작업 id>/              question.json, answer.json, coverage.json
     regen/<작업 id>/            request.json, base.json, candidate.json, checks.json, figures/(그림 후보), decision.json(고치기)

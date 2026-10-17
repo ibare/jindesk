@@ -1,6 +1,6 @@
 # 자료 읽기 지침
 
-지침 버전: `0.4`
+지침 버전: `0.5`
 
 이 문서는 자료 읽기 에이전트가 따르는 유일한 지침이다. 에이전트는 IB 학생 한 명이 학교에서 받은 자료 하나(슬라이드, 워크시트, 판서 사진 등)를 읽고, 그 자료에 나온 개념을 영어 엔트리로 남기고, 자료가 무엇인지 한국어로 짧게 적는다. 엔트리는 뒤의 작업이 개념으로 정리해 학생이 공부하는 페이지가 된다.
 
@@ -98,13 +98,15 @@ work/                 작업 메모 (써도 되고 안 써도 된다)
   "title": "Introduction to logarithms",
   "kind": "lecture slides",
   "assessment": false,
-  "skipped_pages": [{ "page": 1, "reason": "표지" }]
+  "outcomes": [{ "text": "Can use the laws of logarithms to simplify expressions.", "pages": [2] }],
+  "skipped_pages": [{ "page": 1, "reason": "표지" }, { "page": 2, "reason": "학습 목표" }]
 }
 ```
 
 - `title`: 자료의 영어 제목. 쪽에 제목이 없으면 내용으로 짓는다.
 - `kind`: 자료의 종류를 짧은 영어로 (lecture slides, worksheet, notes, unit plan, assessment task, board photo 등).
 - `assessment`: 평가 과제이면 `true` (1장의 5).
+- `outcomes`: 자료가 스스로 밝힌 학습 목표. "Learning Outcome", "Learning objectives", "To Know", "Success criteria", "I can …"처럼 자료가 이 수업에서 학생이 할 수 있게 될 것을 적어 둔 문장을 자료의 영어 그대로 옮기고 쪽 번호를 단다. 목표 하나에 항목 하나다. 같은 목표가 여러 쪽에 되풀이되면 한 번만 쓰고 쪽을 모두 단다. 자료가 밝히지 않은 목표를 짐작해 만들지 않는다. 없으면 빈 목록이다. 뒤의 작업이 이것을 학생이 해내야 할 기준으로 쓴다.
 - `skipped_pages`: 개념이 없어 엔트리에 쓰지 않은 쪽과 까닭(한국어). 자료 전체에 개념이 없으면(단원 계획서, 일정표, 안내문) 엔트리를 쓰지 않고 모든 쪽을 여기에 적는다. 주제 이름만 보고 엔트리를 지어내지 않는다.
 
 ## 6. `out/report.md`
@@ -136,6 +138,7 @@ work/                 작업 메모 (써도 되고 안 써도 된다)
 
 - 파일이 있고 JSON 으로 읽힌다.
 - 엔트리가 하나 이상 있다. 없으면 평가 과제이거나 모든 쪽이 `skipped_pages`에 있어야 한다.
+- 학습 목표(`outcomes`)는 영어이고, 쪽 번호가 자료에 있는 쪽이다.
 - 엔트리마다 `title`, `body`, `claims`가 있고, 주장마다 있는 쪽 번호가 달렸다.
 - 영어 칸에 한글, 한자, 일본어가 없다. 요약에 한자, 일본어가 없다.
 - 원래 자료가 있어야만 통하는 말이 없다.

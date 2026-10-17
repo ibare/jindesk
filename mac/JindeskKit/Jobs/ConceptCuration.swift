@@ -47,6 +47,9 @@ public enum ConceptCuration {
     let conceptHashes: [String: String]
     // 다른 과목의 개념 (과목 사이 연결의 후보)
     var others: [Concept] = []
+
+    // 정리할 엔트리와 이미 있는 개념이 나온 자료
+    var sources: Set<String> { Set(entries.map(\.entry.source)).union(concepts.flatMap { $0.concept.occurrences.map(\.source) }) }
   }
 
   static func run(subject: String, _ ctx: JobContext) async throws {
@@ -90,15 +93,18 @@ public enum ConceptCuration {
       throw ToolError("개념 정리 검사 실패: " + checked.problems.prefix(10).joined(separator: " · "))
     }
 
-    // 학생 독자 시험: 새로 쓰거나 바뀐 단위만. 실패하면 한 번 고쳐 쓰게 하고, 그래도 실패하면 기록에 남긴다.
+    // 학생 독자 시험(새로 쓰거나 바뀐 단위)과 학습 목표 시험(새로 쓰거나 바뀐 개념). 실패하면 함께 한 번 고쳐 쓰게 하고,
+    // 그래도 실패하면 기록에 남긴다.
     let labels = SourceLibrary.load(ctx.data).sources.first { $0.labels.labels.subjectID == subject }?.labels.labels
     let level = ReaderTest.level(labels)
     var readerWarnings: [String] = []
     var failed = await readerTest(plan, input: input, level: level, subject: labels?.subject ?? subject, ctx: ctx, scratch: dirs.run.appending(path: "reader-1"))
-    if !failed.isEmpty {
-      await ctx.log(.warn, "학생 독자 시험에서 단위 \(failed.count)개가 실패해 고쳐 쓰게 합니다")
+    var gaps = await outcomeTest(plan, input: input, level: level, subject: labels?.subject ?? subject, ctx: ctx, scratch: dirs.run.appending(path: "outcome-1"))
+    if !failed.isEmpty || !gaps.isEmpty {
+      if !failed.isEmpty { await ctx.log(.warn, "학생 독자 시험에서 단위 \(failed.count)개가 실패해 고쳐 쓰게 합니다") }
+      for g in gaps { await ctx.log(.warn, "학습 목표 시험: \(g)") }
       await ctx.setPhase("fixing")
-      let problems = failed.sorted { $0.key < $1.key }.flatMap { key, lines in lines.map { "\(key): \($0)" } }
+      let problems = failed.sorted { $0.key < $1.key }.flatMap { key, lines in lines.map { "\(key): \($0)" } } + gaps
       try await AgentStep.fix(options, session: result.sessionID, problems: problems, ctx: ctx, label: "개념 정리", events: "curate-reader-fix")
       await ctx.setPhase("checking")
       checked = check(out: dirs.out, input: input, math: math)
@@ -107,7 +113,9 @@ public enum ConceptCuration {
       }
       plan = fixed
       failed = await readerTest(plan, input: input, level: level, subject: labels?.subject ?? subject, ctx: ctx, scratch: dirs.run.appending(path: "reader-2"))
+      gaps = await outcomeTest(plan, input: input, level: level, subject: labels?.subject ?? subject, ctx: ctx, scratch: dirs.run.appending(path: "outcome-2"))
       readerWarnings = failed.sorted { $0.key < $1.key }.map { "학생 독자 시험 실패: \($0.key) — \($0.value.first ?? "")" }
+      readerWarnings += gaps.map { "학습 목표 시험 실패: \($0)" }
       for w in readerWarnings { await ctx.log(.warn, w) }
     }
 
@@ -163,6 +171,33 @@ public enum ConceptCuration {
     return ReaderTest.problems(verdicts)
   }
 
+  // 학습 목표 시험: 개념마다 그 개념이 나온 자료의 학습 목표를 받아, 해당하는데 개념의 글만으로 해낼 수 없는 목표를 문제 줄로 돌려준다.
+  static func outcomeTest(_ plan: Plan, input: Input, level: String, subject: String, ctx: JobContext, scratch: URL) async -> [String] {
+    let entryByKey = Dictionary(input.entries.map { ($0.key, $0.entry) }, uniquingKeysWith: { a, _ in a })
+    let conceptByKey = Dictionary(input.concepts.map { ($0.key, $0.concept) }, uniquingKeysWith: { a, _ in a })
+    var problems: [String] = []
+    for (i, p) in plan.concepts.enumerated() {
+      let sources = Set(p.entries.compactMap { entryByKey[$0]?.source })
+        .union(p.existing.flatMap { conceptByKey[$0] }?.occurrences.map(\.source) ?? [])
+      let outcomes = SourceReading.outcomes(ctx.data, sources: sources)
+      guard !outcomes.isEmpty else { continue }
+      let goals = outcomes.enumerated().map { OutcomeTest.Goal(key: "o\($0.offset + 1)", text: $0.element.text) }
+      let text = "# \(p.title)\n\n" + p.units.map(\.text).joined(separator: "\n\n")
+      // 같은 과목의 다른 개념: 이번에 함께 쓰는 개념과, 보강하지 않는 기존 개념
+      let touched = Set(plan.concepts.compactMap(\.existing))
+      let others = plan.concepts.enumerated().filter { $0.offset != i }.map(\.element.title)
+        + input.concepts.filter { !touched.contains($0.key) }.map(\.concept.title)
+      let (verdicts, error) = await OutcomeTest.check(
+        text: text, goals: goals, level: level, subject: subject, others: others, config: ctx.config, scratch: scratch.appending(path: "c\(i)"))
+      if let error {
+        await ctx.log(.warn, "학습 목표 시험을 하지 못했습니다 (\(p.title)): \(error)")
+        continue
+      }
+      problems += OutcomeTest.unmet(verdicts, goals: goals).map { "concepts[\(i)] (\(p.title)): \($0)" }
+    }
+    return problems
+  }
+
   // MARK: - 입력
 
   static func writeInput(_ input: Input, dirs: AgentDirs, data: DataFolder) throws {
@@ -191,6 +226,14 @@ public enum ConceptCuration {
     request += ["", "## 다른 과목의 개념 (과목 사이 연결에 쓴다)", ""]
     if input.others.isEmpty { request.append("아직 없다.") }
     for c in input.others { request.append("- `\(c.id)` \(c.title)") }
+    // 자료가 밝힌 학습 목표: 개념이 해당하는 목표를 학생이 글만 읽고 해낼 수 있게 쓴다 (지침 1장의 7)
+    let outcomes = SourceReading.outcomes(data, sources: input.sources)
+    request += ["", "## 학습 목표 (자료가 밝힌 것)", ""]
+    if outcomes.isEmpty { request.append("자료가 밝힌 학습 목표가 없다.") }
+    for o in outcomes {
+      let name = library.source(o.source)?.meta.original.name ?? o.source
+      request.append("- \(o.text) (\(name))")
+    }
     try FileOps.write(request.joined(separator: "\n") + "\n", to: dirs.input.appending(path: "request.md"))
     if FileOps.exists(data.syllabusFile(input.subject)) { try FileOps.copy(data.syllabusFile(input.subject), to: dirs.input.appending(path: "syllabus.yaml")) }
     try AgentStep.writeGlossary(data, into: dirs.input)

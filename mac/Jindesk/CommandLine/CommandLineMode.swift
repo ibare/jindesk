@@ -17,7 +17,8 @@ struct JindeskCommand: AsyncParsableCommand {
     commandName: "Jindesk",
     abstract: "Jindesk 명령줄 모드",
     subcommands: [
-      DoctorCommand.self, IntakeCommand.self, ContinueCommand.self, DirectiveCommand.self, FigureCheckCommand.self, MigrateCommand.self, BackupCommand.self,
+      DoctorCommand.self, IntakeCommand.self, ContinueCommand.self, DirectiveCommand.self, FigureCheckCommand.self, OutcomeCheckCommand.self, MigrateCommand.self,
+      BackupCommand.self,
       VersionCommand.self,
     ]
   )
@@ -25,7 +26,7 @@ struct JindeskCommand: AsyncParsableCommand {
 
 @MainActor
 enum CommandLineMode {
-  static let commands: Set<String> = ["doctor", "intake", "continue", "directive", "check-figure", "migrate", "backup", "version", "help", "--help", "-h"]
+  static let commands: Set<String> = ["doctor", "intake", "continue", "directive", "check-figure", "outcome-check", "migrate", "backup", "version", "help", "--help", "-h"]
 
   // 첫 인자가 명령이면 명령줄 모드다. "-" 로 시작하는 인자(-snapshotDir, Xcode 가 붙이는 -NSDocumentRevisionsDebugMode 등)만 있으면 앱으로 뜬다.
   // 모르는 명령도 명령줄 모드로 받아 오류를 보인다. 화면 앱으로 떠 버리면 스크립트가 멈춘다.
@@ -220,6 +221,51 @@ struct DirectiveCommand: AsyncParsableCommand {
       let unit = try Regen.accept(folder, directiveID: id)
       print("\(id): 받아들임 (\(unit ?? "-"))")
     }
+  }
+}
+
+// 저장된 학습 페이지마다 학습 목표 시험을 돌려 본다 (판을 견주거나 진단할 때). 판정에 토큰을 쓴다.
+struct OutcomeCheckCommand: AsyncParsableCommand {
+  static let configuration = CommandConfiguration(commandName: "outcome-check", abstract: "저장된 학습 페이지에 학습 목표 시험을 돌린다")
+
+  @Option(help: "데이터 폴더. 주지 않으면 앱에서 고른 폴더") var data: String?
+  @Option(help: "학습 목표를 이 데이터 폴더의 읽기 기록에서 가져온다 (자료 id 가 같을 때)") var outcomesFrom: String?
+  @Option(help: "결과 JSON 을 쓸 파일") var out: String?
+
+  @MainActor
+  func run() async throws {
+    guard let folder = CommandLineMode.dataFolder(data), folder.isInitialized else { throw ValidationError("Jindesk 데이터 폴더를 찾지 못했습니다") }
+    let goalsFolder = outcomesFrom.map { DataFolder(path: ($0 as NSString).expandingTildeInPath) } ?? folder
+    let config = try await CommandLineMode.agentConfig(folder)
+    let scratch = FileManager.default.temporaryDirectory.appending(path: "jindesk-outcome-check-\(UUID().uuidString.prefix(8))")
+    defer { FileOps.remove(scratch) }
+    let library = SourceLibrary.load(folder)
+    var report: [JSONValue] = []
+    for (i, c) in ConceptStore.everything(folder).enumerated() {
+      guard let page = Page.load(ConceptFolder(c.cid, in: folder)) else { continue }
+      let outcomes = SourceReading.outcomes(goalsFolder, sources: Set(c.occurrences.map(\.source)))
+      let goals = outcomes.enumerated().map { OutcomeTest.Goal(key: "o\($0.offset + 1)", text: $0.element.text) }
+      let level = ReaderTest.level(library.sources.first { $0.labels.labels.subjectID == c.subject }?.labels.labels)
+      let others = ConceptStore.all(folder, subject: c.subject).filter { $0.id != c.id }.map(\.title)
+      let (verdicts, error) = await OutcomeTest.check(
+        text: PageBuild.studyText(page: page, concept: c), goals: goals, level: level, subject: c.subject, others: others, config: config,
+        scratch: scratch.appending(path: "c\(i)"))
+      print("== \(c.id)\(error.map { " (판정 못 함: \($0))" } ?? "")")
+      for v in verdicts where v.applies {
+        let text = goals.first { $0.key == v.key }?.text ?? v.key
+        print("  \(v.met ? "✓" : "✗")해냄 \(v.practiced ? "✓" : "✗")연습  \(text)\(v.missing.isEmpty ? "" : "\n      " + v.missing)")
+      }
+      report.append(.object([
+        "concept": .string(c.id), "title": .string(c.title), "error": error.map(JSONValue.string) ?? .null,
+        "outcomes": .array(verdicts.map { v in
+          .object([
+            "text": .string(goals.first { $0.key == v.key }?.text ?? v.key), "applies": .bool(v.applies), "met": .bool(v.met),
+            "practiced": .bool(v.practiced), "missing": .string(v.missing),
+          ])
+        }),
+      ]))
+    }
+    if let out { try FileOps.write(JSONText.record(.array(report)), to: URL(fileURLWithPath: (out as NSString).expandingTildeInPath)) }
   }
 }
 

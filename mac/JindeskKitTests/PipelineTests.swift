@@ -125,6 +125,21 @@ extension URL {
     #expect(checked.problems.count == 3)
   }
 
+  @Test func 자료가_밝힌_학습_목표를_뽑고_없는_쪽은_틀린다() throws {
+    let out = TempPlace().root.appending(path: "out")
+    try write(out, "report.md", "# Laws of indices\n\n지수 법칙 자료다.\n")
+    try write(
+      out, "entries/good.json",
+      ["slug": "laws-of-indices", "title": "Laws of indices", "body": "Add exponents: \\(a^m a^n = a^{m+n}\\).", "claims": [["text": "\\(a^m a^n = a^{m+n}\\)", "pages": [2]]]])
+    try write(
+      out, "source.json",
+      ["title": "Laws of indices", "kind": "lecture slides", "assessment": false, "skipped_pages": [["page": 1, "reason": "학습 목표"]],
+       "outcomes": [["text": "Can multiply powers with the same base.", "pages": [1]], ["text": "Can explain the zero exponent.", "pages": [9]]]])
+    let checked = SourceReading.check(out: out, meta: meta(pages: 3), math: nil)
+    #expect(checked.note?.outcomes.map(\.text) == ["Can multiply powers with the same base.", "Can explain the zero exponent."])
+    #expect(checked.problems == ["out/source.json outcomes[1].pages: 없는 쪽입니다 (9)"])
+  }
+
   @Test func 개념이_없는_자료는_모든_쪽을_까닭과_함께_건너뛰면_엔트리가_없어도_된다() throws {
     let out = TempPlace().root.appending(path: "out")
     try write(out, "report.md", "# Unit plan\n\n단원 계획서다. 수업 주제의 이름만 있다.\n")
@@ -401,6 +416,21 @@ extension CurationCheckTests {
   }
 }
 
+@Suite struct OutcomeTestTests {
+  @Test func 해당하는데_해내지_못하거나_연습할_문제가_없는_목표만_문제로_돌려준다() {
+    let goals = [OutcomeTest.Goal(key: "o1", text: "Can calculate standard deviation."), OutcomeTest.Goal(key: "o2", text: "Can explain how changes affect it.")]
+    let verdicts = [
+      OutcomeTest.Verdict(key: "o1", applies: true, met: true, practiced: true, missing: ""),
+      OutcomeTest.Verdict(key: "o2", applies: true, met: false, practiced: false, missing: "값이 바뀔 때의 설명이 없다."),
+      OutcomeTest.Verdict(key: "o3", applies: false, met: false, practiced: false, missing: ""),
+    ]
+    #expect(OutcomeTest.unmet(verdicts, goals: goals).count == 1)
+    #expect(OutcomeTest.unmet(verdicts, goals: goals).first?.contains("Can explain how changes affect it.") == true)
+    #expect(OutcomeTest.unpracticed(verdicts, goals: goals).count == 1)
+    #expect(OutcomeTest.prompt(text: "x", goals: goals, level: "an IB student in MYP 10", subject: "Extended Math").contains("o2: Can explain"))
+  }
+}
+
 @Suite struct TranslationCheckTests {
   @Test func 수식_숫자_남은_영어_어휘를_본다() {
     let g = Glossary(terms: [GlossaryTerm(en: "exponent", ko: "지수")])
@@ -448,13 +478,14 @@ extension CurationCheckTests {
     def tool(path): emit({"type": "assistant", "session_id": "fake", "message": {"content": [{"type": "tool_use", "name": "Read", "input": {"file_path": path}}]}})
     if "--json-schema" in sys.argv:
         # 학생 독자 시험과 격리 검증: 모두 통과
-        print(json.dumps({"type": "result", "subtype": "success", "structured_output": {"items": [], "verdict": "pass", "problems": []}, "total_cost_usd": 0}))
+        print(json.dumps({"type": "result", "subtype": "success", "structured_output": {"items": [], "verdict": "pass", "problems": [], "outcomes": []}, "total_cost_usd": 0}))
         sys.exit(0)
     emit({"type": "system", "subtype": "init", "session_id": "fake"})
     req = read("request.md")
     if "# 자료 읽기 요청" in req:
         for p in sorted(glob.glob(cwd + "/input/pages/*.png")): tool(p)
-        out("source.json", json.dumps({"title": "Laws of indices", "kind": "lecture slides", "assessment": False, "skipped_pages": []}))
+        out("source.json", json.dumps({"title": "Laws of indices", "kind": "lecture slides", "assessment": False, "skipped_pages": [],
+            "outcomes": [{"text": "Can multiply powers with the same base and explain why the exponents add.", "pages": [1]}]}))
         out("entries/laws-of-indices.json", json.dumps({"slug": "laws-of-indices", "title": "Laws of indices", "item": "Exponents",
             "body": "When you multiply powers with the same base, add the exponents: \\(a^m a^n = a^{m+n}\\).",
             "claims": [{"text": "\\(a^m a^n = a^{m+n}\\)", "pages": [1]}], "pages": [1, 2]}))
@@ -570,6 +601,8 @@ extension CurationCheckTests {
     // 기록
     let reading = SourceReading.readSources(t.data)
     #expect(reading.count == 1)
+    // 자료가 밝힌 학습 목표가 읽기 기록에 남고, 개념 정리와 페이지 만들기의 요청에 들어간다
+    #expect(SourceReading.outcomes(t.data, sources: Set(reading.keys)).map(\.text) == ["Can multiply powers with the same base and explain why the exponents add."])
     // 질문을 달면 물어보기가 답글을 단다
     let unit = page.units[0]
     let question = Comment(

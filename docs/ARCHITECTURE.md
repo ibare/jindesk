@@ -26,7 +26,7 @@ Jindesk.app (학생 맥)
   ▼
 엔진 (JindeskKit)
   Engine/     작업 관리자(종류별 대기열, 사용량 미루기, 잠금), 설정, 작업 모델, 지침
-  Agent/      claude -p 실행, 이벤트 해석, 깨어 있던 시간 상한, 학생 독자 시험
+  Agent/      claude -p 실행, 이벤트 해석, 깨어 있던 시간 상한, 도구 없는 한 번의 판정(학생 독자 시험, 격리 검증)
   Guard/      외부 호출 검사 (jindesk-guard 훅이 쓴다)
   Process/    자식 프로세스(프로세스 그룹), 자식 환경, 도구 찾기
   Config/     데이터 폴더, 키체인
@@ -35,7 +35,8 @@ Jindesk.app (학생 맥)
   Jobs/       에이전트 작업(자료 읽기, 개념 정리, 학습 페이지 만들기, 번역): 작업 공간 준비, 실행, 러너 검사와 고쳐 쓰기, 반영, 남은 일 계산
   Pages/      화면에 넘길 페이지 조합 (페이지 + 곁 층 + 코멘트 + 용어 + 관점), 그림 블록 틀, 바깥 라이브러리 사본
   Checks/     글 검사(주장 장부, 출처 대조, 수식 파싱, 풀이 단계 계산), 그림 블록 실행 확인과 라이브러리 받아 두기
-  Index/      SQLite 색인 (캐시에 둔다)
+  Index/      SQLite 색인과 검색 (캐시의 index.sqlite, 영어·한국어 trigram FTS5)
+  Learner/    학생의 코멘트(comments.jsonl)와 요구(directives.jsonl)
   Backup/     백업 만들기와 되살리기
   Update/     Sparkle 연결, 작업 중 설치 미루기
   Migration/  스키마 버전, 마이그레이션 실행과 검증

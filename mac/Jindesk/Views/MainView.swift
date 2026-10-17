@@ -16,17 +16,13 @@ struct MainView: View {
       .navigationSplitViewColumnWidth(min: 180, ideal: 200)
       .safeAreaInset(edge: .bottom) { StatusFooter().padding(10) }
     } detail: {
-      switch model.section {
-      case .jobs:
-        JobsView()
-      case .today:
-        ContentUnavailableView("오늘 볼 것이 아직 없어요", systemImage: "sun.max", description: Text("자료를 넣고 정리가 끝나면 여기에 다시 볼 개념과 새로 정리된 개념이 보입니다."))
-      case .subjects:
-        SubjectsView()
-      case .collections:
-        ContentUnavailableView("모아 볼 것이 아직 없어요", systemImage: "square.stack", description: Text("과목 사이 연결, 원래 자료, 확인 문제, 코멘트를 여기서 모아 봅니다."))
+      if !model.searchText.trimmingCharacters(in: .whitespaces).isEmpty {
+        SearchResultsView()
+      } else {
+        sectionView
       }
     }
+    .searchable(text: $model.searchText, placement: .sidebar, prompt: "개념 찾기 (영어·한국어)")
     .toolbar {
       ToolbarItem(placement: .primaryAction) {
         Button("자료 넣기", systemImage: "tray.and.arrow.down") { model.showIntake = true }
@@ -34,6 +30,74 @@ struct MainView: View {
       }
     }
     .sheet(isPresented: $model.showIntake) { IntakeSheet() }
+  }
+
+  @ViewBuilder
+  private var sectionView: some View {
+      switch model.section {
+      case .jobs:
+        JobsView()
+      case .today:
+        TodayView()
+      case .subjects:
+        SubjectsView()
+      case .collections:
+        CollectionsView()
+      }
+  }
+}
+
+// 찾은 것: 개념과 그 안의 단위. 누르면 그 개념의 학습 페이지로 간다.
+struct SearchResultsView: View {
+  @Environment(AppModel.self) private var model
+
+  var body: some View {
+    let hits = model.searchResults
+    if hits.isEmpty {
+      ContentUnavailableView.search(text: model.searchText)
+    } else {
+      List(hits) { hit in
+        Button {
+          model.section = .subjects
+          model.selection = .concept(hit.concept)
+          model.searchText = ""
+        } label: {
+          VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+              Text(hit.title).font(.body.weight(.medium))
+              if let ko = hit.titleKo { Text(ko).font(.caption).foregroundStyle(.secondary) }
+            }
+            Text(Self.highlight(hit.snippet)).font(.callout).foregroundStyle(.secondary).lineLimit(3)
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+      }
+    }
+  }
+
+  // 찾은 말(SearchHit.open … close)을 굵게
+  static func highlight(_ snippet: String) -> AttributedString {
+    var out = AttributedString()
+    var bold = false
+    var buffer = ""
+    func flush() {
+      var part = AttributedString(buffer)
+      if bold { part.font = .callout.bold() }
+      out += part
+      buffer = ""
+    }
+    for ch in snippet {
+      if ch == SearchHit.open || ch == SearchHit.close {
+        flush()
+        bold = ch == SearchHit.open
+      } else {
+        buffer.append(ch)
+      }
+    }
+    flush()
+    return out
   }
 }
 

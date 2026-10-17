@@ -76,6 +76,54 @@
           m.openAllKorean = true
           m.selection = m.concepts.values.flatMap { $0 }.sorted { $0.id < $1.id }.first.map { .concept($0.id) }
         },
+        // 코멘트 스레드 (질문과 답)
+        Scenario(name: "thread") { m in
+          m.phase = .ready
+          m.section = .subjects
+          m.snapshotDebug = .object(["openThreads": .bool(true), "scrollTo": .string(".thread")])
+          m.selection = snapshotConcept(m).map { .concept($0) }
+        },
+        // 새 판 비교
+        Scenario(name: "compare", dark: true) { m in
+          m.phase = .ready
+          m.section = .subjects
+          m.snapshotDebug = .object(["openCompare": .bool(true), "scrollTo": .string(".compare")])
+          m.selection = snapshotConcept(m).map { .concept($0) }
+        },
+        // 곁 설명 (쉽게)
+        Scenario(name: "easy") { m in
+          m.phase = .ready
+          m.section = .subjects
+          m.snapshotDebug = .object(["openEasy": .bool(true), "scrollTo": .string(".side")])
+          m.selection = snapshotConcept(m).map { .concept($0) }
+        },
+        // 한 단위까지 내려 연다 (-snapshotUnit <단위 id>, 여럿이면 쉼표로. 단위마다 unit-<id> 로 찍는다)
+        Scenario(name: "unit") { m in
+          m.phase = .ready
+          m.section = .subjects
+          m.snapshotDebug = .object(["scrollTo": .string("#" + (UserDefaults.standard.string(forKey: "snapshotUnit") ?? "p1"))])
+          m.selection = snapshotConcept(m).map { .concept($0) }
+        },
+        // 찾기 결과 (-snapshotSearch <말>, 없으면 log)
+        Scenario(name: "search") { m in
+          m.phase = .ready
+          m.searchText = UserDefaults.standard.string(forKey: "snapshotSearch") ?? "log"
+          try? await Task.sleep(for: .milliseconds(800))
+        },
+        Scenario(name: "collections") { m in
+          m.searchText = ""
+          m.phase = .ready
+          m.section = .collections
+        },
+        // 다시 만들기 시트: 찍을 개념의 첫 문단
+        Scenario(name: "regen", target: .sheet) { m in
+          m.phase = .ready
+          m.section = .subjects
+          guard let id = snapshotConcept(m), let c = m.concept(id) else { return }
+          m.selection = .concept(id)
+          try? await Task.sleep(for: .milliseconds(600))
+          m.regenTarget = RegenTarget(concept: id, unit: "p1", rev: 1, ops: [.easy, .detail, .example, .visual, .fix], quote: String((c.units.first?.text ?? "").prefix(90)))
+        },
         Scenario(name: "intake", target: .sheet) { m in
           m.phase = .ready
           m.showIntake = true
@@ -130,6 +178,8 @@
         }
         for w in NSApp.windows where w.isVisible && w.identifier?.rawValue.hasPrefix("admin") == true { w.close() }
         model.showIntake = false
+        model.regenTarget = nil
+        model.snapshotDebug = nil
         model.openAllKorean = false
         model.scrollToFigure = false
       }

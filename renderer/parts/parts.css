@@ -44,4 +44,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .jd-readout small { font-size: 11px; color: var(--ink-3); }
 .jd-readout b { font-family: var(--f-mono); font-weight: 500; font-variant-numeric: tabular-nums; }
 .jd-note { font-size: 12px; color: var(--ink-3); }
+.jd-graph { width: 100%; }
+.jd-graph svg { display: block; overflow: visible; }
+.jd-player { margin: 6px 0; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

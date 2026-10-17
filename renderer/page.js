@@ -117,7 +117,179 @@
     });
   }
 
-  // 영어 글 + 출처 칩 + 한 단추 + 한국어
+  // 코멘트 스레드: 단위 아래에 열린다. 메모, 질문(물어보기가 답한다), 이상해요.
+  var current = null, openThreads = {};
+  function plain(text) { return String(text || "").replace(/\\[()\[\]]/g, "").replace(/\s+/g, " ").trim().slice(0, 120); }
+
+  function threadNode(unitID, rev, quote, unit) {
+    var list = ((current && current.comments) || {})[unitID] || [];
+    var t = el("div", "thread");
+    list.forEach(function (c) {
+      var item = el("div", "cm");
+      var head = el("div", "cm-head");
+      head.appendChild(el("span", "kind " + c.kind, esc(c.label)));
+      head.appendChild(el("time", null, esc(String(c.at).slice(5, 16).replace("T", " "))));
+      var del = el("button", "cm-del", "지우기");
+      del.type = "button";
+      del.addEventListener("click", function () { post({ type: "deleteComment", id: c.id }); });
+      head.appendChild(del);
+      item.appendChild(head);
+      if (c.old) item.appendChild(el("div", "cm-old", "이전 판에 단 코멘트 · “" + esc(c.quote) + "”"));
+      item.appendChild(el("div", "cm-text", esc(c.text)));
+      (c.replies || []).forEach(function (r) {
+        var rep = paraBlock({ id: r.id, text: r.en, ko: r.ko, prov: r.supplementary ? "added" : (r.src && r.src.length ? "source" : null), src: r.src || [], noComments: true });
+        rep.classList.add("reply");
+        item.appendChild(rep);
+      });
+      if (c.waiting) item.appendChild(el("div", "cm-waiting", "답을 쓰는 중이에요…"));
+      if (c.kind === "flag" && unit && unit.regen && unit.regen.length) {
+        var send = el("button", "cm-regen", "다시 만들기로 보내기");
+        send.type = "button";
+        send.addEventListener("click", function () {
+          post({ type: "openRegen", unit: unitID, rev: rev || 1, ops: unit.regen.map(function (r) { return r.op; }), quote: quote, fromComment: c.id, note: c.text });
+        });
+        item.appendChild(send);
+      }
+      t.appendChild(item);
+    });
+    var form = el("div", "cm-form");
+    var kinds = el("div", "seg");
+    var chosen = "memo";
+    [["memo", "메모"], ["ask", "질문"], ["flag", "이상해요"]].forEach(function (k) {
+      var b = el("button", null, k[1]);
+      b.type = "button";
+      b.setAttribute("aria-pressed", String(k[0] === chosen));
+      b.addEventListener("click", function () {
+        chosen = k[0];
+        Array.prototype.forEach.call(kinds.children, function (x) { x.setAttribute("aria-pressed", String(x === b)); });
+        area.placeholder = chosen === "ask" ? "무엇이 궁금한가요? 자료를 보고 답해 드려요" : chosen === "flag" ? "무엇이 이상한가요?" : "나를 위한 메모";
+      });
+      kinds.appendChild(b);
+    });
+    var area = document.createElement("textarea");
+    area.rows = 2;
+    area.placeholder = "나를 위한 메모";
+    var send = el("button", "cm-send", "남기기");
+    send.type = "button";
+    send.addEventListener("click", function () {
+      var text = area.value.trim();
+      if (!text) return;
+      post({ type: "comment", unit: unitID, rev: rev || 1, quote: quote, kind: chosen, text: text });
+      area.value = "";
+      send.textContent = "남겼어요";
+      setTimeout(function () { send.textContent = "남기기"; }, 1500);
+    });
+    form.appendChild(kinds);
+    form.appendChild(area);
+    form.appendChild(send);
+    t.appendChild(form);
+    return t;
+  }
+
+  function commentButton(unit, wrap) {
+    var unitID = unit.commentUnit || unit.id;
+    var list = ((current && current.comments) || {})[unitID] || [];
+    var b = el("button", "g-cm" + (list.length ? " has" : ""), list.length ? "✎ " + list.length : "✎");
+    b.type = "button";
+    b.title = "코멘트";
+    var thread = null;
+    function open() {
+      thread = threadNode(unitID, unit.rev, plain(unit.text), unit);
+      wrap.appendChild(thread);
+      openThreads[unitID] = true;
+      b.setAttribute("aria-expanded", "true");
+    }
+    b.addEventListener("click", function () {
+      if (thread) { thread.remove(); thread = null; delete openThreads[unitID]; b.setAttribute("aria-expanded", "false"); }
+      else open();
+    });
+    if (openThreads[unitID]) setTimeout(open, 0);
+    return b;
+  }
+
+  // 다시 만들기: ↻ 를 누르면 앱이 방식을 고르는 시트를 연다
+  function regenButton(unit, label) {
+    var b = el("button", "g-rg", label || "↻");
+    b.type = "button";
+    b.title = "다시 만들기";
+    b.addEventListener("click", function () {
+      post({ type: "openRegen", unit: unit.commentUnit || unit.id, rev: unit.rev || 1, ops: (unit.regen || []).map(function (r) { return r.op; }), quote: plain(unit.text || unit.caption || "") });
+    });
+    return b;
+  }
+
+  // 요구의 상태 ("↻ 더 쉽게 · 요청함"), 후보가 있으면 견주기
+  function directiveBadges(unit, wrap) {
+    (unit.directives || []).forEach(function (d) {
+      if (d.status === "applied" || d.status === "accepted") return;
+      var row = el("div", "dir " + d.status);
+      row.appendChild(el("span", "dir-label", "↻ " + esc(d.label) + " · " + esc(d.statusLabel)));
+      if (d.status === "candidate") {
+        var open = el("button", "dir-open", "새 판 · 비교");
+        open.type = "button";
+        var panel = null;
+        open.addEventListener("click", function () {
+          if (panel) { panel.remove(); panel = null; return; }
+          panel = comparePanel(unit, d);
+          row.insertAdjacentElement("afterend", panel);
+        });
+        row.appendChild(open);
+      }
+      wrap.appendChild(row);
+    });
+  }
+
+  function comparePanel(unit, d) {
+    var p = el("div", "compare");
+    p.appendChild(el("div", "cmp-head", "새 판 후보 · " + esc(d.label) + (d.note ? " — " + esc(d.note) : "")));
+    var body = el("div", "cmp-body");
+    (d.candidate || []).forEach(function (c) {
+      if (c.figure) {
+        var f = document.createElement("iframe");
+        f.className = "fig-frame";
+        f.setAttribute("sandbox", "allow-scripts");
+        f.src = c.figure;
+        body.appendChild(f);
+      }
+      if (c.title) body.appendChild(el("div", "blk-title", prose(c.title, false)));
+      if (c.tex) body.appendChild(el("div", "step-math", math(c.tex, true)));
+      if (c.text) body.appendChild(el("div", "en", prose(c.text, false)));
+    });
+    p.appendChild(body);
+    if (d.checks && d.checks.length) p.appendChild(el("div", "cmp-checks", d.checks.map(function (c) { return "✓ " + esc(c); }).join(" · ")));
+    var row = el("div", "cmp-actions");
+    var accept = el("button", "cmp-accept", "새 판 받아들이기");
+    accept.type = "button";
+    accept.addEventListener("click", function () { post({ type: "acceptDirective", id: d.id }); });
+    var keep = el("button", "cmp-keep", "지금 판 유지");
+    keep.type = "button";
+    keep.addEventListener("click", function () { post({ type: "keepDirective", id: d.id }); });
+    row.appendChild(accept);
+    row.appendChild(keep);
+    p.appendChild(row);
+    return p;
+  }
+
+  // 곁 설명 (쉽게, 자세히): 단위 아래에 펼친다. 영어와 그 한국어
+  function sideButton(unit, kind, label, wrap) {
+    var layer = unit[kind];
+    var b = el("button", "g-side", label);
+    b.type = "button";
+    b.setAttribute("aria-expanded", "false");
+    var panel = null;
+    b.addEventListener("click", function () {
+      if (panel) { panel.remove(); panel = null; b.setAttribute("aria-expanded", "false"); return; }
+      panel = el("div", "side " + kind);
+      panel.appendChild(el("span", "side-label", label + " · 곁 설명" + (layer.stale ? " (원문이 바뀌어 다시 만드는 중)" : "")));
+      var inner = paraBlock({ id: (unit.commentUnit || unit.id) + "-" + kind, text: layer.en, ko: layer.ko, src: [], noComments: true });
+      panel.appendChild(inner);
+      wrap.appendChild(panel);
+      b.setAttribute("aria-expanded", "true");
+    });
+    return b;
+  }
+
+  // 영어 글 + 출처 칩 + 한 단추 + 코멘트 단추 + 한국어
   function paraBlock(unit) {
     var wrap = el("div", "para");
     wrap.id = unit.id;
@@ -152,9 +324,14 @@
       tb.title = "아직 한국어가 없어요";
     }
     pc.appendChild(tb);
+    if (unit.easy) pc.appendChild(sideButton(unit, "easy", "쉽게", wrap));
+    if (unit.detail) pc.appendChild(sideButton(unit, "detail", "자세히", wrap));
+    if (!unit.noComments) pc.appendChild(commentButton(unit, wrap));
+    if (unit.regen && unit.regen.length) pc.appendChild(regenButton(unit));
     host.appendChild(pc);
     wrap.appendChild(en);
     if (ko) wrap.appendChild(ko);
+    if (!unit.noComments) directiveBadges(unit, wrap);
     return wrap;
   }
 
@@ -165,6 +342,7 @@
     var head = el("div", "blk-head");
     head.appendChild(el("span", "blk-kind", "Figure"));
     head.appendChild(el("span", "blk-title", esc(unit.figure.title)));
+    if (unit.regen && unit.regen.length) { var rg = regenButton(unit, "↻ 다시 만들기"); rg.classList.add("blk-regen"); head.appendChild(rg); }
     f.appendChild(head);
     var frame = document.createElement("iframe");
     frame.className = "fig-frame";
@@ -173,7 +351,7 @@
     frame.src = unit.figure.src;
     f.appendChild(frame);
     if (unit.caption) {
-      var cap = paraBlock({ id: unit.id + "-caption", text: unit.caption, ko: unit.ko, koStale: unit.koStale, src: [] });
+      var cap = paraBlock({ id: unit.id + "-caption", commentUnit: unit.id, rev: unit.rev, text: unit.caption, ko: unit.ko, koStale: unit.koStale, src: [], easy: unit.easy, directives: unit.directives });
       cap.classList.add("caption");
       f.appendChild(cap);
     }
@@ -192,7 +370,71 @@
     }
   });
 
+  // 풀이 블록: 단계마다 수식과 이유. "한 단계씩"을 누르면 하나씩 펼친다. 단계마다 한국어가 붙는다.
+  function derivationNode(unit, steps) {
+    var b = el("div", "blk deriv");
+    b.id = unit.id;
+    var head = el("div", "blk-head");
+    head.appendChild(el("span", "blk-kind", "Worked solution"));
+    if (unit.prov === "added") head.appendChild(el("span", "prov add", "보충"));
+    head.appendChild(el("span", "blk-title", prose(unit.derivation.title, false).replace(/^<p>|<\/p>$/g, "")));
+    var toggle = el("button", "step-toggle", "한 단계씩");
+    toggle.type = "button";
+    head.appendChild(toggle);
+    if (unit.regen && unit.regen.length) { var rg = regenButton(unit, "↻ 다시 만들기"); rg.classList.add("blk-regen"); head.appendChild(rg); }
+    b.appendChild(head);
+    directiveBadges(unit, b);
+    var list = el("ol", "steps");
+    steps.forEach(function (s, i) {
+      var li = el("li", "step");
+      li.id = s.id;
+      li.appendChild(el("div", "step-math", math(s.tex || "", true)));
+      if (s.text) {
+        var why = paraBlock({ id: s.id + "-why", commentUnit: s.id, rev: s.rev, text: s.text, ko: s.ko, koStale: s.koStale, src: [], regen: s.regen, directives: s.directives, easy: s.easy });
+        why.classList.add("why");
+        li.appendChild(why);
+      }
+      list.appendChild(li);
+    });
+    b.appendChild(list);
+    var shown = steps.length;
+    var next = el("button", "step-next", "다음 단계");
+    next.type = "button";
+    next.hidden = true;
+    function paint() {
+      Array.prototype.forEach.call(list.children, function (li, i) { li.classList.toggle("later", i >= shown); });
+      next.hidden = shown >= steps.length;
+    }
+    toggle.addEventListener("click", function () {
+      var stepping = b.classList.toggle("stepping");
+      shown = stepping ? 1 : steps.length;
+      toggle.textContent = stepping ? "모두 보기" : "한 단계씩";
+      paint();
+    });
+    next.addEventListener("click", function () { shown += 1; paint(); });
+    b.appendChild(next);
+    return b;
+  }
+
+  // 확인 문제: 문제를 먼저 보이고, 누르면 답과 풀이가 펼쳐진다
+  function checkNode(unit) {
+    var d = el("details", "check");
+    d.id = unit.id;
+    var summary = el("summary");
+    summary.appendChild(el("span", "blk-kind", "Check"));
+    d.appendChild(summary);
+    var q = paraBlock({ id: unit.id + "-q", commentUnit: unit.id, rev: unit.rev, text: unit.text, ko: unit.ko, koStale: unit.koStale, prov: unit.prov, src: [], regen: unit.regen, directives: unit.directives, easy: unit.easy });
+    q.classList.add("question");
+    summary.appendChild(q);
+    var ans = el("div", "ans");
+    ans.appendChild(el("div", "answer", "<b>Answer</b> " + prose(unit.answer || "", false).replace(/^<p>|<\/p>$/g, "")));
+    if (unit.solution) ans.appendChild(el("div", "solution", prose(unit.solution, false)));
+    d.appendChild(ans);
+    return d;
+  }
+
   function unitNode(unit) {
+    if (unit.kind === "check") return checkNode(unit);
     if (unit.kind === "block" && unit.figure) return figureNode(unit);
     if (unit.kind === "block") {
       var b = el("div", "blk math");
@@ -209,7 +451,30 @@
     return paraBlock(unit);
   }
 
+  // 개념 카드: 누르면 그 개념의 페이지로 간다. 아직 없는 개념은 이름만 보인다.
+  function linkSection(art, title, list, withNote) {
+    if (!list || !list.length) return;
+    var s = el("section", "links");
+    s.appendChild(el("h2", null, esc(title)));
+    list.forEach(function (l) {
+      var card = el(l.missing || !l.id ? "div" : "button", "linkcard" + (l.missing ? " missing" : ""));
+      if (card.tagName === "BUTTON") {
+        card.type = "button";
+        card.addEventListener("click", function () { post({ type: "openConcept", id: l.id }); });
+      }
+      card.appendChild(el("span", "lc-title", esc(l.title) + (l.missing ? " <small>아직 없음</small>" : "")));
+      if (l.subject) card.appendChild(el("span", "lc-subject", esc(l.subject)));
+      if (withNote && l.note) card.appendChild(el("span", "lc-note", prose(l.note, false).replace(/^<p>|<\/p>$/g, "")));
+      s.appendChild(card);
+    });
+    art.appendChild(s);
+  }
+
   function render(page) {
+    var same = current && current.concept === page.concept;
+    var keepY = window.scrollY;
+    if (!same) openThreads = {};
+    current = page;
     var root = document.getElementById("page");
     root.innerHTML = "";
     setTerms(page.terms);
@@ -220,14 +485,44 @@
     art.appendChild(h);
     var meta = el("div", "meta");
     (page.chips || []).forEach(function (c) { meta.appendChild(el("span", "chip", esc(c))); });
+    (page.facets || []).forEach(function (g) {
+      g.values.forEach(function (v) { meta.appendChild(el("span", "chip facet", '<small>' + esc(g.label) + '</small> ' + esc(v))); });
+    });
     var count = el("span", "open-count");
     count.hidden = true;
     meta.appendChild(count);
     art.appendChild(meta);
     var units = el("div", "units");
     if (!page.units || !page.units.length) units.appendChild(el("div", "empty", "아직 페이지가 없어요. 개념 정리가 끝나면 만들어집니다."));
-    (page.units || []).forEach(function (u) { units.appendChild(unitNode(u)); });
+    var list = page.units || [];
+    for (var i = 0; i < list.length; i++) {
+      var u = list[i];
+      if (u.kind === "block" && u.derivation) {
+        var steps = [];
+        while (i + 1 < list.length && list[i + 1].kind === "step" && list[i + 1].parent === u.id) steps.push(list[++i]);
+        units.appendChild(derivationNode(u, steps));
+      } else if (u.kind !== "step") {
+        units.appendChild(unitNode(u));
+      }
+    }
     art.appendChild(units);
+    linkSection(art, "먼저 알아야 할 것", page.before, false);
+    linkSection(art, "이어서 배울 것", page.after, false);
+    linkSection(art, "과목 사이 연결", page.links, true);
+    if (page.references && page.references.length) {
+      var rs = el("section", "refs");
+      rs.appendChild(el("h2", null, "더 볼 자료"));
+      page.references.forEach(function (r) {
+        var b = el("button", "ref");
+        b.type = "button";
+        b.appendChild(el("span", "ref-title", esc(r.title)));
+        b.appendChild(el("span", "ref-kind", esc(r.kind)));
+        if (r.why) b.appendChild(el("span", "ref-why", esc(r.why)));
+        b.addEventListener("click", function () { post({ type: "openURL", url: r.url }); });
+        rs.appendChild(b);
+      });
+      art.appendChild(rs);
+    }
     if (page.sources && page.sources.length) {
       var s = el("section", "sources");
       s.appendChild(el("h2", null, "이 개념이 나온 자료"));
@@ -250,7 +545,15 @@
     if (page.openAll) {
       Array.prototype.forEach.call(document.querySelectorAll(".g-tr:not(:disabled)"), function (b) { b.click(); });
     }
-    window.scrollTo(0, 0);
+    // 같은 개념을 다시 그릴 때(코멘트를 단 뒤 등)는 읽던 자리를 지킨다
+    window.scrollTo(0, same ? keepY : 0);
+    // 화면 찍기: 코멘트 스레드와 새 판 비교를 펼치고 그 자리로 내려 연다
+    if (page.debug) {
+      if (page.debug.openThreads) Array.prototype.forEach.call(document.querySelectorAll(".g-cm.has"), function (b) { b.click(); });
+      if (page.debug.openCompare) Array.prototype.forEach.call(document.querySelectorAll(".dir-open"), function (b) { b.click(); });
+      if (page.debug.openEasy) Array.prototype.forEach.call(document.querySelectorAll(".g-side"), function (b) { b.click(); });
+      if (page.debug.scrollTo) setTimeout(function () { var t = document.querySelector(page.debug.scrollTo); if (t) t.scrollIntoView({ block: "start" }); }, 400);
+    }
     // 그림 블록까지 내려 연다 (화면 찍기)
     if (page.scrollToFigure) {
       var fig = document.querySelector("figure.fig");
@@ -258,6 +561,12 @@
     }
   }
 
-  window.jindesk = { render: render };
+  // 렌더러 오류는 앱에 알린다 (앱이 기록에 남긴다)
+  window.addEventListener("error", function (e) { post({ type: "error", message: String(e.message) + " (" + e.lineno + ")" }); });
+  window.jindesk = {
+    render: function (page) {
+      try { render(page); } catch (e) { post({ type: "error", message: String(e && e.stack ? e.stack : e) }); throw e; }
+    },
+  };
   document.addEventListener("DOMContentLoaded", function () { post({ type: "ready" }); });
 })();

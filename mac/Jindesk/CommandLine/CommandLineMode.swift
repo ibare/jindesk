@@ -3,6 +3,7 @@
 //   Jindesk intake [--data <데이터 폴더>] --subject <과목> [--follow] <파일>…
 //   Jindesk continue [--data <데이터 폴더>] [--only <종류>]
 //   Jindesk check-figure --vendor <폴더> <그림 조각.html>
+//   Jindesk directive --data <데이터 폴더> (--accept | --keep) <요구 id>
 //   Jindesk migrate --check <백업 폴더나 zip> [--sample <n>] [--keep]
 //   Jindesk backup --out <폴더> [--data <데이터 폴더>]
 //   Jindesk version
@@ -16,14 +17,15 @@ struct JindeskCommand: AsyncParsableCommand {
     commandName: "Jindesk",
     abstract: "Jindesk 명령줄 모드",
     subcommands: [
-      DoctorCommand.self, IntakeCommand.self, ContinueCommand.self, FigureCheckCommand.self, MigrateCommand.self, BackupCommand.self, VersionCommand.self,
+      DoctorCommand.self, IntakeCommand.self, ContinueCommand.self, DirectiveCommand.self, FigureCheckCommand.self, MigrateCommand.self, BackupCommand.self,
+      VersionCommand.self,
     ]
   )
 }
 
 @MainActor
 enum CommandLineMode {
-  static let commands: Set<String> = ["doctor", "intake", "continue", "check-figure", "migrate", "backup", "version", "help", "--help", "-h"]
+  static let commands: Set<String> = ["doctor", "intake", "continue", "directive", "check-figure", "migrate", "backup", "version", "help", "--help", "-h"]
 
   // 첫 인자가 명령이면 명령줄 모드다. "-" 로 시작하는 인자(-snapshotDir, Xcode 가 붙이는 -NSDocumentRevisionsDebugMode 등)만 있으면 앱으로 뜬다.
   // 모르는 명령도 명령줄 모드로 받아 오류를 보인다. 화면 앱으로 떠 버리면 스크립트가 멈춘다.
@@ -180,7 +182,7 @@ struct ContinueCommand: AsyncParsableCommand {
     commandName: "continue", abstract: "남은 일(읽지 않은 자료, 정리하지 않은 엔트리, 없거나 낡은 페이지와 한국어)을 이어서 한다")
 
   @Option(help: "데이터 폴더. 주지 않으면 앱에서 고른 폴더") var data: String?
-  @Option(help: "이 종류만 넣는다 (source-reading, concept-curation, page-build, translation)") var only: String?
+  @Option(help: "이 종류만 넣는다 (source-reading, regen, ask, syllabus-build, concept-curation, page-build, translation, facets)") var only: String?
   @Flag(help: "남은 일만 보이고 넣지 않는다") var list = false
 
   @MainActor
@@ -195,6 +197,29 @@ struct ContinueCommand: AsyncParsableCommand {
     let config = try await CommandLineMode.agentConfig(folder)
     try await jobs.submitAll(config: config, work.map { Pipeline.prepare($0) })
     try await CommandLineMode.waitAll(jobs)
+  }
+}
+
+// 다시 만들기 후보를 받아들이거나 지금 판을 유지한다 (화면의 "새 판 받아들이기", "지금 판 유지"와 같다)
+struct DirectiveCommand: AsyncParsableCommand {
+  static let configuration = CommandConfiguration(commandName: "directive", abstract: "다시 만들기 후보를 받아들이거나 지금 판을 유지한다")
+
+  @Option(help: "데이터 폴더. 주지 않으면 앱에서 고른 폴더") var data: String?
+  @Flag(help: "새 판을 받아들인다") var accept = false
+  @Flag(help: "지금 판을 유지한다") var keep = false
+  @Argument(help: "요구 id (d7 …)") var id: String
+
+  @MainActor
+  func run() async throws {
+    guard let folder = CommandLineMode.dataFolder(data), folder.isInitialized else { throw ValidationError("Jindesk 데이터 폴더를 찾지 못했습니다") }
+    guard accept != keep else { throw ValidationError("--accept 와 --keep 가운데 하나를 준다") }
+    if keep {
+      try Regen.keep(folder, directiveID: id)
+      print("\(id): 지금 판 유지")
+    } else {
+      let unit = try Regen.accept(folder, directiveID: id)
+      print("\(id): 받아들임 (\(unit ?? "-"))")
+    }
   }
 }
 
@@ -213,6 +238,7 @@ struct FigureCheckCommand: AsyncParsableCommand {
     print("그려짐: \(result.painted ? "예" : "아니오") · 응답: \(result.responsive ? "예" : "아니오") · 받은 파일 \(result.fetched.count)개")
     for f in result.fetched { print("  + \(f)") }
     for e in result.errors { print("  ✗ \(e)") }
+    for o in result.overlaps { print("  ⨯ 겹침 \(o)") }
     if !result.problems.isEmpty { throw ExitCode(1) }
   }
 }
@@ -231,7 +257,9 @@ struct MigrateCommand: AsyncParsableCommand {
     guard FileOps.exists(source) else { throw ValidationError("없는 경로입니다: \(source.path)") }
     let folders = AppFolders.standard()
     try folders.prepare()
-    let report = try await MigrationCheck.run(source: source, folders: folders, app: AppPaths.version, sample: sample) { print("· \($0)") }
+    let report = try await MigrationCheck.run(source: source, folders: folders, app: AppPaths.version, sample: sample, schemas: AppPaths.schemas) {
+      print("· \($0)")
+    }
     print("스키마: \(report.from.map(String.init) ?? "\(report.to)") → \(report.to) (앱 \(CurrentSchema.version))")
     for note in report.notes { print(note) }
     print("더해진 파일 \(report.added.count) · 지워진 파일 \(report.removed.count) · 바뀐 파일 \(report.changed.count)")

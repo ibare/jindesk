@@ -60,36 +60,142 @@ struct SubjectsView: View {
         .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
       }
       .sheet(item: $model.peek) { SourcePeekSheet(peek: $0) }
+      .sheet(item: $model.regenTarget) { RegenSheet(target: $0) }
     }
   }
 }
 
-// 과목의 개념: 목차 항목(없으면 단원 제안)으로 묶는다
+// 과목의 개념: 목차가 있으면 목차 항목 차례로(자료가 있는 항목 ●, 없는 항목 ○), 목차 밖 개념은 단원 제안으로 묶어 맨 아래에 둔다
 struct ConceptRows: View {
   @Environment(AppModel.self) private var model
   let subject: String
 
   var body: some View {
     let concepts = model.concepts[subject] ?? []
-    if concepts.isEmpty {
+    let syllabus = model.syllabi[subject]
+    if let syllabus, syllabus.confirmed == nil { SyllabusConfirmRow(subject: subject, count: syllabus.items.count) }
+    if concepts.isEmpty && syllabus == nil {
       Text(model.library.subjects.first { $0.id == subject }.map { s in s.sources.contains { model.readSources[$0.id] != nil } } == true ? "개념을 정리하는 중이에요" : "자료를 읽으면 개념이 생겨요")
         .font(.caption).foregroundStyle(.secondary)
     }
-    ForEach(Self.groups(concepts), id: \.name) { group in
+    if let syllabus {
+      ForEach(syllabus.flat, id: \.item.code) { entry in
+        let inItem = concepts.filter { $0.item.map(ItemPath.dir) == ItemPath.dir(entry.item.code) }
+        SyllabusItemRow(item: entry.item, depth: entry.depth, hasConcepts: !inItem.isEmpty)
+        ForEach(inItem) { c in ConceptRow(concept: c).tag(SubjectSelection.concept(c.id)).padding(.leading, CGFloat(entry.depth) * 10) }
+      }
+    }
+    let unplaced = concepts.filter { $0.item == nil }
+    ForEach(Self.groups(unplaced, prefix: syllabus == nil ? nil : "목차 밖 · "), id: \.name) { group in
       Text(group.name).font(.caption.weight(.medium)).foregroundStyle(.secondary).padding(.top, 4)
       ForEach(group.concepts) { c in ConceptRow(concept: c).tag(SubjectSelection.concept(c.id)) }
     }
   }
 
-  static func groups(_ concepts: [Concept]) -> [(name: String, concepts: [Concept])] {
+  static func groups(_ concepts: [Concept], prefix: String? = nil) -> [(name: String, concepts: [Concept])] {
     var order: [String] = []
     var byName: [String: [Concept]] = [:]
     for c in concepts {
-      let name = c.item ?? c.itemProposed ?? "목차 밖"
+      let name = (prefix ?? "") + (c.item ?? c.itemProposed ?? "목차 밖")
       if byName[name] == nil { order.append(name) }
       byName[name, default: []].append(c)
     }
     return order.sorted().map { ($0, byName[$0]!) }
+  }
+}
+
+struct SyllabusItemRow: View {
+  let item: SyllabusItem
+  let depth: Int
+  let hasConcepts: Bool
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 1) {
+      HStack(spacing: 6) {
+        Text(hasConcepts ? "●" : "○").font(.caption2).foregroundStyle(hasConcepts ? Color.accentColor : .secondary)
+        Text(item.code).font(.caption.monospaced()).foregroundStyle(.secondary)
+        Text(item.title).font(.caption.weight(.medium)).foregroundStyle(.secondary)
+        if let level = item.level { Text(level).font(.caption2).foregroundStyle(.tertiary) }
+      }
+      if let soi = item.myp?.statementOfInquiry {
+        Text(soi).font(.caption2).foregroundStyle(.tertiary).lineLimit(2)
+      }
+    }
+    .padding(.leading, CGFloat(depth) * 10)
+    .padding(.top, depth == 0 ? 4 : 0)
+    .help(Self.mypHelp(item.myp))
+  }
+
+  static func mypHelp(_ m: MYPUnit?) -> String {
+    guard let m else { return "" }
+    var lines: [String] = []
+    if let k = m.keyConcept { lines.append("Key concept: \(k)") }
+    if !m.relatedConcepts.isEmpty { lines.append("Related concepts: \(m.relatedConcepts.joined(separator: ", "))") }
+    if let g = m.globalContext { lines.append("Global context: \(g)") }
+    if let s = m.statementOfInquiry { lines.append("Statement of inquiry: \(s)") }
+    return lines.joined(separator: "\n")
+  }
+}
+
+// 처음 만든 목차는 관리자가 확인한다
+struct SyllabusConfirmRow: View {
+  @Environment(AppModel.self) private var model
+  let subject: String
+  let count: Int
+  @State private var error: String?
+
+  var body: some View {
+    HStack {
+      Label("목차 확인 전 · 항목 \(count)개", systemImage: "list.bullet.clipboard").font(.caption).foregroundStyle(.orange)
+      Spacer()
+      Button("확인") {
+        do { try model.confirmSyllabus(subject) } catch { self.error = error.localizedDescription }
+      }
+      .controlSize(.small)
+      .help(error ?? "목차가 근거 문서와 맞는지 보고 확인합니다")
+    }
+  }
+}
+
+// 과목 꼬리표의 이름을 바꾸거나 다른 과목에 합친다
+struct SubjectRenameSheet: View {
+  @Environment(AppModel.self) private var model
+  @Environment(\.dismiss) private var dismiss
+  let subject: SubjectSummary
+  @State private var name = ""
+  @State private var error: String?
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Text("과목 이름 바꾸기·합치기").font(.headline)
+      Text("이 과목(\(subject.name))의 자료 \(subject.sources.count)개에 붙은 과목 꼬리표를 바꿉니다. 다른 과목의 이름을 고르면 그 과목에 합칩니다. 엔트리, 개념, 목차도 함께 옮깁니다.")
+        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+      HStack {
+        TextField("새 과목 이름", text: $name).textFieldStyle(.roundedBorder)
+        Menu("있는 과목") {
+          ForEach(model.library.subjects.filter { $0.id != subject.id }) { s in Button(s.name) { name = s.name } }
+        }
+        .fixedSize()
+      }
+      if let error { Text(error).font(.caption).foregroundStyle(.red) }
+      HStack {
+        Spacer()
+        Button("취소") { dismiss() }.keyboardShortcut(.cancelAction)
+        Button("바꾸기") {
+          do {
+            _ = try model.renameSubject(subject.id, to: name)
+            dismiss()
+          } catch {
+            self.error = error.localizedDescription
+          }
+        }
+        .keyboardShortcut(.defaultAction)
+        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || LabelMatch.key(name) == LabelMatch.key(subject.name))
+      }
+    }
+    .padding(18)
+    .frame(width: 460)
+    .onAppear { name = subject.name }
   }
 }
 
@@ -154,14 +260,23 @@ struct PendingBanner: View {
 
 struct SubjectHeader: View {
   let subject: SubjectSummary
+  @State private var renaming = false
 
   var body: some View {
     HStack(alignment: .firstTextBaseline) {
       Text(subject.name).font(.headline)
       Text((subject.grades + subject.levels).joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
       Spacer()
-      Text("\(subject.sources.count)").font(.caption).foregroundStyle(.secondary)
+      Menu {
+        Button("과목 이름 바꾸기·합치기…") { renaming = true }
+      } label: {
+        Image(systemName: "ellipsis.circle")
+      }
+      .menuStyle(.borderlessButton)
+      .fixedSize()
+      .help("과목 이름 바꾸기·합치기")
     }
+    .sheet(isPresented: $renaming) { SubjectRenameSheet(subject: subject) }
   }
 }
 

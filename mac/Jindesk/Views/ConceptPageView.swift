@@ -11,8 +11,35 @@ struct ConceptPageView: View {
   var body: some View {
     let json = model.pageJSON(concept)
     PageWebView(json: json, data: model.data) { message in
+      if message["type"]?.stringValue == "error" {
+        FileHandle.standardError.write(Data("렌더러 오류: \(message["message"]?.stringValue ?? "")\n".utf8))
+      }
       if message["type"]?.stringValue == "openSource", let source = message["source"]?.stringValue, let page = message["page"]?.numberValue {
         model.peek = SourcePeek(source: source, page: Int(page))
+      }
+      if message["type"]?.stringValue == "openConcept", let id = message["id"]?.stringValue, model.concept(id) != nil {
+        model.selection = .concept(id)
+      }
+      if message["type"]?.stringValue == "comment", let unit = message["unit"]?.stringValue, let text = message["text"]?.stringValue,
+        let kind = message["kind"]?.stringValue.flatMap(CommentKind.init(rawValue:))
+      {
+        let rev = message["rev"]?.numberValue.map { Int($0) } ?? 1
+        let quote = message["quote"]?.stringValue ?? ""
+        let concept = concept.id
+        Task { try? await model.addComment(concept: concept, unit: unit, rev: rev, quote: quote, kind: kind, text: text) }
+      }
+      if message["type"]?.stringValue == "deleteComment", let id = message["id"]?.stringValue { try? model.deleteComment(id) }
+      if message["type"]?.stringValue == "openRegen", let unit = message["unit"]?.stringValue {
+        let ops = (message["ops"]?.arrayValue ?? []).compactMap { $0.stringValue.flatMap(DirectiveOp.init(rawValue:)) }
+        model.regenTarget = RegenTarget(
+          concept: concept.id, unit: unit, rev: message["rev"]?.numberValue.map { Int($0) } ?? 1, ops: ops, quote: message["quote"]?.stringValue ?? "",
+          fromComment: message["fromComment"]?.stringValue, note: message["note"]?.stringValue)
+      }
+      if message["type"]?.stringValue == "acceptDirective", let id = message["id"]?.stringValue { Task { await model.acceptDirective(id) } }
+      if message["type"]?.stringValue == "keepDirective", let id = message["id"]?.stringValue { model.keepDirective(id) }
+      // 레퍼런스는 기본 브라우저로 연다 (학습 페이지 안에서는 네트워크를 쓰지 않는다)
+      if message["type"]?.stringValue == "openURL", let text = message["url"]?.stringValue, let url = URL(string: text), url.scheme == "https" {
+        NSWorkspace.shared.open(url)
       }
     }
   }
@@ -124,6 +151,13 @@ final class RendererSchemeHandler: NSObject, WKURLSchemeHandler {
     case "check":
       guard let checkPage else { return task.didFailWithError(URLError(.fileDoesNotExist)) }
       Self.respond(task, url: url, data: Data(checkPage.utf8), type: "text/html")
+    case "candidate":
+      // 다시 만들기의 그림 후보 (records/regen/<작업 id>/figures/<파일>)
+      let parts = url.path.split(separator: "/").map(String.init)
+      guard let data, parts.count == 2, JobID.isValid(parts[0]), !parts[1].contains(".."),
+        let code = FileOps.readIfExists(data.record(JobKind.regen.rawValue, parts[0]).appending(path: "figures/\(parts[1])"))
+      else { return task.didFailWithError(URLError(.fileDoesNotExist)) }
+      Self.respond(task, url: url, data: Data(FigureFrame.compose(code).utf8), type: "text/html")
     default:
       let file = root.appending(path: String(url.path.drop { $0 == "/" })).standardizedFileURL
       guard file.path.hasPrefix(root.path + "/"), let bytes = try? Data(contentsOf: file) else {
@@ -182,6 +216,57 @@ final class VendorSchemeHandler: NSObject, WKURLSchemeHandler {
 
   func webView(_ webView: WKWebView, stop task: any WKURLSchemeTask) {
     stopped.insert(ObjectIdentifier(task))
+  }
+}
+
+// 다시 만들기 시트: 방식 고르기, 메모, "놓이는 곳 · 그대로인 것 · 검사" 설명
+struct RegenSheet: View {
+  @Environment(AppModel.self) private var model
+  @Environment(\.dismiss) private var dismiss
+  let target: RegenTarget
+  @State private var op: DirectiveOp = .easy
+  @State private var note = ""
+  @State private var error: String?
+  @State private var busy = false
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Text("다시 만들기").font(.headline)
+      Text("“\(TexText.plain(target.quote))”").font(.callout).foregroundStyle(.secondary).lineLimit(3)
+      Picker("방식", selection: $op) {
+        ForEach(target.ops, id: \.self) { Text($0.label).tag($0) }
+      }
+      .pickerStyle(.segmented)
+      .labelsHidden()
+      Text(op.explanation).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+      Text("하고 싶은 말 (적지 않아도 됩니다)").font(.caption)
+      TextEditor(text: $note).font(.body).frame(minHeight: 70).border(.quaternary)
+      if let error { Text(error).font(.caption).foregroundStyle(.red) }
+      HStack {
+        Spacer()
+        Button("취소") { dismiss() }.keyboardShortcut(.cancelAction)
+        Button(busy ? "보내는 중…" : "요청") {
+          busy = true
+          Task {
+            do {
+              try await model.requestRegen(target, op: op, note: note)
+              dismiss()
+            } catch {
+              self.error = error.localizedDescription
+            }
+            busy = false
+          }
+        }
+        .keyboardShortcut(.defaultAction)
+        .disabled(busy)
+      }
+    }
+    .padding(18)
+    .frame(width: 520)
+    .onAppear {
+      op = target.ops.first ?? .easy
+      note = target.note ?? ""
+    }
   }
 }
 

@@ -2,6 +2,7 @@
 // - 스크립트 오류가 없다
 // - 정해진 시간(기본 3초) 안에 무언가 그려진다. 스냅숏이 배경색 한 가지가 아니다
 // - 멈추지 않는다. 그 뒤에도 페이지가 응답한다
+// - 처음 장면에서 보이는 글자끼리 겹치지 않는다
 // 그림이 부른 바깥 파일은 이때 받아 library/vendor/ 에 둔다. 그림이 내용에 맞는지는 보지 않는다.
 import AppKit
 import JindeskKit
@@ -50,7 +51,53 @@ struct WebFigureChecker: FigureChecking {
     errors += vendorHandler.failures.map { "바깥 파일을 받지 못했습니다: \($0)" }
     let responsive = await respond(view, timeout: .seconds(3))
     let painted = responsive ? await paintedSomething(view) : false
-    return FigureCheckResult(errors: errors, painted: painted, responsive: responsive, fetched: vendorHandler.fetched)
+    let overlaps = responsive ? await overlappingText(view) : []
+    return FigureCheckResult(errors: errors, painted: painted, responsive: responsive, fetched: vendorHandler.fetched, overlaps: overlaps)
+  }
+
+  // 보이는 글자 상자(글자 줄, SVG 글자, KaTeX 수식 하나)끼리 작은 쪽 넓이의 30% 넘게 겹친 쌍
+  static let overlapScript = """
+    (function () {
+      var boxes = [];
+      function visible(el) {
+        return !el.checkVisibility || el.checkVisibility({ opacityProperty: true, visibilityProperty: true });
+      }
+      function add(rect, text) {
+        if (rect.width < 2 || rect.height < 2) return;
+        boxes.push({ x: rect.left, y: rect.top, r: rect.right, b: rect.bottom, t: text });
+      }
+      document.querySelectorAll(".katex").forEach(function (k) {
+        if (visible(k) && !k.parentElement.closest(".katex")) add(k.getBoundingClientRect(), k.textContent);
+      });
+      document.querySelectorAll("svg text").forEach(function (t) {
+        if (visible(t) && t.textContent.trim()) add(t.getBoundingClientRect(), t.textContent);
+      });
+      var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      var node;
+      while ((node = walker.nextNode())) {
+        var el = node.parentElement;
+        if (!node.textContent.trim() || !el || el.closest(".katex, svg, script, style") || !visible(el)) continue;
+        var range = document.createRange();
+        range.selectNodeContents(node);
+        Array.prototype.forEach.call(range.getClientRects(), function (rect) { add(rect, node.textContent); });
+      }
+      var out = [];
+      for (var i = 0; i < boxes.length && out.length < 5; i++) {
+        for (var j = i + 1; j < boxes.length && out.length < 5; j++) {
+          var a = boxes[i], b = boxes[j];
+          var w = Math.min(a.r, b.r) - Math.max(a.x, b.x), h = Math.min(a.b, b.b) - Math.max(a.y, b.y);
+          if (w <= 0 || h <= 0) continue;
+          var small = Math.min((a.r - a.x) * (a.b - a.y), (b.r - b.x) * (b.b - b.y));
+          if (w * h > 0.3 * small) out.push(JSON.stringify(a.t.trim().slice(0, 40)) + " ↔ " + JSON.stringify(b.t.trim().slice(0, 40)));
+        }
+      }
+      return out;
+    })()
+    """
+
+  @MainActor
+  static func overlappingText(_ view: WKWebView) async -> [String] {
+    (try? await view.evaluateJavaScript(overlapScript) as? [String]) ?? []
   }
 
   // 정해진 시간 안에 스크립트가 답하는가 (멈춘 그림은 답하지 않는다)

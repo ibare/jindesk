@@ -121,7 +121,11 @@ public enum Translation {
     if !checked.problems.isEmpty {
       await ctx.log(.warn, "[\(tag)] 검사에서 \(checked.problems.count)건이 나와 고쳐 쓰게 합니다: \(checked.problems.prefix(3).joined(separator: " · "))")
       try await AgentStep.fix(options, session: result.sessionID, problems: checked.problems, ctx: ctx, label: "\(tag) 번역", events: "translate-fix")
-      checked = check(out: dirs.out, targets: targets, glossary: glossary)
+      // 고쳐 쓴 뒤에는 용어 어휘 검사로 막지 않는다. 같은 낱말이 다른 뜻으로 쓰였을 수 있다 (동사 means 와 평균 mean).
+      checked = check(out: dirs.out, targets: targets, glossary: glossary, strictTerms: false)
+      for (id, notes) in checked.termNotes.sorted(by: { $0.key < $1.key }) {
+        await ctx.log(.warn, "[\(tag)] \(id): 어휘와 다르게 옮긴 채로 받았습니다 — \(notes.joined(separator: " · "))")
+      }
     }
     // 반영 직전에 페이지가 그대로인지 다시 본다
     guard let current = Page.load(folder), current == page else {
@@ -148,11 +152,13 @@ public enum Translation {
     var unitProblems: [String: [String]] = [:]
     var terms: [(en: String, ko: String)] = []
     var general: [String] = []
+    // strictTerms 가 아닐 때: 용어 어휘와 다르게 옮겼지만 받은 단위와 그 용어
+    var termNotes: [String: [String]] = [:]
 
     var problems: [String] { general + unitProblems.keys.sorted().flatMap { id in unitProblems[id]!.map { "\(id): \($0)" } } }
   }
 
-  static func check(out: URL, targets: [PageUnit], glossary: Glossary) -> Checked {
+  static func check(out: URL, targets: [PageUnit], glossary: Glossary, strictTerms: Bool = true) -> Checked {
     var c = Checked()
     let v: JSONValue
     switch AgentJSON.read(out.appending(path: "layers.json"), label: "out/layers.json") {
@@ -169,7 +175,13 @@ public enum Translation {
         continue
       }
       let problems = unitProblems(en: u.english ?? "", ko: ko, glossary: glossary)
-      if problems.isEmpty { c.accepted[u.id] = ko } else { c.unitProblems[u.id] = problems }
+      let blocking = strictTerms ? problems : problems.filter { !$0.hasPrefix(termProblemPrefix) }
+      if blocking.isEmpty {
+        c.accepted[u.id] = ko
+        if problems.count > blocking.count { c.termNotes[u.id] = problems.filter { $0.hasPrefix(termProblemPrefix) } }
+      } else {
+        c.unitProblems[u.id] = blocking
+      }
     }
     for t in v["terms"]?.arrayValue ?? [] {
       guard let en = AgentJSON.string(t["en"]), let ko = AgentJSON.string(t["ko"]) else { continue }
@@ -177,6 +189,8 @@ public enum Translation {
     }
     return c
   }
+
+  static let termProblemPrefix = "용어 "
 
   // 영어 단위 하나와 그 한국어를 견준다
   static func unitProblems(en: String, ko: String, glossary: Glossary) -> [String] {
@@ -189,7 +203,7 @@ public enum Translation {
     if enNumbers != koNumbers { out.append("수식 밖의 숫자가 영어와 다릅니다 (영어 \(enNumbers.joined(separator: " ")), 한국어 \(koNumbers.joined(separator: " ")))") }
     if let left = leftoverEnglish(ko) { out.append("영어 문장이 남았습니다: \"\(left)\"") }
     for term in glossary.terms where mentions(en, term) && !ko.contains(term.ko) {
-      out.append("용어 \(term.en) 는 \(term.ko) 로 옮긴다")
+      out.append("\(termProblemPrefix)\(term.en) 이 어휘의 뜻으로 쓰였으면 \(term.ko) 로 옮긴다 (다른 뜻이면 그대로 둔다)")
     }
     let enLength = TexText.strip(en).count
     let koLength = TexText.strip(ko).count

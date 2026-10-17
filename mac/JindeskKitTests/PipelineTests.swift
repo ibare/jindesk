@@ -413,6 +413,19 @@ extension CurationCheckTests {
     #expect(Translation.leftoverEnglish("그래서 add the exponents when you multiply them 이다") != nil)
     #expect(Translation.leftoverEnglish("화면 아래에 SELECT, DELETE, TYPE, TOOL, MODIFY, DRAW 명령이 있다") == nil)
   }
+
+  @Test func 고쳐_쓴_뒤에는_어휘와_다른_뜻으로_쓴_낱말로_막지_않는다() throws {
+    let g = Glossary(terms: [GlossaryTerm(en: "mean", ko: "평균")])
+    let unit = PageUnit(id: "q1", rev: 1, kind: .check, from: "u1@x", prov: "added", text: "Find the standard deviation and state what it means in context.")
+    let out = TempPlace().root.appending(path: "out")
+    try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+    try JSONSerialization.data(withJSONObject: ["units": ["q1": "표준편차를 구하고, 그 값이 맥락에서 무엇을 뜻하는지 밝혀라."]]).write(to: out.appending(path: "layers.json"))
+    // 처음에는 알려서 고쳐 쓰게 하고, 고쳐 쓴 뒤에는 받는다 (기록에 남긴다)
+    #expect(Translation.check(out: out, targets: [unit], glossary: g).accepted.isEmpty)
+    let relaxed = Translation.check(out: out, targets: [unit], glossary: g, strictTerms: false)
+    #expect(relaxed.accepted["q1"] != nil)
+    #expect(relaxed.termNotes["q1"]?.count == 1)
+  }
 }
 
 // 가짜 claude 로 자료 넣기 → 자료 읽기 → 개념 정리 → 학습 페이지 → 번역을 끝까지 돌린다.

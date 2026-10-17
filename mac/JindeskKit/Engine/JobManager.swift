@@ -161,15 +161,22 @@ public final class JobManager {
     for job in jobs where pending.contains(where: { $0.snapshot.id == job.id }) || isActive(job.id) || !ids.insert(job.id).inserted {
       throw RequestError("이미 대기 중인 작업 id 입니다: \(job.id)")
     }
+    var out: [String] = []
     for job in jobs {
+      // 같은 일을 할 작업이 아직 시작하지 않고 기다리면 그 작업으로 갈음한다
+      if let key = job.coalesceKey, let waiting = pending.first(where: { $0.job.coalesceKey == key }) {
+        out.append(waiting.snapshot.id)
+        continue
+      }
       let snapshot = JobSnapshot(
-        id: job.id, type: job.kind.rawValue, typeLabel: job.kind.label, title: job.title, phase: "queued", phaseLabel: "대기",
+        id: job.id, type: job.kind.rawValue, typeLabel: job.kind.label, title: job.title, target: job.target, phase: "queued", phaseLabel: "대기",
         queuedAt: Clock.isoLocal())
       pending.append(Pending(snapshot: snapshot, job: job, config: config))
+      out.append(job.id)
     }
     queue = pending.map(\.snapshot)
     pump()
-    return jobs.map(\.id)
+    return out
   }
 
   // id 를 주면 그 작업을 취소한다(대기 중이면 대기열에서 뺀다). 주지 않으면 진행 중인 작업을 모두 취소한다.
@@ -234,6 +241,13 @@ public final class JobManager {
     _ = tick
     guard let threshold = holdAtPercent, let w = usage?.fiveHour, w.isCurrent(at: now), w.percent >= threshold else { return nil }
     return (w, threshold)
+  }
+
+  // 대기열과 진행 중인 작업이 모두 끝날 때까지 기다린다 (명령줄에서 뒤따르는 작업까지 볼 때)
+  public func waitUntilIdle() async {
+    while isBusy {
+      if let id = active.first?.id ?? queue.first?.id { _ = await waitForEnd(id) } else { try? await Task.sleep(for: .milliseconds(200)) }
+    }
   }
 
   // 그 작업이 끝날 때까지 기다린다 (명령줄에서 쓴다)

@@ -84,7 +84,7 @@
 `learner/directives.jsonl`은 덧붙이기만 한다. 상태가 바뀌면 줄을 더한다.
 
 ```json
-{"v":1,"id":"d7","at":"2026-09-16T21:04:00+09:00","by":"learner","op":"detail","target":{"concept":"math-aa-hl/ahl-5.12/first-principles","unit":"s3","rev":1},"note":"h ≠ 0이라서 나눌 수 있다는 게 무슨 뜻인지","from_comment":"cm-20260915-201500-a1b2","status":"requested"}
+{"v":1,"id":"d7","at":"2026-09-16T21:04:00+09:00","by":"learner","op":"detail","target":{"concept":"math-aa/ahl-5.12/first-principles","unit":"s3","rev":1},"note":"h ≠ 0이라서 나눌 수 있다는 게 무슨 뜻인지","from_comment":"cm-20260915-201500-a1b2","status":"requested"}
 {"v":1,"id":"d7","at":"2026-09-16T21:09:30+09:00","status":"candidate","job":"20260916-2104-regen","candidate_rev":2}
 {"v":1,"id":"d7","at":"2026-09-16T21:15:02+09:00","status":"accepted","rev":2}
 ```

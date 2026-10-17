@@ -25,16 +25,16 @@ git 을 쓰지 않는다. 모든 산출물은 파일로 쓰고, 백업은 데이
 ~/Jindesk/
   meta/
     schema.yaml                 스키마 버전, 마이그레이션 이력, 이 폴더를 마지막으로 연 앱 판
-    subjects.yaml               과목: id, 이름, 과정(MYP/DP), 수준(SL/HL), 학년
     privacy.yaml                웹 금지어: 학생·학교·선생님 이름
     .lock                       작업 중인 프로세스 id. 백업에 들어가도 해가 없다
   syllabus/<과목 id>.yaml       강의 계획 목차 (목차 만들기가 쓴다)
-  sources/<과목 id>/<자료 id>/
+  sources/<자료 id>/
     original.<확장자>            받은 그대로
     source.pdf                  PPT 를 PDF 로 바꾼 것 (PDF 와 사진이면 없다)
     pages/0001.txt …            쪽마다 글자층
-    index.md                    쪽 목록, 쪽마다 글자층 유무와 길이. 에이전트가 먼저 읽는다
-    meta.yaml                   내용 해시, 받은 날, 과목, 메모, 쪽 수, 바꾼 방법
+    index.md                    쪽 목록, 쪽마다 글자층의 길이와 만든 방법, 이어 채운 쪽 묶음. 에이전트가 먼저 읽는다
+    meta.yaml                   받을 때 정해진 사실: 내용 해시, 받은 날, 쪽 수, 바꾼 방법, 글자층. 고치지 않는다
+    labels.yaml                 학생이 붙인 것: 꼬리표(학년, 과목, 수준), 메모, 목차의 근거 표시. 고칠 수 있다
   records/
     runs/<YYYY-MM>.jsonl        모든 작업의 실행 요약 (작업 id, 종류, 시작·끝, 결과, 사용량, 지침 판, 모델)
     syllabus-build/<작업 id>/   근거 문서 목록, 결정, 검사 결과
@@ -66,8 +66,10 @@ git 을 쓰지 않는다. 모든 산출물은 파일로 쓰고, 백업은 데이
 
 경로의 `<항목>`은 강의 계획 코드를 소문자로 쓰고, 공백은 `-`로 바꾼다(`a.1`, `r1.3`, `ahl-5.12`). 경로가 바뀌어도 id 로 찾을 수 있게, 개념 id 는 `<과목 id>/<항목>/<slug>`로 파일 안에도 적는다.
 
+목차가 없거나 목차에 없는 것은 `<항목>`을 `unplaced`로 쓴다. 엔트리는 `entries/<과목 id>/unplaced/<slug>.md`, 개념은 `unplaced/<과목 id>/<slug>/`에 두고 개념 id 는 `<과목 id>/unplaced/<slug>`다. 자료 읽기와 개념 정리가 제안한 단원·주제 이름은 `item_proposed`에 남고, 목록은 그 이름으로 묶어 보인다. MYP 처럼 단원 안내가 오기 전에는 모든 개념이 여기에 있다.
+
 **기록과 정리층.**
-- 기록: `records/`, `library/entries/`, `learner/*.jsonl`, `sources/`, `library/vendor/`. 고치지 않는다.
+- 기록: `records/`, `library/entries/`, `learner/*.jsonl`, `sources/`, `library/vendor/`. 고치지 않는다. 다만 자료의 `labels.yaml`은 학생이 꼬리표를 고치거나 합칠 때 다시 쓴다.
 - 정리층: `syllabus/`, `library/concepts/`, `library/unplaced/`, `links/`, `glossary.yaml`, `facets.yaml`, `references.yaml`. 작업이 다시 만든다.
 - `history.jsonl`은 정리층 폴더 안에 있지만 덧붙이기만 한다.
 - `figures/`의 코드 파일도 정리층 폴더 안에 있지만 판마다 새로 쓰고 고치지 않는다.
@@ -94,7 +96,7 @@ git 을 쓰지 않는다. 모든 산출물은 파일로 쓰고, 백업은 데이
 |---|---|---|
 | 작업 id | `YYYYMMDD-HHMM-<짧은-슬러그>` (Assayer 와 같다) | 러너 |
 | 자료 id | `YYYYMMDD-<내용 해시 앞 8자>` | 자료 넣기 |
-| 과목 id | `physics-hl`, `math-aa-hl`, `chemistry-sl`, `myp10-sciences` | 처음 설정 |
+| 과목 id | 과목 꼬리표에서 만든다. 영어 소문자, 숫자, `-` 이고 수준을 넣지 않는다(`physics`, `math-aa`, `extended-math`) | 자료 넣기 |
 | 개념 id | `<과목 id>/<항목>/<slug>`, slug 는 영어 소문자와 `-` | 개념 정리 |
 | 원문 단위 id | `u1`, `u2` … (개념 안에서 유일) | 러너 |
 | 페이지 단위 id | `p1`(문단), `b1`(블록), `s1`(풀이 단계), `n1`(강조 상자), `q1`(확인 문제) … (페이지 안에서 유일) | 러너 |
@@ -102,6 +104,7 @@ git 을 쓰지 않는다. 모든 산출물은 파일로 쓰고, 백업은 데이
 | 요구 id | `d<n>` (데이터 폴더 안에서 유일) | 앱 |
 
 - id 는 러너나 앱이 붙인다. 에이전트가 정하지 않는다.
+- 과목 꼬리표의 이름을 바꾸거나 두 값을 합치면 과목 id 도 바뀐다. 그때는 그 과목의 목차와 개념 폴더도 함께 옮긴다(꼬리표 고치기가 한다).
 - 한 번 쓴 단위 id 는 그 개념 안에서 다시 쓰지 않는다. 지워진 단위의 id 도 그렇다. 그래야 코멘트와 요구가 엉뚱한 단위를 가리키지 않는다. 페이지마다 `next_id`로 센다.
 - 단위를 밖에서 가리킬 때는 `<개념 id>#<단위 id>`로 쓴다. 판까지 가리키면 `…#p1@r2`다.
 
@@ -142,7 +145,7 @@ git 을 쓰지 않는다. 모든 산출물은 파일로 쓰고, 백업은 데이
 ## 색인 (SQLite)
 
 - 캐시의 `index.sqlite`에 둔다.
-- 담는 것: 개념 목록(과목, 항목, 제목, 수준, 자료 유무), 단위 글(영어와 한국어, FTS5), 용어, 코멘트 위치, 낡은 단위 목록, 파일마다 경로·크기·수정 시각·해시.
+- 담는 것: 자료와 꼬리표, 개념 목록(과목, 항목, 제목, 수준, 자료 유무), 개념의 꼬리표(그 개념이 나온 자료들의 꼬리표를 모은 것), 단위 글(영어와 한국어, FTS5), 용어, 코멘트 위치, 낡은 단위 목록, 파일마다 경로·크기·수정 시각·해시.
 - 원본이 아니다. 켤 때와 작업이 끝날 때 바뀐 파일(크기·수정 시각)만 다시 읽는다. 색인 스키마가 바뀌거나 깨지면 지우고 다시 만든다.
 - SQLite 에만 있는 데이터는 없다. 화면 상태(펼친 번역, 읽던 자리)는 데이터가 아니므로 앱 지원 폴더의 `state.json`에 둔다. 잃어도 괜찮다.
 
@@ -174,38 +177,69 @@ history:
   - { from: 2, to: 3, app: "0.4.0", at: "2026-10-12T19:30:00+09:00", kind: "code+agent", backup: "Jindesk-마이그레이션-2-3.zip" }
 ```
 
-`meta/subjects.yaml`
-
-```yaml
-kind: "subjects"
-v: 1
-subjects:
-  - { id: "physics-hl", name: "Physics", programme: "DP", level: "HL", years: ["DP1", "DP2"] }
-  - { id: "math-aa-hl", name: "Mathematics: analysis and approaches", programme: "DP", level: "HL", years: ["DP1", "DP2"] }
-  - { id: "chemistry-sl", name: "Chemistry", programme: "DP", level: "SL", years: ["DP1", "DP2"] }
-```
-
-`sources/physics-hl/20260903-3fa2c1d0/meta.yaml`
+`sources/20260903-3fa2c1d0/meta.yaml` (받을 때 정해진 사실. 고치지 않는다)
 
 ```yaml
 kind: "source"
 v: 1
 id: "20260903-3fa2c1d0"
-subject: "physics-hl"
 original: { name: "Kinematics slides.pptx", bytes: 4813220, sha256: "3fa2c1d0e9b14a77" }
 received: "2026-09-03T17:42:00+09:00"
-memo: "선생님이 A.1 마무리라고 함"
 converted: { to: "source.pdf", by: "keynote", app_version: "14.4" }
 pages: 24
 text_layer: { by: "pdfkit", pages_with_text: 22, ocr: { by: "vision", pages: [5, 17] } }
+build_ups: [[3, 4, 5], [9, 10]]
 ```
 
-`syllabus/physics-hl.yaml`
+`build_ups`는 앞 쪽의 글자를 모두 담고 더해 가는 쪽들의 묶음이다(슬라이드 애니메이션을 단계마다 내보낸 PDF). 자료 읽기는 묶음의 마지막 쪽을 중심으로 읽는다.
+
+`sources/20260903-3fa2c1d0/labels.yaml` (학생이 붙인 것. 고칠 수 있다)
+
+```yaml
+kind: "labels"
+v: 1
+source: "20260903-3fa2c1d0"
+labels: { grade: "DP1", subject: "Physics", level: "HL" }
+memo: "선생님이 A.1 마무리라고 함"
+syllabus_basis: false
+```
+
+`labels`는 열린 이름-값이다. 처음 제안하는 이름은 `grade`(학년), `subject`(과목), `level`(수준)이다. 과목 id 는 `subject` 값에서 만든다(`Physics` → `physics`).
+
+`library/entries/physics/a.1/projectile-motion.md` (자료 읽기가 쓴다. 고치지 않는다)
+
+```markdown
+---
+kind: "entry"
+v: 1
+id: "physics/a.1/projectile-motion"
+subject: "physics"
+item: "A.1"
+item_proposed: null
+title: "Projectile motion"
+source: "20260903-3fa2c1d0"
+pages: [10, 11, 12]
+claims:
+  - { text: "horizontal velocity constant without air resistance", src: ["20260903-3fa2c1d0#p12"] }
+symbols:
+  - { symbol: "g", meaning: "acceleration of free fall", unit: "m s^-2" }
+examples: []
+misconceptions: ["The velocity is not zero at the highest point; only its vertical component is."]
+recorded: "2026-09-03T18:10:00+09:00"
+provenance: { job: "20260903-1801-read-kinematics-slides", instructions: { kind: "source-reading", version: "0.1", commit: "…", dirty: false }, model: "claude-opus-5-5" }
+---
+
+Without air resistance, no force acts horizontally …
+```
+
+같은 경로가 이미 있으면 `<slug>--<작업 id>.md`로 나란히 둔다. 엔트리 id 는 `entries/` 아래 경로에서 `.md`를 뗀 것이다. 개념 정리가 보류한 엔트리는 그 작업의 `records/concept-curation/<작업 id>/plan.json`의 `held`에 남고, 다음 정리가 다시 고르지 않는다.
+
+`syllabus/physics.yaml`
 
 ```yaml
 kind: "syllabus"
 v: 1
-subject: "physics-hl"
+subject: "physics"
 sources:
   - { id: "20260901-9b1e44aa", title: "Physics subject brief" }
 items:
@@ -218,19 +252,19 @@ confirmed: { by: "관리자", at: "2026-09-02" }
 provenance: { job: "20260901-2110-syllabus-physics", instructions: { kind: "syllabus-build", version: "0.1", commit: "…", dirty: false }, model: "claude-opus-5-5" }
 ```
 
-`library/concepts/physics-hl/a.1/projectile-motion/concept.yaml`
+`library/concepts/physics/a.1/projectile-motion/concept.yaml`
 
 ```yaml
 kind: "concept"
 v: 1
-id: "physics-hl/a.1/projectile-motion"
+id: "physics/a.1/projectile-motion"
 title: "Projectile motion"
-subject: "physics-hl"
+subject: "physics"
 item: "A.1"
 level: "SL+HL"
 occurrences:                     # 러너가 계산한다
-  - { entry: "physics-hl/a.1/projectile-motion--20260903-1412", source: "20260903-3fa2c1d0", pages: [10, 11, 12, 13, 14, 15] }
-prerequisites: ["myp10-sciences/speed-and-acceleration", "myp10-math/trigonometric-ratios"]
+  - { entry: "physics/a.1/projectile-motion--20260903-1412", source: "20260903-3fa2c1d0", pages: [10, 11, 12, 13, 14, 15] }
+prerequisites: ["sciences/speed-and-acceleration", "math/trigonometric-ratios"]
 symbols:
   - { symbol: "u", meaning: "initial speed", unit: "m s^-1" }
   - { symbol: "θ", meaning: "launch angle above the horizontal" }
@@ -255,9 +289,9 @@ provenance: { job: "20260905-0930-curate-physics", instructions: { kind: "concep
 `learner/comments.jsonl` (줄마다 하나)
 
 ```json
-{"v":1,"id":"cm-20260920-193210-7k2p","at":"2026-09-20T19:32:10+09:00","by":"learner","kind":"ask","anchor":{"concept":"physics-hl/a.1/projectile-motion","unit":"p1","rev":1,"quote":"Without air resistance, no force acts horizontally"},"text":"중력이 계속 당기는데 왜 수평 속도는 안 바뀌어요?"}
+{"v":1,"id":"cm-20260920-193210-7k2p","at":"2026-09-20T19:32:10+09:00","by":"learner","kind":"ask","anchor":{"concept":"physics/a.1/projectile-motion","unit":"p1","rev":1,"quote":"Without air resistance, no force acts horizontally"},"text":"중력이 계속 당기는데 왜 수평 속도는 안 바뀌어요?"}
 {"v":1,"id":"cm-20260920-193545-q81d","at":"2026-09-20T19:35:45+09:00","by":"job:ask","job":"20260920-1933-ask","kind":"answer","reply_to":"cm-20260920-193210-7k2p","text_en":"Gravity acts only vertically, so it has no horizontal component. …","text_ko":"중력은 수직으로만 작용하므로 수평 성분이 없다. …","src":["20260903-3fa2c1d0#p12"]}
-{"v":1,"id":"cm-20260926-201100-m3a9","at":"2026-09-26T20:11:00+09:00","by":"learner","kind":"memo","anchor":{"concept":"physics-hl/a.1/projectile-motion","unit":"n1","rev":1,"quote":"It is tempting to say the velocity is zero"},"text":"9월 퀴즈 3번에 나옴."}
+{"v":1,"id":"cm-20260926-201100-m3a9","at":"2026-09-26T20:11:00+09:00","by":"learner","kind":"memo","anchor":{"concept":"physics/a.1/projectile-motion","unit":"n1","rev":1,"quote":"It is tempting to say the velocity is zero"},"text":"9월 퀴즈 3번에 나옴."}
 {"v":1,"id":"cm-20261001-090000-zz01","at":"2026-10-01T09:00:00+09:00","by":"learner","kind":"delete","target":"cm-20260926-201100-m3a9"}
 ```
 

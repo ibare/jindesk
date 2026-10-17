@@ -31,6 +31,16 @@ enum AppPaths {
     bundle.appending(path: "Contents/Resources/schemas")
   }
 
+  // 학습 페이지 렌더러 (리포의 renderer/)
+  static var renderer: URL {
+    bundle.appending(path: "Contents/Resources/renderer")
+  }
+
+  // 수식 검사에 쓰는 렌더러의 KaTeX
+  static var katex: URL {
+    renderer.appending(path: "katex/katex.min.js")
+  }
+
   static let bundleID = AppFolders.bundleID
 
   // 앱 설정 저장소. 앱 번들로 인식되지 않게 띄우면 UserDefaults.standard 가 다른 곳을 가리키므로, 그때는 앱의 이름으로 연다.

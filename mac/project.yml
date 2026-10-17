@@ -61,7 +61,7 @@ targets:
     platform: macOS
     sources:
       - path: Jindesk
-        excludes: [Info.plist]
+        excludes: [Info.plist, Jindesk.entitlements]
     dependencies:
       - target: JindeskKit
       - target: jindesk-guard
@@ -80,6 +80,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         # Sparkle 설정 (SUFeedURL 등). 만들어지는 Info.plist 에 합쳐진다.
         INFOPLIST_FILE: Jindesk/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Jindesk/Jindesk.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: Jindesk
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.education
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
@@ -90,11 +91,11 @@ targets:
         SPARKLE_PUBLIC_KEY: "JCg7L9ZpgEV/mzqeLFfHN3hoy3VqMqmFXPwQRJjxR7g="
         # 아래 "작업 지침 넣기"가 리포의 jobs/ 와 git 이력을 읽는다
         ENABLE_USER_SCRIPT_SANDBOXING: NO
-    # 작업 지침과 스키마는 앱의 일부다. 리포의 jobs/ 와 schemas/ 를 앱 번들(Contents/Resources)에 넣고,
+    # 작업 지침, 스키마, 렌더러는 앱의 일부다. 리포의 jobs/, schemas/, renderer/ 를 앱 번들(Contents/Resources)에 넣고,
     # 지침마다 마지막으로 바꾼 커밋과 미커밋 변경 여부를 jobs/build.json 에 남긴다. 러너는 이 값을 산출물의 provenance 에 적는다.
     # 미커밋 변경을 빌드마다 다시 보도록 늘 실행한다.
     postCompileScripts:
-      - name: 작업 지침과 스키마 넣기
+      - name: 작업 지침, 스키마, 렌더러 넣기
         basedOnDependencyAnalysis: false
         script: |
           set -eu
@@ -125,6 +126,8 @@ targets:
           printf '%s}\n' "$json" > "$dest/build.json"
           rm -rf "$resources/schemas"
           cp -R "$repo/schemas" "$resources/schemas"
+          rm -rf "$resources/renderer"
+          cp -R "$repo/renderer" "$resources/renderer"
   JindeskKitTests:
     type: bundle.unit-test
     platform: macOS

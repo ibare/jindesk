@@ -19,7 +19,7 @@
       directory.map { AppFolders(support: $0.appending(path: "support"), cache: $0.appending(path: "cache")) }
     }
 
-    enum Target { case main, admin }
+    enum Target { case main, admin, sheet }
 
     struct Scenario {
       let name: String
@@ -44,6 +44,28 @@
         Scenario(name: "jobs-dark", dark: true) { m in
           m.phase = .ready
           m.section = .jobs
+        },
+        // 과목 화면: 찍는 폴더의 data 에 자료가 있으면 첫 자료를 연다
+        Scenario(name: "subjects") { m in
+          m.phase = .ready
+          m.section = .subjects
+          m.selection = m.concepts.values.flatMap { $0 }.sorted { $0.id < $1.id }.first.map { .concept($0.id) } ?? m.library.sources.first.map { .source($0.id) }
+        },
+        Scenario(name: "subjects-dark", dark: true) { m in
+          m.phase = .ready
+          m.section = .subjects
+          m.selection = m.library.sources.last.map { .source($0.id) }
+        },
+        // 학습 페이지: 한국어를 모두 펼친다
+        Scenario(name: "page-ko-dark", dark: true) { m in
+          m.phase = .ready
+          m.section = .subjects
+          m.openAllKorean = true
+          m.selection = m.concepts.values.flatMap { $0 }.sorted { $0.id < $1.id }.first.map { .concept($0.id) }
+        },
+        Scenario(name: "intake", target: .sheet) { m in
+          m.phase = .ready
+          m.showIntake = true
         },
         Scenario(name: "migrating") { $0.phase = .migrating("자동 백업: ~/Library/Application Support/com.mintae.Jindesk/backups/Jindesk-마이그레이션-1-2.zip") },
         Scenario(name: "migration-failed") {
@@ -73,6 +95,10 @@
       var log: [String] = []
       for scenario in scenarios() where only.isEmpty || only.contains(scenario.name) {
         NSApp.appearance = NSAppearance(named: scenario.dark ? .darkAqua : .aqua)
+        // 시트도 화면 밖에서는 그려지지 않는다. 시트를 찍을 때는 메인 창을 화면 위에 두고 연다 (잠깐 보였다 닫힌다).
+        if scenario.target == .sheet {
+          for window in NSApp.windows where window.isVisible && AppDelegate.isMainWindow(window) { window.center() }
+        }
         await scenario.prepare(model)
         // 새로 연 창은 한 번 그려진 뒤에 옮긴다 (그리기 전에 옮기면 빈 창이 찍힌다)
         try? await Task.sleep(for: .milliseconds(scenario.target == .main ? 500 : 2000))
@@ -80,7 +106,7 @@
         let hidden = scenario.target == .admin ? NSApp.windows.filter { $0.isVisible && AppDelegate.isMainWindow($0) } : []
         for window in hidden { window.orderOut(nil) }
         defer { for window in hidden { window.orderFront(nil) } }
-        moveOffscreen()
+        if scenario.target != .sheet { moveOffscreen() }
         try? await Task.sleep(for: .milliseconds(1200))
         do {
           try await capture(scenario.target, to: directory.appending(path: "\(scenario.name).png"))
@@ -90,6 +116,8 @@
           log.append("실패: \(scenario.name) — \(error.localizedDescription)")
         }
         for w in NSApp.windows where w.isVisible && w.identifier?.rawValue.hasPrefix("admin") == true { w.close() }
+        model.showIntake = false
+        model.openAllKorean = false
       }
       // 관리자 설정 메뉴 항목은 ⌥ 없이 열면 숨어 있어야 한다
       let adminItems = (NSApp.mainMenu?.items ?? []).flatMap { $0.submenu?.items ?? [] }.filter { $0.title == AdminMenu.title }
@@ -156,6 +184,7 @@
         switch target {
         case .main: NSApp.windows.first { $0.isVisible && AppDelegate.isMainWindow($0) }
         case .admin: NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue.hasPrefix("admin") == true }
+        case .sheet: NSApp.windows.first { $0.isVisible && AppDelegate.isMainWindow($0) }?.attachedSheet
         }
       guard let window = found else { throw RequestError("찍을 창이 없습니다") }
       let content = try await SCShareableContent.currentProcess

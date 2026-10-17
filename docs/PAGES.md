@@ -39,9 +39,9 @@
 kind: "glossary"
 v: 1
 terms:
-  - { en: "secant", ko: "할선", aliases: ["secant line"], subjects: ["math-aa-hl"] }
-  - { en: "potential difference", ko: "전위차", aliases: ["p.d."], subjects: ["physics-hl"] }
-  - { en: "standard enthalpy of combustion", ko: "표준 연소 엔탈피", subjects: ["chemistry-sl"] }
+  - { en: "secant", ko: "할선", aliases: ["secant line"], subjects: ["math-aa"] }
+  - { en: "potential difference", ko: "전위차", aliases: ["p.d."], subjects: ["physics"] }
+  - { en: "standard enthalpy of combustion", ko: "표준 연소 엔탈피", subjects: ["chemistry"] }
 ```
 
 ## `page.yaml`
@@ -49,7 +49,7 @@ terms:
 ```yaml
 kind: "page"
 v: 1
-concept: "physics-hl/a.1/projectile-motion"
+concept: "physics/a.1/projectile-motion"
 title_ko: "투사체 운동"
 next_id: 14
 units:
@@ -95,7 +95,7 @@ provenance: { job: "20260905-1010-page-physics", instructions: { kind: "page-bui
 ```yaml
 kind: "layers"
 v: 1
-concept: "physics-hl/a.1/projectile-motion"
+concept: "physics/a.1/projectile-motion"
 units:
   p1:
     ko:

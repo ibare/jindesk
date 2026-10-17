@@ -31,6 +31,8 @@ public struct JobSnapshot: Sendable, Codable, Equatable, Identifiable {
   public let type: String
   public let typeLabel: String
   public let title: String
+  // 작업 대상 (자료 id 나 과목 id)
+  public var target: String?
   public var phase: String
   public var phaseLabel: String
   public let queuedAt: String
@@ -185,14 +187,23 @@ public struct PreparedJob: Sendable {
   public let title: String
   // 같은 값을 가진 작업은 함께 돌지 않고 차례로 돈다 (예: 같은 개념의 부분 다시 만들기)
   public let serialKey: String?
+  // 작업 대상 (자료 id 나 과목 id). 화면이 자료마다, 과목마다 진행 상태를 보일 때 쓴다.
+  public let target: String?
+  // 같은 값의 작업이 아직 시작하지 않고 대기열에 있으면 새로 넣지 않는다 (뒤따르는 작업이 겹칠 때). 시작할 때 할 일을 다시 고르므로 하나면 된다.
+  public let coalesceKey: String?
   // 끝까지 가면 완료, 오류를 던지면 실패. 취소되면 취소로 본다.
   public let run: @Sendable (JobContext) async throws -> Void
 
-  public init(id: String, kind: JobKind, title: String, serialKey: String? = nil, run: @escaping @Sendable (JobContext) async throws -> Void) {
+  public init(
+    id: String, kind: JobKind, title: String, serialKey: String? = nil, target: String? = nil, coalesceKey: String? = nil,
+    run: @escaping @Sendable (JobContext) async throws -> Void
+  ) {
     self.id = id
     self.kind = kind
     self.title = title
     self.serialKey = serialKey
+    self.target = target
+    self.coalesceKey = coalesceKey
     self.run = run
   }
 }

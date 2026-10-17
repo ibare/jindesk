@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>PPT·Keynote·Word 자료를 PDF 로 바꾸려고 Keynote 와 Pages 를 씁니다.</string>
 	<key>SUFeedURL</key>
 	<string>https://github.com/ibare/jindesk/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>

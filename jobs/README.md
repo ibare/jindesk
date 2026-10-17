@@ -6,4 +6,11 @@
 - 파일 위쪽에 `지침 버전: \`0.1\`` 줄을 둔다. 내용을 바꾸면 이 값을 올리고 릴리즈 노트에 적는다.
 - 지침이 있어야 하는 종류는 `JobKind.withInstructions`에 더한다. 환경 점검이 앱 번들에 지침이 있는지 본다.
 
-0단계에는 지침이 없다. 1단계에서 `syllabus-build`, `source-reading`, `concept-curation`, `page-build`, `translation`부터 더한다.
+| 종류 | 지침 |
+|---|---|
+| 자료 읽기 | `source-reading/INSTRUCTIONS.md` |
+| 개념 정리 | `concept-curation/INSTRUCTIONS.md` |
+| 학습 페이지 만들기 | `page-build/INSTRUCTIONS.md` |
+| 번역 | `translation/INSTRUCTIONS.md` |
+
+목차 만들기(`syllabus-build`)는 아직 없다.

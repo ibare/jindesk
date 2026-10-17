@@ -1,5 +1,7 @@
 // 명령줄 모드. 앱 실행 파일에 명령을 주면 화면 없이 실행한다.
 //   Jindesk doctor [--data <데이터 폴더>] [--out <결과 파일>]
+//   Jindesk intake [--data <데이터 폴더>] --subject <과목> [--follow] <파일>…
+//   Jindesk continue [--data <데이터 폴더>] [--only <종류>]
 //   Jindesk migrate --check <백업 폴더나 zip> [--sample <n>] [--keep]
 //   Jindesk backup --out <폴더> [--data <데이터 폴더>]
 //   Jindesk version
@@ -12,13 +14,13 @@ struct JindeskCommand: AsyncParsableCommand {
   static let configuration = CommandConfiguration(
     commandName: "Jindesk",
     abstract: "Jindesk 명령줄 모드",
-    subcommands: [DoctorCommand.self, MigrateCommand.self, BackupCommand.self, VersionCommand.self]
+    subcommands: [DoctorCommand.self, IntakeCommand.self, ContinueCommand.self, MigrateCommand.self, BackupCommand.self, VersionCommand.self]
   )
 }
 
 @MainActor
 enum CommandLineMode {
-  static let commands: Set<String> = ["doctor", "migrate", "backup", "version", "help", "--help", "-h"]
+  static let commands: Set<String> = ["doctor", "intake", "continue", "migrate", "backup", "version", "help", "--help", "-h"]
 
   // 첫 인자가 명령이면 명령줄 모드다. "-" 로 시작하는 인자(-snapshotDir, Xcode 가 붙이는 -NSDocumentRevisionsDebugMode 등)만 있으면 앱으로 뜬다.
   // 모르는 명령도 명령줄 모드로 받아 오류를 보인다. 화면 앱으로 떠 버리면 스크립트가 멈춘다.
@@ -47,6 +49,29 @@ enum CommandLineMode {
     Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in }
     RunLoop.main.run()
     exit(0)
+  }
+
+  // 기록을 화면에 내보내는 작업 관리자
+  static func manager(_ folder: DataFolder) -> JobManager {
+    let jobs = JobManager(data: folder, folders: .standard())
+    jobs.onLog = { print("\($0.kind == .info ? "·" : $0.kind == .error ? "✗" : $0.kind == .warn ? "!" : " ") \($0.message)") }
+    jobs.onFinish = { s in
+      let counts = (s.counts ?? []).map { "\($0.label) \($0.count)" }.joined(separator: " · ")
+      print("■ \(s.typeLabel) \(s.title): \(s.phaseLabel)\(counts.isEmpty ? "" : " — " + counts)\(s.error.map { " — " + $0 } ?? "")")
+    }
+    return jobs
+  }
+
+  // 대기열이 빌 때까지 기다린다. 실패한 작업이 있으면 끝 코드 1.
+  static func waitAll(_ jobs: JobManager) async throws {
+    var failed = false
+    let previous = jobs.onFinish
+    jobs.onFinish = { s in
+      previous?(s)
+      if s.phase == "failed" { failed = true }
+    }
+    await jobs.waitUntilIdle()
+    if failed { throw ExitCode(1) }
   }
 
   // --data 를 주지 않으면 앱에서 고른 데이터 폴더
@@ -98,6 +123,67 @@ struct DoctorCommand: AsyncParsableCommand {
     }
     try output.save()
     if items.contains(where: { $0.status == .fail }) { throw ExitCode(1) }
+  }
+}
+
+struct IntakeCommand: AsyncParsableCommand {
+  static let configuration = CommandConfiguration(
+    commandName: "intake", abstract: "자료를 넣는다 (화면의 자료 넣기와 같다)",
+    discussion: "꼬리표는 이전에 쓴 값과 대소문자·띄어쓰기만 다르면 그 값으로 맞춘다.")
+
+  @Option(help: "데이터 폴더. 주지 않으면 앱에서 고른 폴더") var data: String?
+  @Option(help: "학년 꼬리표 (예: DP1)") var grade: String?
+  @Option(help: "과목 꼬리표 (예: Physics)") var subject: String?
+  @Option(help: "수준 꼬리표 (예: HL)") var level: String?
+  @Option(help: "메모") var memo: String?
+  @Flag(help: "목차의 근거로 표시한다") var syllabusBasis = false
+  @Flag(help: "뒤따르는 작업(자료 읽기 → 개념 정리 → 학습 페이지 → 번역)까지 넣고 모두 끝날 때까지 기다린다") var follow = false
+  @Argument(help: "넣을 파일들") var files: [String]
+
+  @MainActor
+  func run() async throws {
+    guard let folder = CommandLineMode.dataFolder(data), folder.isInitialized else { throw ValidationError("Jindesk 데이터 폴더를 찾지 못했습니다") }
+    let request = IntakeRequest(
+      files: files.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }, labels: SourceLabels(grade: grade, subject: subject, level: level),
+      memo: memo, syllabusBasis: syllabusBasis)
+    let jobs = CommandLineMode.manager(folder)
+    let settings = AdminSettings.load(AppPaths.defaults)
+    let config =
+      follow
+      ? try await ConfigLoader.load(
+        settings: settings, data: folder, guardHelper: AppPaths.guardHelper, instructions: AppPaths.instructions, katex: AppPaths.katex)
+      : await ConfigLoader.loadForRunner(settings: settings, guardHelper: AppPaths.guardHelper, instructions: AppPaths.instructions)
+    let id = try await jobs.submit(config: config) { try SourceIntake.prepare(request, $0) }
+    let end = await jobs.waitForEnd(id)
+    print("\(end.phaseLabel): " + (end.counts ?? []).map { "\($0.label) \($0.count)" }.joined(separator: " · "))
+    if end.phase != "done" { throw ExitCode(1) }
+    if follow { try await CommandLineMode.waitAll(jobs) }
+  }
+}
+
+// 흐름이 끊겨 남은 일을 넣고 모두 끝날 때까지 기다린다 (화면의 "이어서 하기"와 같다)
+struct ContinueCommand: AsyncParsableCommand {
+  static let configuration = CommandConfiguration(
+    commandName: "continue", abstract: "남은 일(읽지 않은 자료, 정리하지 않은 엔트리, 없거나 낡은 페이지와 한국어)을 이어서 한다")
+
+  @Option(help: "데이터 폴더. 주지 않으면 앱에서 고른 폴더") var data: String?
+  @Option(help: "이 종류만 넣는다 (source-reading, concept-curation, page-build, translation)") var only: String?
+  @Flag(help: "남은 일만 보이고 넣지 않는다") var list = false
+
+  @MainActor
+  func run() async throws {
+    guard let folder = CommandLineMode.dataFolder(data), folder.isInitialized else { throw ValidationError("Jindesk 데이터 폴더를 찾지 못했습니다") }
+    var work = Pipeline.pending(folder, instructions: AppPaths.instructions)
+    if let only { work = work.filter { $0.kind.rawValue == only } }
+    for w in work { print("· \(w.kind.label): \(w.label)") }
+    if work.isEmpty { print("남은 일이 없습니다") }
+    if list || work.isEmpty { return }
+    let jobs = CommandLineMode.manager(folder)
+    let config = try await ConfigLoader.load(
+      settings: AdminSettings.load(AppPaths.defaults), data: folder, guardHelper: AppPaths.guardHelper, instructions: AppPaths.instructions,
+      katex: AppPaths.katex)
+    try await jobs.submitAll(config: config, work.map { Pipeline.prepare($0) })
+    try await CommandLineMode.waitAll(jobs)
   }
 }
 

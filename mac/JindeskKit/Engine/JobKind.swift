@@ -42,7 +42,14 @@ public enum JobKind: String, CaseIterable, Sendable, Codable {
 
   // 작업 종류마다 정한 단계 (대기·완료·실패·취소는 공통이라 넣지 않는다). 작업을 만들 때 채운다.
   public var phases: [JobPhase] {
-    [.init(id: "preparing", label: "입력 고정"), .init(id: "running", label: "실행")]
+    switch self {
+    case .sourceIntake: [.init(id: "preparing", label: "입력 고정"), .init(id: "running", label: "넣기")]
+    default:
+      [
+        .init(id: "preparing", label: "입력 고정"), .init(id: "running", label: "실행"), .init(id: "checking", label: "검사"),
+        .init(id: "fixing", label: "고쳐 쓰기"), .init(id: "finalizing", label: "반영"),
+      ]
+    }
   }
 
   public func phaseLabel(_ phase: String) -> String {
@@ -50,7 +57,7 @@ public enum JobKind: String, CaseIterable, Sendable, Codable {
   }
 
   // 지침이 앱 번들에 있어야 하는 종류. 작업을 만들 때마다 더한다 (자료 넣기는 러너만 하므로 지침이 없다).
-  public static let withInstructions: [JobKind] = []
+  public static let withInstructions: [JobKind] = [.sourceReading, .conceptCuration, .pageBuild, .translation]
 }
 
 // 대기열 (JOBS.md 의 대기열 표). 대기열마다 함께 도는 수가 있고, 자리가 찬 대기열의 작업은 건너뛰고 뒤의 작업을 먼저 시작한다.

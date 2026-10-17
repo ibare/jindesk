@@ -40,6 +40,8 @@ public struct RunnerConfig: Sendable {
   public var instructions: InstructionSource
   // 웹 금지어 (meta/privacy.yaml)
   public var privacyTerms: [String]
+  // 수식 검사에 쓰는 렌더러의 KaTeX (앱 번들의 renderer/katex/katex.min.js). 없으면 수식 검사를 건너뛴다.
+  public var katex: URL?
   // 자식 프로세스의 기본 환경 (자격 증명 변수를 뺀 앱 환경 + PATH + 로캘)
   public var baseEnvironment: [String: String]
   // 에이전트 출력에서 계정 사용량을 읽을 때마다 부른다. 작업 관리자가 작업을 시작할 때 넣는다.
@@ -48,7 +50,7 @@ public struct RunnerConfig: Sendable {
   public init(
     claudeToken: String, model: String = RunnerConfig.defaultModel, effort: Effort = .high, maxTurns: Int = 400, maxBudgetUSD: Double = 30,
     timeout: Duration = .seconds(3600), tools: ToolPaths, guardHelper: String, instructions: InstructionSource, privacyTerms: [String] = [],
-    baseEnvironment: [String: String]
+    katex: URL? = nil, baseEnvironment: [String: String]
   ) {
     self.claudeToken = claudeToken
     self.model = model
@@ -60,6 +62,7 @@ public struct RunnerConfig: Sendable {
     self.guardHelper = guardHelper
     self.instructions = instructions
     self.privacyTerms = privacyTerms
+    self.katex = katex
     self.baseEnvironment = baseEnvironment
   }
 
@@ -142,8 +145,18 @@ public enum ConfigLoader {
     public var errorDescription: String? { message }
   }
 
+  // 에이전트를 띄우지 않는 작업(자료 넣기)의 설정. 토큰과 claude 가 없어도 된다.
+  public static func loadForRunner(settings: AdminSettings, guardHelper: String, instructions: InstructionSource) async -> RunnerConfig {
+    var found = ToolPaths(await ToolLocator.locateAll())
+    if let path = settings.claudePath { found.claude = path }
+    let base = ChildEnvironment.base(toolDirectories: ToolLocator.commonDirectories())
+    return RunnerConfig(claudeToken: "", tools: found, guardHelper: guardHelper, instructions: instructions, baseEnvironment: base)
+  }
+
   // 작업을 넣기 직전에 부른다. 토큰이 없거나 claude 가 너무 오래됐으면 작업을 시작하지 않는다.
-  public static func load(settings: AdminSettings, data: DataFolder, guardHelper: String, instructions: InstructionSource) async throws -> RunnerConfig {
+  public static func load(settings: AdminSettings, data: DataFolder, guardHelper: String, instructions: InstructionSource, katex: URL? = nil) async throws
+    -> RunnerConfig
+  {
     guard let token = try? ClaudeToken.read() else {
       throw Missing(message: "Claude 토큰이 키체인에 없습니다. 관리자 설정에서 넣거나 SETUP.md 의 방법으로 넣으세요.")
     }
@@ -177,6 +190,7 @@ public enum ConfigLoader {
       guardHelper: guardHelper,
       instructions: instructions,
       privacyTerms: (try? PrivacyTerms.load(data).terms) ?? [],
+      katex: katex,
       baseEnvironment: base
     )
   }

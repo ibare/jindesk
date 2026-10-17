@@ -138,6 +138,13 @@ struct AppCommands: Commands {
     }
     CommandGroup(replacing: .newItem) {}
     CommandGroup(after: .newItem) {
+      Button("자료 넣기…") {
+        AppDelegate.showMainWindow()
+        model.showIntake = true
+      }
+      .keyboardShortcut("o", modifiers: .command)
+      .disabled(model.phase != .ready)
+      Divider()
       Button("백업 만들기…") { BackupPanel.run(model) }
         .keyboardShortcut("b", modifiers: [.command, .shift])
         .disabled(model.data == nil || model.backupStatus != nil)

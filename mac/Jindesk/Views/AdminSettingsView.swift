@@ -1,7 +1,7 @@
 import JindeskKit
 import SwiftUI
 
-// 관리자 설정: 토큰, 모델과 상한, 동시 실행 수, 웹 금지어, 환경 점검, 데이터 폴더, 업데이트. 학생 화면에서는 감춘다.
+// 관리자 설정: 토큰, 모델과 상한, 동시 실행 수, 환경 점검, 데이터 폴더, 업데이트. 학생 화면에서는 감춘다.
 struct AdminSettingsView: View {
   @Environment(AppModel.self) private var model
 
@@ -9,7 +9,6 @@ struct AdminSettingsView: View {
     @Bindable var model = model
     TabView(selection: $model.adminTab) {
       Tab("계정과 실행", systemImage: "key", value: AdminTab.run) { RunSettingsPane() }
-      Tab("웹 금지어", systemImage: "hand.raised", value: AdminTab.privacy) { PrivacyPane() }
       Tab("환경 점검", systemImage: "stethoscope", value: AdminTab.doctor) { DoctorPane() }
       Tab("데이터와 업데이트", systemImage: "externaldrive", value: AdminTab.data) { DataPane() }
     }
@@ -18,7 +17,7 @@ struct AdminSettingsView: View {
 }
 
 enum AdminTab: Hashable {
-  case run, privacy, doctor, data
+  case run, doctor, data
 }
 
 struct RunSettingsPane: View {
@@ -95,35 +94,6 @@ struct RunSettingsPane: View {
 
   private func laneBinding(_ lane: JobLane) -> Binding<Int> {
     Binding(get: { draft.limit(lane) }, set: { draft.laneLimits[lane.rawValue] = $0 })
-  }
-}
-
-struct PrivacyPane: View {
-  @Environment(AppModel.self) private var model
-  @State private var text = ""
-  @State private var message: String?
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Text("학생·학교·선생님 이름을 한 줄에 하나씩 적습니다. 에이전트가 웹을 찾을 때 검색어와 주소에 이 말이 있으면 막습니다. 이 목록은 데이터 폴더의 meta/privacy.yaml 에만 있고 밖으로 나가지 않습니다.")
-        .font(.callout).foregroundStyle(.secondary)
-      TextEditor(text: $text).font(.body.monospaced()).frame(minHeight: 200).border(.quaternary)
-      HStack {
-        if let message { Text(message).font(.caption).foregroundStyle(.secondary) }
-        Spacer()
-        Button("저장") {
-          do {
-            try model.savePrivacy(text)
-            message = "저장했습니다 (\(model.privacy.terms.count)개)"
-          } catch {
-            message = error.localizedDescription
-          }
-        }
-        .keyboardShortcut(.defaultAction)
-      }
-    }
-    .padding(8)
-    .onAppear { text = model.privacy.terms.joined(separator: "\n") }
   }
 }
 

@@ -69,7 +69,7 @@ Assayer 의 실행 구조를 그대로 따른다. 다른 점만 적는다.
   - **인증:** 키체인의 Claude 토큰을 자식 프로세스에만 `CLAUDE_CODE_OAUTH_TOKEN`으로 넘긴다. 자식 환경에서 `CLAUDE*`, `ANTHROPIC*`, `GH_*`, `GITHUB_*`를 지우고, PATH 와 UTF-8 로캘을 채운다.
   - **격리:** `CLAUDE_CONFIG_DIR`를 `work/<작업 id>/claude-config/`로 둬서 `~/.claude`의 지침, 메모리, 설정이 보이지 않게 한다. 자동 메모리도 끈다.
   - **권한:** 도구는 Read/Grep/Glob/Write/Edit 이고, `dontAsk` 모드에서 쓰기는 `out/`, `work/`만 허용한다. 웹 도구(WebSearch/WebFetch)는 관점 붙이기의 레퍼런스 찾기에만 준다.
-  - **외부 호출 검사:** 웹 호출 직전에 `jindesk-guard` 훅이 돈다. 검색어·주소에 금지어(학생·학교·선생님 이름, `meta/privacy.yaml`)가 있거나 로컬·사설망 주소를 조회하면 막는다. 검사하지 못하면 막고, 훅 설정의 `"onFailure": "block"`으로 훅이 뜨지 못해도 막는다. 그래서 claude 2.1.295 이상이 필요하다. 모든 외부 호출은 `work/<작업 id>/external.jsonl`에 남는다.
+  - **외부 호출 검사:** 웹 호출 직전에 `jindesk-guard` 훅이 돈다. 로컬·사설망 주소를 조회하면 막는다. 웹 조회가 이 맥에서 바로 나가므로, 막지 않으면 이 맥의 다른 서비스에 닿을 수 있다. 검사하지 못하면 막고, 훅 설정의 `"onFailure": "block"`으로 훅이 뜨지 못해도 막는다. 그래서 claude 2.1.295 이상이 필요하다. 모든 외부 호출은 `work/<작업 id>/external.jsonl`에 남는다.
   - **시간 상한:** 깨어 있던 시간만 센다. 작업 중에는 자리를 비워 생기는 잠자기를 막는다.
 - **설정.** 모델(기본 `claude-opus-5-5`), effort(`high`), 최대 턴, 예산, 시간 상한, 동시 실행 수는 관리자가 정하는 값이다. 학생 화면에는 보이지 않고 "관리자 설정"에 둔다.
 - **업데이트.** 작업이 돌고 있으면 업데이트를 설치하지 않는다. 다시 켠 뒤에는 마이그레이션을 마치고 나서 대기열을 연다(`UPDATES.md`, `MIGRATION.md`).
@@ -97,7 +97,7 @@ Assayer 의 코드를 옮겨 와 고친다. 공유 패키지로 떼지는 않는
 | `AssayerKit/Agent/AgentRunner.swift`, `StreamEvents.swift` | `Agent/` | 그대로. 작업마다 도구 목록과 모델 값을 받는다 |
 | `AssayerKit/Agent/AwakeTimer.swift` | `Agent/` | 그대로 |
 | `AssayerKit/Agent/Readability.swift` | `Agent/ReaderTest.swift` | 학생 독자 시험. 독자 수준(MYP 10, DP SL, DP HL)을 받고, "슬라이드 3 참고"처럼 원래 자료가 있어야만 통하는 말을 기계적으로 찾는다 |
-| `AssayerKit/Guard/*`, `AssayerGuard/` | `Guard/`, `JindeskGuard/` | 금지어의 출처만 바꾼다 (`meta/privacy.yaml`) |
+| `AssayerKit/Guard/*`, `AssayerGuard/` | `Guard/`, `JindeskGuard/` | 금지어 검사를 뺀다. 로컬·사설망 주소 막기와 기록만 남긴다 (`DECISIONS.md` 24) |
 | `AssayerKit/Process/*` | `Process/` | 그대로. 도구 찾기에서 `gh`, `git`을 빼고 Keynote, LibreOffice(`soffice`)를 더한다 |
 | `AssayerKit/Config/Keychain.swift` | `Config/` | 그대로. 서비스 이름 `com.mintae.Jindesk` |
 | `AssayerKit/Config/DataRoot.swift` | `Config/DataFolder.swift` | 데이터 폴더 고르기와 기억. iCloud 동기화 폴더 경고를 더한다 |
@@ -131,6 +131,6 @@ mac/
 ## 보안과 개인정보
 
 - 학생의 데이터는 학생 맥의 데이터 폴더에만 있다.
-- 이 리포와 릴리즈에는 학생의 자료, 기록, 이름이 들어가지 않는다. 금지어 파일(`meta/privacy.yaml`)도 데이터 폴더에만 있다.
+- 이 리포는 공개다. 리포와 릴리즈에는 학생의 자료, 기록, 이름이 들어가지 않는다.
 - Sparkle 의 EdDSA 비밀 키와 공증 자격 증명은 관리자 맥의 키체인에만 있다.
-- 에이전트의 웹 호출은 레퍼런스 찾기 한 곳뿐이고, 금지어와 로컬 주소 검사를 거친다. 러너는 그림 블록을 만들 때 그 그림이 부르는 라이브러리를 받는다.
+- 에이전트의 웹 호출은 레퍼런스 찾기 한 곳뿐이고, 로컬 주소 검사를 거친다. 검색어와 조회 주소에 학교나 단원 이름이 들어가도 막지 않는다(`DECISIONS.md` 24). 러너는 그림 블록을 만들 때 그 그림이 부르는 라이브러리를 받는다.

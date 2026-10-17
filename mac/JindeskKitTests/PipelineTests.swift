@@ -11,13 +11,12 @@ let repoKatex = repoRoot.appending(path: "renderer/katex/katex.min.js")
     #expect(TextChecks.hasHanOrKana("指数"))
     #expect(TextChecks.hasHanOrKana("ログ"))
     #expect(!TextChecks.hasHanOrKana("로그와 log"))
-    #expect(TextChecks.englishProblems("The base 밑", field: "f", privacy: []).count == 1)
-    #expect(TextChecks.koreanProblems("밑은 a 다", field: "f", privacy: []).isEmpty)
-    #expect(TextChecks.koreanProblems("the base", field: "f", privacy: []).count == 1)
+    #expect(TextChecks.englishProblems("The base 밑", field: "f").count == 1)
+    #expect(TextChecks.koreanProblems("밑은 a 다", field: "f").isEmpty)
+    #expect(TextChecks.koreanProblems("the base", field: "f").count == 1)
   }
 
-  @Test func 금지어와_원래_자료가_있어야_통하는_말을_찾는다() {
-    #expect(TextChecks.privacyHits("Taught by Ms Kim at Sample Academy", terms: ["sample academy"]) == ["sample academy"])
+  @Test func 원래_자료가_있어야_통하는_말을_찾는다() {
     #expect(!TextChecks.materialPhrases("As shown on the slide, the base is 2.").isEmpty)
     #expect(!TextChecks.materialPhrases("See the diagram above.").isEmpty)
     #expect(!TextChecks.materialPhrases("This appears on slide 3.").isEmpty)
@@ -85,7 +84,7 @@ let repoKatex = repoRoot.appending(path: "renderer/katex/katex.min.js")
     try write(out, "entries/korean.json", ["title": "지수 법칙", "body": "x", "claims": [["text": "y", "pages": [2]]]])
     try write(out, "entries/badpage.json", ["title": "Zero exponent", "body": "\\(a^0 = 1\\)", "claims": [["text": "\\(a^0 = 1\\)", "pages": [9]]]])
     try write(out, "entries/slide.json", ["title": "Negative exponent", "body": "As shown on the slide, \\(a^{-1}\\).", "claims": [["text": "c", "pages": [2]]]])
-    let checked = SourceReading.check(out: out, meta: meta(pages: 3), privacy: [], math: MathChecker(katex: repoKatex))
+    let checked = SourceReading.check(out: out, meta: meta(pages: 3), math: MathChecker(katex: repoKatex))
     #expect(checked.problems.isEmpty)
     #expect(checked.entries.map(\.slug) == ["laws-of-indices"])
     #expect(Set(checked.rejected.map(\.file)) == ["korean.json", "badpage.json", "slide.json"])
@@ -95,7 +94,7 @@ let repoKatex = repoRoot.appending(path: "renderer/katex/katex.min.js")
   @Test func 요약과_엔트리가_없으면_작업_전체가_틀린다() throws {
     let out = TempPlace().root.appending(path: "out")
     try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
-    let checked = SourceReading.check(out: out, meta: meta(pages: 2), privacy: [], math: nil)
+    let checked = SourceReading.check(out: out, meta: meta(pages: 2), math: nil)
     #expect(checked.problems.count == 3)
   }
 
@@ -146,7 +145,7 @@ let repoKatex = repoRoot.appending(path: "renderer/katex/katex.min.js")
         ]
       ], "held": [],
     ])
-    let c = ConceptCuration.check(out: out, input: input(), privacy: [], math: nil)
+    let c = ConceptCuration.check(out: out, input: input(), math: nil)
     #expect(c.plan == nil)
     #expect(c.problems.contains { $0.contains("e02") })
     #expect(c.problems.contains { $0.contains("#p7") })
@@ -169,7 +168,7 @@ let repoKatex = repoRoot.appending(path: "renderer/katex/katex.min.js")
       "held": [],
     ])
     let input = input()
-    let c = ConceptCuration.check(out: out, input: input, privacy: [], math: MathChecker(katex: repoKatex))
+    let c = ConceptCuration.check(out: out, input: input, math: MathChecker(katex: repoKatex))
     #expect(c.problems.isEmpty)
     let t = TempPlace()
     try t.data.initialize(app: testApp)
@@ -203,7 +202,7 @@ let repoKatex = repoRoot.appending(path: "renderer/katex/katex.min.js")
 
   @Test func 원문_단위마다_문단이_하나씩_있어야_한다() throws {
     let o = try out(["title_ko": "지수 법칙", "units": [["kind": "para", "from": "u1"], ["kind": "block", "from": "u1", "block": ["type": "figure"]]]])
-    let c = PageBuild.check(out: o, concept: concept, privacy: [], math: nil)
+    let c = PageBuild.check(out: o, concept: concept, math: nil)
     #expect(c.problems.contains { $0.contains("u2") })
     #expect(c.problems.contains { $0.contains("math 블록만") })
   }
@@ -216,7 +215,7 @@ let repoKatex = repoRoot.appending(path: "renderer/katex/katex.min.js")
         ["kind": "note", "from": "u1", "note": "misconception", "prov": "source", "text": "\\(a^m + a^n\\) is not \\(a^{m+n}\\)."], ["kind": "para", "from": "u2"],
       ],
     ])
-    let c = PageBuild.check(out: o, concept: concept, privacy: [], math: MathChecker(katex: repoKatex))
+    let c = PageBuild.check(out: o, concept: concept, math: MathChecker(katex: repoKatex))
     #expect(c.problems.isEmpty)
     let first = PageBuild.assemble(try #require(c.draft), concept: concept, old: nil, provenance: ["job": "j1"])
     #expect(first.page.units.map(\.id) == ["p1", "b2", "n3", "p4"])
@@ -243,10 +242,10 @@ let repoKatex = repoRoot.appending(path: "renderer/katex/katex.min.js")
   @Test func 수식_숫자_남은_영어_어휘를_본다() {
     let g = Glossary(terms: [GlossaryTerm(en: "exponent", ko: "지수")])
     let en = "Add the exponents when you multiply: \\(a^m a^n = a^{m+n}\\) for 2 cases."
-    #expect(Translation.unitProblems(en: en, ko: "곱할 때는 지수를 더한다: \\(a^m a^n = a^{m+n}\\). 경우는 2가지다.", glossary: g, privacy: []).isEmpty)
-    #expect(Translation.unitProblems(en: en, ko: "곱할 때는 지수를 더한다: \\(a^m a^n\\). 경우는 2가지다.", glossary: g, privacy: []).contains { $0.contains("수식") })
-    #expect(Translation.unitProblems(en: en, ko: "곱할 때는 지수를 더한다: \\(a^m a^n = a^{m+n}\\). 경우는 3가지다.", glossary: g, privacy: []).contains { $0.contains("숫자") })
-    #expect(Translation.unitProblems(en: en, ko: "곱할 때는 거듭제곱 수를 더한다: \\(a^m a^n = a^{m+n}\\). 2가지.", glossary: g, privacy: []).contains { $0.contains("exponent") })
+    #expect(Translation.unitProblems(en: en, ko: "곱할 때는 지수를 더한다: \\(a^m a^n = a^{m+n}\\). 경우는 2가지다.", glossary: g).isEmpty)
+    #expect(Translation.unitProblems(en: en, ko: "곱할 때는 지수를 더한다: \\(a^m a^n\\). 경우는 2가지다.", glossary: g).contains { $0.contains("수식") })
+    #expect(Translation.unitProblems(en: en, ko: "곱할 때는 지수를 더한다: \\(a^m a^n = a^{m+n}\\). 경우는 3가지다.", glossary: g).contains { $0.contains("숫자") })
+    #expect(Translation.unitProblems(en: en, ko: "곱할 때는 거듭제곱 수를 더한다: \\(a^m a^n = a^{m+n}\\). 2가지.", glossary: g).contains { $0.contains("exponent") })
     #expect(Translation.leftoverEnglish("지수는 (exponent of the base here now) 이다") == nil)
     #expect(Translation.leftoverEnglish("그래서 add the exponents when you multiply them 이다") != nil)
   }

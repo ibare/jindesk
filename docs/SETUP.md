@@ -109,7 +109,6 @@ security find-generic-password -s com.mintae.Jindesk -a claude-oauth-token
 
 1. **데이터 폴더를 고른다.** 기본은 `~/Jindesk`다. iCloud 로 동기화되는 폴더를 고르면 경고가 보인다(`DATA.md`).
 2. **관리자 설정을 채운다.**
-   - 웹 금지어: 학생 이름, 학교 이름, 선생님 이름. `meta/privacy.yaml`에 들어가고 밖으로 나가지 않는다.
    - 모델, 상한, 사용량 미루기 기준. 기본값 그대로 둬도 된다.
 3. **환경 점검.** claude 위치와 버전, 토큰이 키체인에 있는지, Keynote, 데이터 폴더, 캐시를 본다.
 4. **학생이 자료를 넣기 시작한다.** 과목을 따로 등록하지 않는다. 자료를 넣을 때 학년·과목·수준 꼬리표를 붙이면 과목이 생긴다(`DECISIONS.md` 21).

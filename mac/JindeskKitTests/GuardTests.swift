@@ -2,26 +2,13 @@ import Foundation
 import Testing
 @testable import JindeskKit
 
-private let terms = ["김민준", "민준", "Seoul Intl School"]
-
 private func check(_ tool: String, _ input: [String: String]) -> String? {
-  ExternalCallCheck.blockReason(tool: tool, input: .object(input.mapValues(JSONValue.string)), terms: terms)
+  ExternalCallCheck.blockReason(tool: tool, input: .object(input.mapValues(JSONValue.string)))
 }
 
 @Suite struct ExternalCallCheckTests {
-  @Test func 일반_학습_용어_검색은_통과시킨다() {
+  @Test func 검색은_막지_않는다() {
     #expect(check("WebSearch", ["query": "projectile motion complementary angles same range"]) == nil)
-  }
-
-  @Test func 검색어에_금지어가_있으면_대소문자와_관계없이_막는다() {
-    #expect(check("WebSearch", ["query": "seoul intl school physics syllabus"])?.contains("Seoul Intl School") == true)
-    #expect(check("WebSearch", ["query": "김민준 학생 물리"])?.contains("김민준") == true)
-    // 두 글자 이름도 막는다
-    #expect(check("WebSearch", ["query": "민준 IB 수학"]) != nil)
-  }
-
-  @Test func 조회_주소에_퍼센트_인코딩된_금지어가_있어도_막는다() {
-    #expect(check("WebFetch", ["url": "https://example.com/search?q=%EA%B9%80%EB%AF%BC%EC%A4%80"]) != nil)
   }
 
   @Test(arguments: [
@@ -48,44 +35,39 @@ private func check(_ tool: String, _ input: [String: String]) -> String? {
   let dir = NSTemporaryDirectory() + "jindesk-guard-\(UUID().uuidString)"
 
   @Test func 막은_호출은_종료_코드_2와_이유를_돌려주고_기록에_남긴다() throws {
-    let guardFiles = try ExternalGuard.prepare(directory: dir, terms: ["김민준", "김", " 김민준 "])
-    let saved = try JSONValue.parse(Data(contentsOf: URL(fileURLWithPath: guardFiles.termsFile)))
-    #expect(saved == .array([.string("김민준")]))
-
-    let blocked = GuardHook.run(
-      termsFile: guardFiles.termsFile, logFile: guardFiles.logFile, input: Data(#"{"tool_name":"WebSearch","tool_input":{"query":"김민준 물리"}}"#.utf8))
+    let guardFiles = try ExternalGuard.prepare(directory: dir)
+    let blocked = GuardHook.run(logFile: guardFiles.logFile, input: Data(#"{"tool_name":"WebFetch","tool_input":{"url":"http://127.0.0.1:4477/"}}"#.utf8))
     #expect(blocked.exitCode == 2)
-    #expect(blocked.message?.contains("김민준") == true)
+    #expect(blocked.message?.contains("127.0.0.1") == true)
 
     let allowed = GuardHook.run(
-      termsFile: guardFiles.termsFile, logFile: guardFiles.logFile,
-      input: Data(#"{"tool_name":"WebFetch","tool_input":{"url":"https://example.com/a/b"}}"#.utf8))
+      logFile: guardFiles.logFile, input: Data(#"{"tool_name":"WebFetch","tool_input":{"url":"https://example.com/a/b"}}"#.utf8))
     #expect(allowed == GuardHook.Outcome(exitCode: 0, message: nil))
 
     let lines = try JSONLines.read(URL(fileURLWithPath: guardFiles.logFile)).values
     #expect(lines.count == 2)
-    #expect(lines[0]["tool"] == .string("WebSearch"))
-    #expect(lines[0]["blocked"]?.stringValue?.contains("김민준") == true)
+    #expect(lines[0]["tool"] == .string("WebFetch"))
+    #expect(lines[0]["blocked"]?.stringValue?.contains("127.0.0.1") == true)
     #expect(lines[1]["blocked"] == .null)
     #expect(lines[1]["input"]?["url"] == .string("https://example.com/a/b"))
   }
 
-  @Test func 금지어_파일을_읽지_못하면_막는다() {
-    let outcome = GuardHook.run(termsFile: dir + "/없음.json", logFile: nil, input: Data("{}".utf8))
+  @Test func 훅_입력을_읽지_못하면_막는다() {
+    let outcome = GuardHook.run(logFile: nil, input: Data("{".utf8))
     #expect(outcome.exitCode == 2)
   }
 
   @Test func 훅_명령의_경로를_셸_따옴표로_감싸고_훅이_뜨지_못해도_막는다() {
-    let g = ExternalGuard(termsFile: "/a b/terms.json", logFile: "/it's/log.jsonl")
+    let g = ExternalGuard(logFile: "/it's a/log.jsonl")
     let hook = g.hooks(helperPath: "/Applications/Jindesk.app/Contents/MacOS/jindesk-guard")["PreToolUse"]?.arrayValue?.first?["hooks"]?.arrayValue?.first
-    #expect(hook?["command"]?.stringValue == #"'/Applications/Jindesk.app/Contents/MacOS/jindesk-guard' '/a b/terms.json' '/it'\''s/log.jsonl'"#)
+    #expect(hook?["command"]?.stringValue == #"'/Applications/Jindesk.app/Contents/MacOS/jindesk-guard' '/it'\''s a/log.jsonl'"#)
     #expect(hook?["onFailure"] == .string("block"))
   }
 
   @Test func 에이전트_설정은_out_과_work_에만_쓰고_웹은_검사_훅이_있을_때만_연다() {
     let plain = JSONText.stringify(AgentRunner.settings(nil, helper: "/h"))
     #expect(plain == #"{"permissions":{"allow":["Read","Grep","Glob","Write(./out/**)","Edit(./out/**)","Write(./work/**)","Edit(./work/**)"]}}"#)
-    let web = AgentRunner.settings(ExternalGuard(termsFile: "/t", logFile: "/l"), helper: "/h")
+    let web = AgentRunner.settings(ExternalGuard(logFile: "/l"), helper: "/h")
     #expect(web["permissions"]?["allow"]?.strings.contains("WebFetch") == true)
     #expect(web["hooks"]?["PreToolUse"] != nil)
   }

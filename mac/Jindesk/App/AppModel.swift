@@ -65,7 +65,6 @@ final class AppModel {
   private(set) var doctor: [CheckItem] = []
   private(set) var doctorRunning = false
   private(set) var admin: AdminSettings
-  private(set) var privacy = PrivacyTerms(terms: [])
   private(set) var tokenSaved = ClaudeToken.exists
   var section: SidebarSection = .today
   var adminTab: AdminTab = .run
@@ -203,7 +202,6 @@ final class AppModel {
     manager.onFinish = { [weak self] _ in self?.jobsChanged() }
     manager.onPhase = { [weak self] _ in self?.jobsChanged() }
     jobs = manager
-    privacy = (try? PrivacyTerms.load(data)) ?? PrivacyTerms(terms: [])
     history = RunHistory.load(folders)
     phase = .ready
     Task { await runDoctor() }
@@ -392,13 +390,6 @@ final class AppModel {
   private func apply(_ settings: AdminSettings, to manager: JobManager) {
     manager.holdAtPercent = settings.resolvedHoldAtPercent
     for lane in JobLane.allCases where lane.adjustable { manager.setLimit(lane, settings.limit(lane)) }
-  }
-
-  func savePrivacy(_ text: String) throws {
-    guard let data else { throw RequestError("데이터 폴더가 없습니다") }
-    let terms = PrivacyTerms(terms: text.split(whereSeparator: \.isNewline).map(String.init))
-    try terms.save(data)
-    privacy = terms
   }
 
   func saveToken(_ token: String) throws {

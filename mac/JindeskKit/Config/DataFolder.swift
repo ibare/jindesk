@@ -23,7 +23,6 @@ public struct DataFolder: Sendable, Equatable {
 
   public var meta: URL { url.appending(path: "meta") }
   public var schemaFile: URL { meta.appending(path: "schema.yaml") }
-  public var privacyFile: URL { meta.appending(path: "privacy.yaml") }
   public var lockFile: URL { meta.appending(path: ".lock") }
   public var syllabus: URL { url.appending(path: "syllabus") }
   public var sources: URL { url.appending(path: "sources") }

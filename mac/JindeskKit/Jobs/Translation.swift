@@ -108,7 +108,7 @@ public enum Translation {
     let dirs = AgentDirs(ctx.folders, ctx.id, sub: "c\(n)")
     try dirs.make()
     try FileOps.copy(folder.page, to: dirs.input.appending(path: "page.yaml"))
-    if FileOps.exists(ctx.data.glossaryFile) { try FileOps.copy(ctx.data.glossaryFile, to: dirs.input.appending(path: "glossary.yaml")) }
+    try AgentStep.writeGlossary(ctx.data, into: dirs.input)
     let list: JSONValue = .array(targets.map { .object(["id": .string($0.id), "kind": .string($0.kind.rawValue), "text": .string($0.text ?? "")]) })
     try FileOps.write(JSONText.record(list), to: dirs.input.appending(path: "targets.json"))
 
@@ -117,11 +117,11 @@ public enum Translation {
       config: ctx.config, workspace: dirs.workspace, configDir: dirs.configDir, systemPromptFile: instructionsFile, eventsFile: dirs.events("translate"),
       prompt: prompt, onEvent: { kind, message in if kind != .text { await ctx.log(kind, "[\(tag)] \(message)") } })
     let result = try await AgentStep.run(options, ctx, label: "\(tag) 번역")
-    var checked = check(out: dirs.out, targets: targets, glossary: glossary, privacy: ctx.config.privacyTerms)
+    var checked = check(out: dirs.out, targets: targets, glossary: glossary)
     if !checked.problems.isEmpty {
       await ctx.log(.warn, "[\(tag)] 검사에서 \(checked.problems.count)건이 나와 고쳐 쓰게 합니다: \(checked.problems.prefix(3).joined(separator: " · "))")
       try await AgentStep.fix(options, session: result.sessionID, problems: checked.problems, ctx: ctx, label: "\(tag) 번역", events: "translate-fix")
-      checked = check(out: dirs.out, targets: targets, glossary: glossary, privacy: ctx.config.privacyTerms)
+      checked = check(out: dirs.out, targets: targets, glossary: glossary)
     }
     // 반영 직전에 페이지가 그대로인지 다시 본다
     guard let current = Page.load(folder), current == page else {
@@ -152,7 +152,7 @@ public enum Translation {
     var problems: [String] { general + unitProblems.keys.sorted().flatMap { id in unitProblems[id]!.map { "\(id): \($0)" } } }
   }
 
-  static func check(out: URL, targets: [PageUnit], glossary: Glossary, privacy: [String]) -> Checked {
+  static func check(out: URL, targets: [PageUnit], glossary: Glossary) -> Checked {
     var c = Checked()
     let v: JSONValue
     switch AgentJSON.read(out.appending(path: "layers.json"), label: "out/layers.json") {
@@ -168,7 +168,7 @@ public enum Translation {
         c.unitProblems[u.id] = ["번역이 없습니다"]
         continue
       }
-      let problems = unitProblems(en: u.text ?? "", ko: ko, glossary: glossary, privacy: privacy)
+      let problems = unitProblems(en: u.text ?? "", ko: ko, glossary: glossary)
       if problems.isEmpty { c.accepted[u.id] = ko } else { c.unitProblems[u.id] = problems }
     }
     for t in v["terms"]?.arrayValue ?? [] {
@@ -179,8 +179,8 @@ public enum Translation {
   }
 
   // 영어 단위 하나와 그 한국어를 견준다
-  static func unitProblems(en: String, ko: String, glossary: Glossary, privacy: [String]) -> [String] {
-    var out = TextChecks.koreanProblems(ko, field: "한국어", privacy: privacy)
+  static func unitProblems(en: String, ko: String, glossary: Glossary) -> [String] {
+    var out = TextChecks.koreanProblems(ko, field: "한국어")
     let enTex = TexText.segments(en).map { TexText.key($0.tex) }.sorted()
     let koTex = TexText.segments(ko).map { TexText.key($0.tex) }.sorted()
     if enTex != koTex { out.append("수식이 영어와 다릅니다. 수식은 \\( … \\), \\[ … \\] 그대로 옮긴다 (영어 \(enTex.count)개, 한국어 \(koTex.count)개)") }

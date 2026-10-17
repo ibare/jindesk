@@ -95,14 +95,4 @@ import Testing
     #expect(b.tryAcquire())
     b.release()
   }
-
-  @Test func 금지어는_공백과_겹침과_한_글자를_빼고_저장한다() throws {
-    let t = TempPlace()
-    try t.data.initialize(app: testApp)
-    let terms = PrivacyTerms(terms: [" 김민준 ", "민준", "김민준", "Seoul Intl School", "seoul intl school", "김", ""])
-    #expect(terms.terms == ["김민준", "민준", "Seoul Intl School"])
-    try terms.save(t.data)
-    #expect(try t.read("meta/privacy.yaml") == "kind: \"privacy\"\nv: 1\nterms: [\"김민준\", \"민준\", \"Seoul Intl School\"]\n")
-    #expect(try PrivacyTerms.load(t.data) == terms)
-  }
 }

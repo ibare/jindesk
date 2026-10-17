@@ -1,5 +1,5 @@
 // 에이전트의 외부 호출(WebSearch, WebFetch) 검사. 웹 도구는 관점 붙이기의 레퍼런스 찾기에만 준다.
-// 검색어와 조회 주소에 금지어(학생·학교·선생님 이름, meta/privacy.yaml)가 들어가거나, 로컬·사설망 주소를 조회하려 하면 막는다.
+// 로컬·사설망 주소를 조회하려 하면 막는다.
 // 로컬 주소를 막는 이유: 웹 조회가 이 맥에서 직접 나가므로, 막지 않으면 이 맥의 다른 서비스나 지난 기록에 닿을 수 있다.
 import Foundation
 
@@ -14,39 +14,22 @@ public enum ExternalCallCheck {
   ].map { try! NSRegularExpression(pattern: $0, options: [.caseInsensitive]) }
 
   // 막을 이유를 돌려준다. 괜찮으면 nil.
-  public static func blockReason(tool: String, input: JSONValue?, terms: [String]) -> String? {
-    let outbound: String
-    switch tool {
-    case "WebSearch": outbound = input?["query"]?.looseString ?? ""
-    case "WebFetch": outbound = input?["url"]?.looseString ?? ""
-    default: return nil
+  public static func blockReason(tool: String, input: JSONValue?) -> String? {
+    guard tool == "WebFetch", let outbound = input?["url"]?.looseString, !outbound.isEmpty else { return nil }
+    guard let components = URLComponents(string: outbound), let scheme = components.scheme?.lowercased() else {
+      return "주소를 해석할 수 없어 막았다: \(outbound)"
     }
-    if outbound.isEmpty { return nil }
-
-    let lower = outbound.lowercased()
-    // URL 에 들어간 한글은 퍼센트 인코딩되어 있을 수 있어 풀어서도 본다
-    let decoded = (outbound.removingPercentEncoding ?? outbound).lowercased()
-    if let hit = terms.first(where: { $0.count >= 2 && (lower.contains($0.lowercased()) || decoded.contains($0.lowercased())) }) {
-      let what = tool == "WebSearch" ? "검색어" : "주소"
-      return "외부로 나가는 \(what)에 금지어(\"\(hit)\")가 들어 있어 막았다. 학생·학교·선생님 이름은 밖으로 보내지 않는다. 그 말을 빼고 일반적인 학습 용어로 바꿔 다시 시도하라."
+    guard scheme == "http" || scheme == "https" else {
+      return "http(s) 가 아닌 주소는 조회할 수 없다: \(scheme):"
     }
-
-    if tool == "WebFetch" {
-      guard let components = URLComponents(string: outbound), let scheme = components.scheme?.lowercased() else {
-        return "주소를 해석할 수 없어 막았다: \(outbound)"
-      }
-      guard scheme == "http" || scheme == "https" else {
-        return "http(s) 가 아닌 주소는 조회할 수 없다: \(scheme):"
-      }
-      guard let rawHost = components.host, !rawHost.isEmpty else {
-        return "주소를 해석할 수 없어 막았다: \(outbound)"
-      }
-      guard let host = normalizedHost(rawHost), let local = isLocal(host) else {
-        return "주소를 해석할 수 없어 막았다: \(outbound)"
-      }
-      if local {
-        return "로컬·사설망 주소(\(host))는 조회할 수 없다. 공개된 외부 자료만 조회한다."
-      }
+    guard let rawHost = components.host, !rawHost.isEmpty else {
+      return "주소를 해석할 수 없어 막았다: \(outbound)"
+    }
+    guard let host = normalizedHost(rawHost), let local = isLocal(host) else {
+      return "주소를 해석할 수 없어 막았다: \(outbound)"
+    }
+    if local {
+      return "로컬·사설망 주소(\(host))는 조회할 수 없다. 공개된 외부 자료만 조회한다."
     }
     return nil
   }

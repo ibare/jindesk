@@ -25,7 +25,6 @@ git 을 쓰지 않는다. 모든 산출물은 파일로 쓰고, 백업은 데이
 ~/Jindesk/
   meta/
     schema.yaml                 스키마 버전, 마이그레이션 이력, 이 폴더를 마지막으로 연 앱 판
-    privacy.yaml                웹 금지어: 학생·학교·선생님 이름
     .lock                       작업 중인 프로세스 id. 백업에 들어가도 해가 없다
   syllabus/<과목 id>.yaml       강의 계획 목차 (목차 만들기가 쓴다)
   sources/<자료 id>/

@@ -41,7 +41,7 @@ public enum SourceReading {
       try FileOps.copy(ctx.data.syllabusFile(subject), to: dirs.input.appending(path: "syllabus.yaml"))
     }
     try FileOps.write(conceptList(ctx.data, subject: subject), to: dirs.input.appending(path: "concepts.md"))
-    if FileOps.exists(ctx.data.glossaryFile) { try FileOps.copy(ctx.data.glossaryFile, to: dirs.input.appending(path: "glossary.yaml")) }
+    try AgentStep.writeGlossary(ctx.data, into: dirs.input)
     await ctx.log(.info, "\(meta.original.name): \(meta.pages)쪽, 과목 \(subject)")
     try ctx.checkCancellation()
 
@@ -51,14 +51,14 @@ public enum SourceReading {
 
     await ctx.setPhase("checking")
     let math = ctx.config.katex.flatMap(MathChecker.init(katex:))
-    var checked = check(out: dirs.out, meta: meta, privacy: ctx.config.privacyTerms, math: math)
+    var checked = check(out: dirs.out, meta: meta, math: math)
     if !checked.allProblems.isEmpty {
       await ctx.log(.warn, "검사에서 \(checked.allProblems.count)건이 나와 고쳐 쓰게 합니다")
       for p in checked.allProblems.prefix(20) { await ctx.log(.warn, p) }
       await ctx.setPhase("fixing")
       try await AgentStep.fix(options, session: result.sessionID, problems: checked.allProblems, ctx: ctx, label: "자료 읽기", events: "read-fix")
       await ctx.setPhase("checking")
-      checked = check(out: dirs.out, meta: meta, privacy: ctx.config.privacyTerms, math: math)
+      checked = check(out: dirs.out, meta: meta, math: math)
     }
     if !checked.problems.isEmpty { throw ToolError("자료 읽기 검사 실패: " + checked.problems.joined(separator: " · ")) }
     var warnings: [String] = []
@@ -159,7 +159,7 @@ public enum SourceReading {
     var allProblems: [String] { problems + rejected.flatMap { r in r.problems.map { "out/entries/\(r.file): \($0)" } } }
   }
 
-  static func check(out: URL, meta: SourceMeta, privacy: [String], math: MathChecker?) -> Checked {
+  static func check(out: URL, meta: SourceMeta, math: MathChecker?) -> Checked {
     var c = Checked()
     switch AgentJSON.read(out.appending(path: "source.json"), label: "out/source.json") {
     case .failure(let p): c.problems.append(p.message)
@@ -167,7 +167,7 @@ public enum SourceReading {
       let skipped = (v["skipped_pages"]?.arrayValue ?? []).compactMap { $0["page"]?.numberValue.map { Int($0) } ?? $0.numberValue.map { Int($0) } }
       let note = Note(
         title: AgentJSON.string(v["title"]), kind: AgentJSON.string(v["kind"]), assessment: v["assessment"]?.boolValue ?? false, skipped: skipped)
-      if let t = note.title { c.problems += TextChecks.englishProblems(t, field: "out/source.json title", privacy: privacy) }
+      if let t = note.title { c.problems += TextChecks.englishProblems(t, field: "out/source.json title") }
       for p in skipped where !(1...max(meta.pages, 1)).contains(p) { c.problems.append("out/source.json skipped_pages: 없는 쪽입니다 (\(p))") }
       c.note = note
     }
@@ -175,7 +175,7 @@ public enum SourceReading {
     if let report = FileOps.readIfExists(out.appending(path: "report.md"))?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
       c.report = report
       if !TextChecks.hasHangul(report) { c.problems.append("out/report.md: 한국어로 써야 합니다") }
-      c.problems += TextChecks.recordProblems(report, field: "out/report.md", privacy: privacy)
+      c.problems += TextChecks.recordProblems(report, field: "out/report.md")
     } else {
       c.problems.append("out/report.md 를 쓰지 않았습니다")
     }
@@ -187,14 +187,14 @@ public enum SourceReading {
       switch AgentJSON.read(entriesDir.appending(path: file), label: "out/entries/\(file)") {
       case .failure(let p): c.rejected.append((file, [p.message]))
       case .success(let v):
-        let (draft, problems) = checkEntry(v, file: file, pages: meta.pages, privacy: privacy, math: math)
+        let (draft, problems) = checkEntry(v, file: file, pages: meta.pages, math: math)
         if let draft, problems.isEmpty { c.entries.append(draft) } else { c.rejected.append((file, problems)) }
       }
     }
     return c
   }
 
-  static func checkEntry(_ v: JSONValue, file: String, pages: Int, privacy: [String], math: MathChecker?) -> (Draft?, [String]) {
+  static func checkEntry(_ v: JSONValue, file: String, pages: Int, math: MathChecker?) -> (Draft?, [String]) {
     var problems: [String] = []
     let title = AgentJSON.string(v["title"])
     let body = AgentJSON.string(v["body"])
@@ -229,7 +229,7 @@ public enum SourceReading {
     for (i, m) in misconceptions.enumerated() { english.append(("misconceptions[\(i)]", m)) }
     if let item { english.append(("item", item)) }
     for (field, text) in english {
-      problems += TextChecks.englishProblems(text, field: field, privacy: privacy)
+      problems += TextChecks.englishProblems(text, field: field)
       for phrase in TextChecks.materialPhrases(text) { problems.append("\(field): 원래 자료가 있어야만 통하는 말입니다 (\"\(phrase)\")") }
       if let math { problems += math.problems(inText: text, field: field) }
     }

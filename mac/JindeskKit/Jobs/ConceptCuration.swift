@@ -74,14 +74,14 @@ public enum ConceptCuration {
 
     await ctx.setPhase("checking")
     let math = ctx.config.katex.flatMap(MathChecker.init(katex:))
-    var checked = check(out: dirs.out, input: input, privacy: ctx.config.privacyTerms, math: math)
+    var checked = check(out: dirs.out, input: input, math: math)
     if !checked.problems.isEmpty {
       await ctx.log(.warn, "검사에서 \(checked.problems.count)건이 나와 고쳐 쓰게 합니다")
       for p in checked.problems.prefix(20) { await ctx.log(.warn, p) }
       await ctx.setPhase("fixing")
       try await AgentStep.fix(options, session: result.sessionID, problems: checked.problems, ctx: ctx, label: "개념 정리", events: "curate-fix")
       await ctx.setPhase("checking")
-      checked = check(out: dirs.out, input: input, privacy: ctx.config.privacyTerms, math: math)
+      checked = check(out: dirs.out, input: input, math: math)
     }
     guard checked.problems.isEmpty, let plan = checked.plan else {
       throw ToolError("개념 정리 검사 실패: " + checked.problems.prefix(10).joined(separator: " · "))
@@ -145,7 +145,7 @@ public enum ConceptCuration {
     }
     try FileOps.write(request.joined(separator: "\n") + "\n", to: dirs.input.appending(path: "request.md"))
     if FileOps.exists(data.syllabusFile(input.subject)) { try FileOps.copy(data.syllabusFile(input.subject), to: dirs.input.appending(path: "syllabus.yaml")) }
-    if FileOps.exists(data.glossaryFile) { try FileOps.copy(data.glossaryFile, to: dirs.input.appending(path: "glossary.yaml")) }
+    try AgentStep.writeGlossary(data, into: dirs.input)
   }
 
   // MARK: - 검사
@@ -198,7 +198,7 @@ public enum ConceptCuration {
     var problems: [String] = []
   }
 
-  static func check(out: URL, input: Input, privacy: [String], math: MathChecker?) -> Checked {
+  static func check(out: URL, input: Input, math: MathChecker?) -> Checked {
     var c = Checked()
     let v: JSONValue
     switch AgentJSON.read(out.appending(path: "plan.json"), label: "out/plan.json") {
@@ -270,7 +270,7 @@ public enum ConceptCuration {
         var english = [("\(uat).text", text)] + conditions.map { ("\(uat).conditions", $0) }
         english += claims.enumerated().map { ("\(uat).claims[\($0.offset)].text", $0.element.text) }
         for (field, t) in english {
-          problems += TextChecks.englishProblems(t, field: field, privacy: privacy)
+          problems += TextChecks.englishProblems(t, field: field)
           for phrase in TextChecks.materialPhrases(t) { problems.append("\(field): 원래 자료가 있어야만 통하는 말입니다 (\"\(phrase)\")") }
           if let math { problems += math.problems(inText: t, field: field) }
         }
@@ -290,9 +290,9 @@ public enum ConceptCuration {
       }
       let symbols = AgentJSON.symbols(raw["symbols"])
       let item = AgentJSON.string(raw["item"])
-      if let title { problems += TextChecks.englishProblems(title, field: "\(at).title", privacy: privacy) }
-      if let item { problems += TextChecks.englishProblems(item, field: "\(at).item", privacy: privacy) }
-      for s in symbols { problems += TextChecks.englishProblems(s.meaning, field: "\(at).symbols \(s.symbol)", privacy: privacy) }
+      if let title { problems += TextChecks.englishProblems(title, field: "\(at).title") }
+      if let item { problems += TextChecks.englishProblems(item, field: "\(at).item") }
+      for s in symbols { problems += TextChecks.englishProblems(s.meaning, field: "\(at).symbols \(s.symbol)") }
       c.problems += problems
       if problems.isEmpty, let title {
         concepts.append(
@@ -310,7 +310,7 @@ public enum ConceptCuration {
         c.problems.append("held: \(e) 를 보류한 까닭(reason)이 없습니다")
         continue
       }
-      c.problems += TextChecks.recordProblems(reason, field: "held \(e)", privacy: privacy)
+      c.problems += TextChecks.recordProblems(reason, field: "held \(e)")
       placedEntries[e, default: 0] += 1
       held.append((e, reason))
     }

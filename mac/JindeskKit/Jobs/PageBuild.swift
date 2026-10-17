@@ -42,7 +42,6 @@ public enum PageBuild {
     let (fixed, instructionsFile) = try await AgentStep.fixInstructions(.pageBuild, ctx, into: dir)
     await ctx.log(.info, "페이지 \(todo.count)개: \(todo.map(\.cid.slug).joined(separator: ", "))")
     let math = ctx.config.katex.flatMap(MathChecker.init(katex:))
-    let glossary = FileOps.exists(ctx.data.glossaryFile) ? ctx.data.glossaryFile : nil
     let labels = SourceLibrary.load(ctx.data).subjects.first { $0.id == subject }
 
     await ctx.setPhase("running")
@@ -58,7 +57,7 @@ public enum PageBuild {
         group.addTask {
           do {
             return try await buildOne(
-              concept, n: n, ctx: ctx, instructions: fixed, instructionsFile: instructionsFile, math: math, glossary: glossary, labels: labels)
+              concept, n: n, ctx: ctx, instructions: fixed, instructionsFile: instructionsFile, math: math, labels: labels)
           } catch is CancellationError {
             throw CancellationError()
           } catch {
@@ -100,8 +99,7 @@ public enum PageBuild {
   }
 
   static func buildOne(
-    _ concept: Concept, n: Int, ctx: JobContext, instructions: Instructions, instructionsFile: URL, math: MathChecker?, glossary: URL?,
-    labels: SubjectSummary?
+    _ concept: Concept, n: Int, ctx: JobContext, instructions: Instructions, instructionsFile: URL, math: MathChecker?, labels: SubjectSummary?
   ) async throws -> Outcome {
     let folder = ConceptFolder(concept.cid, in: ctx.data)
     let conceptHash = ConceptStore.fileHash(ctx.data, id: concept.cid)
@@ -110,13 +108,14 @@ public enum PageBuild {
     try dirs.make()
     try FileOps.copy(folder.concept, to: dirs.input.appending(path: "concept.yaml"))
     if old != nil { try FileOps.copy(folder.page, to: dirs.input.appending(path: "page.yaml")) }
-    if let glossary { try FileOps.copy(glossary, to: dirs.input.appending(path: "glossary.yaml")) }
+    try AgentStep.writeGlossary(ctx.data, into: dirs.input)
     var request = ["# 학습 페이지 요청", "", "- 개념: \(concept.id)", "- 제목: \(concept.title)"]
     if let labels {
       request.append("- 과목: \(labels.name)")
       if !(labels.grades + labels.levels).isEmpty { request.append("- 학년·수준: \((labels.grades + labels.levels).joined(separator: ", "))") }
     }
     request.append("- 원문 단위: \(concept.units.map(\.id).joined(separator: ", "))")
+    request.append("- 이전 페이지: \(old == nil ? "없다. 처음 만든다" : "input/page.yaml")")
     try FileOps.write(request.joined(separator: "\n") + "\n", to: dirs.input.appending(path: "request.md"))
 
     let tag = concept.cid.slug
@@ -124,11 +123,11 @@ public enum PageBuild {
       config: ctx.config, workspace: dirs.workspace, configDir: dirs.configDir, systemPromptFile: instructionsFile, eventsFile: dirs.events("page"),
       prompt: prompt, onEvent: { kind, message in if kind != .text { await ctx.log(kind, "[\(tag)] \(message)") } })
     let result = try await AgentStep.run(options, ctx, label: "\(tag) 페이지")
-    var checked = check(out: dirs.out, concept: concept, privacy: ctx.config.privacyTerms, math: math)
+    var checked = check(out: dirs.out, concept: concept, math: math)
     if !checked.problems.isEmpty {
       await ctx.log(.warn, "[\(tag)] 검사에서 \(checked.problems.count)건이 나와 고쳐 쓰게 합니다: \(checked.problems.prefix(3).joined(separator: " · "))")
       try await AgentStep.fix(options, session: result.sessionID, problems: checked.problems, ctx: ctx, label: "\(tag) 페이지", events: "page-fix")
-      checked = check(out: dirs.out, concept: concept, privacy: ctx.config.privacyTerms, math: math)
+      checked = check(out: dirs.out, concept: concept, math: math)
     }
     guard checked.problems.isEmpty, let draft = checked.draft else {
       return .failed(concept.id, "검사 실패: " + checked.problems.prefix(5).joined(separator: " · "))
@@ -163,7 +162,7 @@ public enum PageBuild {
     var problems: [String] = []
   }
 
-  static func check(out: URL, concept: Concept, privacy: [String], math: MathChecker?) -> Checked {
+  static func check(out: URL, concept: Concept, math: MathChecker?) -> Checked {
     var c = Checked()
     let v: JSONValue
     switch AgentJSON.read(out.appending(path: "page.json"), label: "out/page.json") {
@@ -173,7 +172,7 @@ public enum PageBuild {
     case .success(let value): v = value
     }
     let titleKo = AgentJSON.string(v["title_ko"])
-    if let titleKo { c.problems += TextChecks.koreanProblems(titleKo, field: "title_ko", privacy: privacy) } else { c.problems.append("title_ko 가 없습니다") }
+    if let titleKo { c.problems += TextChecks.koreanProblems(titleKo, field: "title_ko") } else { c.problems.append("title_ko 가 없습니다") }
     let unitIDs = Set(concept.units.map(\.id))
     var paras: [String: Int] = [:]
     var units: [DraftUnit] = []
@@ -202,7 +201,7 @@ public enum PageBuild {
         }
         let prov = AgentJSON.string(raw["prov"]) ?? "source"
         if prov != "source" && prov != "added" { c.problems.append("\(at).prov 는 source 나 added 다") }
-        c.problems += TextChecks.englishProblems(text, field: "\(at).text", privacy: privacy)
+        c.problems += TextChecks.englishProblems(text, field: "\(at).text")
         for phrase in TextChecks.materialPhrases(text) { c.problems.append("\(at).text: 원래 자료가 있어야만 통하는 말입니다 (\"\(phrase)\")") }
         if let math { c.problems += math.problems(inText: text, field: "\(at).text") }
         units.append(DraftUnit(kind: .note, from: from, prov: prov, text: text, note: note, tex: nil))
@@ -219,7 +218,7 @@ public enum PageBuild {
         // \[ … \] 로 감싸 왔으면 벗긴다
         if tex.hasPrefix("\\[") && tex.hasSuffix("\\]") { tex = String(tex.dropFirst(2).dropLast(2)).trimmingCharacters(in: .whitespacesAndNewlines) }
         if let problem = math?.problem(tex, display: true) { c.problems.append("\(at).block.tex: 수식을 그릴 수 없습니다: \(problem)") }
-        c.problems += TextChecks.englishProblems(tex, field: "\(at).block.tex", privacy: privacy)
+        c.problems += TextChecks.englishProblems(tex, field: "\(at).block.tex")
         units.append(DraftUnit(kind: .block, from: from, prov: "source", text: nil, note: nil, tex: tex))
       }
     }

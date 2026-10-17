@@ -38,8 +38,6 @@ public struct RunnerConfig: Sendable {
   public var guardHelper: String
   // 작업별 지침 (앱 번들의 jobs/)
   public var instructions: InstructionSource
-  // 웹 금지어 (meta/privacy.yaml)
-  public var privacyTerms: [String]
   // 수식 검사에 쓰는 렌더러의 KaTeX (앱 번들의 renderer/katex/katex.min.js). 없으면 수식 검사를 건너뛴다.
   public var katex: URL?
   // 자식 프로세스의 기본 환경 (자격 증명 변수를 뺀 앱 환경 + PATH + 로캘)
@@ -49,7 +47,7 @@ public struct RunnerConfig: Sendable {
 
   public init(
     claudeToken: String, model: String = RunnerConfig.defaultModel, effort: Effort = .high, maxTurns: Int = 400, maxBudgetUSD: Double = 30,
-    timeout: Duration = .seconds(3600), tools: ToolPaths, guardHelper: String, instructions: InstructionSource, privacyTerms: [String] = [],
+    timeout: Duration = .seconds(3600), tools: ToolPaths, guardHelper: String, instructions: InstructionSource,
     katex: URL? = nil, baseEnvironment: [String: String]
   ) {
     self.claudeToken = claudeToken
@@ -61,7 +59,6 @@ public struct RunnerConfig: Sendable {
     self.tools = tools
     self.guardHelper = guardHelper
     self.instructions = instructions
-    self.privacyTerms = privacyTerms
     self.katex = katex
     self.baseEnvironment = baseEnvironment
   }
@@ -189,7 +186,6 @@ public enum ConfigLoader {
       tools: found,
       guardHelper: guardHelper,
       instructions: instructions,
-      privacyTerms: (try? PrivacyTerms.load(data).terms) ?? [],
       katex: katex,
       baseEnvironment: base
     )

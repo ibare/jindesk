@@ -15,11 +15,11 @@ mac/
   project.yml               XcodeGen 정의 (Jindesk.xcodeproj 는 생성물이라 커밋하지 않는다)
   JindeskKit/               엔진. 화면 코드에 의존하지 않는다
     Agent/ Guard/ Process/  claude -p 실행, 외부 호출 검사, 자식 프로세스 (Assayer 에서 옮겨 와 고친 것)
-    Config/                 데이터 폴더, 앱 지원 폴더, 키체인, 웹 금지어
+    Config/                 데이터 폴더, 앱 지원 폴더, 키체인
     Engine/                 작업 종류와 대기열, 작업 관리자, 설정, 지침, 사용량, 환경 점검
     Sources/                자료: 꼬리표, 자료 폴더(meta.yaml, labels.yaml), 자료 목록, 바꾸기, 쪽 나누기, 자료 넣기 작업
     Library/                엔트리, 개념(concept.yaml), 학습 페이지(page.yaml), 곁 층(layers.yaml), 용어 어휘, 목차, 뜻 해시
-    Checks/                 러너 검사: 한글·한자 섞임, 금지어, 원래 자료가 있어야 통하는 말, 글 속 TeX, KaTeX 파싱
+    Checks/                 러너 검사: 한글·한자 섞임, 원래 자료가 있어야 통하는 말, 글 속 TeX, KaTeX 파싱
     Jobs/                   에이전트 작업: 자료 읽기, 개념 정리, 학습 페이지 만들기, 번역, 남은 일(Pipeline)
     Pages/                  렌더러에 넘길 페이지 조합
     Migration/ Backup/      스키마 버전과 마이그레이션 실행기, 백업

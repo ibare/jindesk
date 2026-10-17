@@ -70,6 +70,13 @@ enum AgentStep {
     _ = try await run(o, ctx, label: "\(label) 고쳐 쓰기")
   }
 
+  // 용어 어휘를 input/glossary.yaml 로 둔다. 아직 없으면 빈 어휘를 둔다 (지침이 늘 있는 파일로 가리킬 수 있게).
+  static func writeGlossary(_ data: DataFolder, into input: URL) throws {
+    let glossary = Glossary.load(data)
+    let map: YAMLMap = ["kind": "glossary", "v": 1, "terms": .array(glossary.terms.map(\.yaml))]
+    try FileOps.write(YAML.stringify(map), to: input.appending(path: "glossary.yaml"))
+  }
+
   static func provenance(_ ctx: JobContext, _ kind: JobKind, _ instructions: Instructions) -> YAMLMap {
     ["job": .string(ctx.id), "instructions": .map(instructions.provenance(kind)), "model": .string(ctx.config.model)]
   }

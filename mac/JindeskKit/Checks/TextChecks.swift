@@ -1,7 +1,6 @@
 // 공통 검사 가운데 글에 하는 것 (JOBS.md 의 공통 검사).
 // - 학습 내용(영어 칸)에 한글이 섞이면 실패다. 한국어 칸은 한국어여야 한다.
 // - 한자와 일본어는 어느 칸에도 쓰지 않는다.
-// - 금지어(학생·학교·선생님 이름)가 나오면 실패다.
 // - "slide 3", "see the diagram above"처럼 원래 자료가 있어야만 통하는 말을 찾는다.
 import Foundation
 
@@ -17,11 +16,6 @@ public enum TextChecks {
       return (0x4E00...0x9FFF).contains(v) || (0x3400...0x4DBF).contains(v) || (0xF900...0xFAFF).contains(v) || (0x20000...0x2FA1F).contains(v)
         || (0x3040...0x30FF).contains(v) || (0x31F0...0x31FF).contains(v) || (0xFF66...0xFF9D).contains(v)
     }
-  }
-
-  public static func privacyHits(_ s: String, terms: [String]) -> [String] {
-    let text = s.precomposedStringWithCanonicalMapping
-    return terms.filter { text.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
   }
 
   static let materialPatterns: [NSRegularExpression] = [
@@ -44,30 +38,25 @@ public enum TextChecks {
     return out
   }
 
-  // 영어 칸: 한글, 한자, 일본어, 금지어가 없어야 한다
-  public static func englishProblems(_ s: String, field: String, privacy: [String]) -> [String] {
+  // 영어 칸: 한글, 한자, 일본어가 없어야 한다
+  public static func englishProblems(_ s: String, field: String) -> [String] {
     var out: [String] = []
     if hasHangul(s) { out.append("\(field): 영어로 써야 하는데 한글이 섞였습니다") }
     if hasHanOrKana(s) { out.append("\(field): 한자나 일본어가 섞였습니다") }
-    for t in privacyHits(s, terms: privacy) { out.append("\(field): 쓰면 안 되는 이름이 들어 있습니다 (\(t))") }
     return out
   }
 
-  // 한국어 칸: 한글이 있어야 하고 한자, 일본어, 금지어가 없어야 한다
-  public static func koreanProblems(_ s: String, field: String, privacy: [String]) -> [String] {
+  // 한국어 칸: 한글이 있어야 하고 한자, 일본어가 없어야 한다
+  public static func koreanProblems(_ s: String, field: String) -> [String] {
     var out: [String] = []
     if !hasHangul(s) { out.append("\(field): 한국어로 써야 합니다") }
     if hasHanOrKana(s) { out.append("\(field): 한자나 일본어가 섞였습니다") }
-    for t in privacyHits(s, terms: privacy) { out.append("\(field): 쓰면 안 되는 이름이 들어 있습니다 (\(t))") }
     return out
   }
 
-  // 기록용 글(리포트): 한자, 일본어, 금지어만 본다
-  public static func recordProblems(_ s: String, field: String, privacy: [String]) -> [String] {
-    var out: [String] = []
-    if hasHanOrKana(s) { out.append("\(field): 한자나 일본어가 섞였습니다") }
-    for t in privacyHits(s, terms: privacy) { out.append("\(field): 쓰면 안 되는 이름이 들어 있습니다 (\(t))") }
-    return out
+  // 기록용 글(리포트): 한자, 일본어만 본다
+  public static func recordProblems(_ s: String, field: String) -> [String] {
+    hasHanOrKana(s) ? ["\(field): 한자나 일본어가 섞였습니다"] : []
   }
 }
 

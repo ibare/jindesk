@@ -58,13 +58,16 @@ public struct FigureCheckResult: Sendable, Equatable {
   public var fetched: [String]
   // 처음 장면에서 겹친 글자 쌍 ("A" ↔ "B")
   public var overlaps: [String]
+  // 조작(단추, 슬라이더, 고르기)이 있는데 어느 것을 움직여도 화면이 바뀌지 않았다
+  public var controlsDead: Bool
 
-  public init(errors: [String] = [], painted: Bool, responsive: Bool, fetched: [String] = [], overlaps: [String] = []) {
+  public init(errors: [String] = [], painted: Bool, responsive: Bool, fetched: [String] = [], overlaps: [String] = [], controlsDead: Bool = false) {
     self.errors = errors
     self.painted = painted
     self.responsive = responsive
     self.fetched = fetched
     self.overlaps = overlaps
+    self.controlsDead = controlsDead
   }
 
   public var problems: [String] {
@@ -72,6 +75,9 @@ public struct FigureCheckResult: Sendable, Equatable {
     if !painted { out.append("3초 안에 아무것도 그려지지 않았습니다") }
     if !responsive { out.append("그린 뒤 페이지가 응답하지 않습니다 (멈춤)") }
     out += overlaps.prefix(3).map { "글자가 겹쳐 읽을 수 없습니다: \($0). 자리를 옮기거나 줄인다" }
+    if controlsDead {
+      out.append("단추나 슬라이더를 움직여도 화면이 바뀌지 않습니다. 요소를 다시 만들어(innerHTML 다시 쓰기) 잡아 둔 요소와 이벤트가 떨어지지 않았는지 본다")
+    }
     return out
   }
 }

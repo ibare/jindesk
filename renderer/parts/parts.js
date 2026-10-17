@@ -46,10 +46,31 @@
     // 움직임 줄이기 설정이면 움직임을 멈추고 마지막 장면을 보인다
     get reducedMotion() { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; },
     // 요소 안의 \( … \), \[ … \] 를 KaTeX 로 그린다. tex 를 주면 그 수식을 요소에 그린다.
+    // 수식이 든 글자 마디만 바꾼다. 요소를 다시 만들지 않으므로 그림이 잡아 둔 요소와 이벤트가 그대로 남는다.
     math: function (el, tex, display) {
       if (tex != null) { katex.render(tex, el, { displayMode: !!display, throwOnError: false }); return el; }
-      el.innerHTML = el.innerHTML.replace(/\\\(([\s\S]*?)\\\)|\\\[([\s\S]*?)\\\]/g, function (_, a, b) {
-        return katex.renderToString(a != null ? a : b, { displayMode: b != null, throwOnError: false });
+      var re = /\\\(([\s\S]*?)\\\)|\\\[([\s\S]*?)\\\]/g;
+      var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+        acceptNode: function (n) {
+          var p = n.parentElement;
+          if (p && p.closest("script, style, svg, .katex")) return NodeFilter.FILTER_REJECT;
+          return /\\[(\[]/.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+        },
+      });
+      var nodes = [];
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+      nodes.forEach(function (n) {
+        var text = n.nodeValue, frag = document.createDocumentFragment(), last = 0, m;
+        re.lastIndex = 0;
+        while ((m = re.exec(text))) {
+          if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+          var span = document.createElement("span");
+          katex.render(m[1] != null ? m[1] : m[2], span, { displayMode: m[2] != null, throwOnError: false });
+          frag.appendChild(span);
+          last = re.lastIndex;
+        }
+        if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+        n.parentNode.replaceChild(frag, n);
       });
       return el;
     },

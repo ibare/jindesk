@@ -3,6 +3,7 @@
 // - 정해진 시간(기본 3초) 안에 무언가 그려진다. 스냅숏이 배경색 한 가지가 아니다
 // - 멈추지 않는다. 그 뒤에도 페이지가 응답한다
 // - 처음 장면에서 보이는 글자끼리 겹치지 않는다
+// - 조작(단추, 슬라이더, 고르기)이 있으면 하나라도 움직였을 때 화면이 바뀐다
 // 그림이 부른 바깥 파일은 이때 받아 library/vendor/ 에 둔다. 그림이 내용에 맞는지는 보지 않는다.
 import AppKit
 import JindeskKit
@@ -52,7 +53,75 @@ struct WebFigureChecker: FigureChecking {
     let responsive = await respond(view, timeout: .seconds(3))
     let painted = responsive ? await paintedSomething(view) : false
     let overlaps = responsive ? await overlappingText(view) : []
-    return FigureCheckResult(errors: errors, painted: painted, responsive: responsive, fetched: vendorHandler.fetched, overlaps: overlaps)
+    let dead = responsive && painted ? !(await controlsRespond(view)) : false
+    return FigureCheckResult(
+      errors: errors, painted: painted, responsive: responsive, fetched: vendorHandler.fetched, overlaps: overlaps, controlsDead: dead)
+  }
+
+  // 보이는 조작을 여섯 개까지 하나씩 움직여 보고, 하나라도 화면을 바꾸면 true. 조작이 없으면 true.
+  // 단추는 누르고, 슬라이더는 다른 끝으로 옮기고, 고르기는 다음 것을 고른다.
+  static let controlsScript = """
+    (function (i) {
+      var list = Array.prototype.filter.call(
+        document.querySelectorAll("button, input[type=range], input[type=checkbox], input[type=radio], select"),
+        function (c) { return !c.disabled && (!c.checkVisibility || c.checkVisibility()); }).slice(0, 6);
+      if (i < 0) return list.length;
+      var c = list[i];
+      if (!c) return false;
+      if (c.tagName === "SELECT") {
+        if (c.options.length < 2) return false;
+        c.selectedIndex = (c.selectedIndex + 1) % c.options.length;
+        c.dispatchEvent(new Event("input", { bubbles: true }));
+        c.dispatchEvent(new Event("change", { bubbles: true }));
+      } else if (c.type === "range") {
+        var min = Number(c.min || 0), max = Number(c.max || 100), v = Number(c.value);
+        c.value = String(Math.abs(v - max) < Math.abs(v - min) ? min : max);
+        c.dispatchEvent(new Event("input", { bubbles: true }));
+        c.dispatchEvent(new Event("change", { bubbles: true }));
+      } else {
+        c.click();
+      }
+      return true;
+    })
+    """
+
+  @MainActor
+  static func controlsRespond(_ view: WKWebView) async -> Bool {
+    let count = (try? await view.evaluateJavaScript(controlsScript + "(-1)") as? Int) ?? 0
+    guard count > 0, var before = await signature(view) else { return true }
+    for i in 0..<count {
+      _ = try? await view.evaluateJavaScript(controlsScript + "(\(i))")
+      try? await Task.sleep(for: .milliseconds(400))
+      guard let after = await signature(view) else { return true }
+      if differs(before, after) { return true }
+      before = after
+    }
+    return false
+  }
+
+  // 화면을 작게 줄인 회색조 (견주기용)
+  @MainActor
+  static func signature(_ view: WKWebView) async -> [UInt8]? {
+    guard let image = try? await view.takeSnapshot(configuration: nil),
+      let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+    else { return nil }
+    let w = 160
+    let h = max(1, Int(Double(w) * Double(cg.height) / Double(max(cg.width, 1))))
+    guard
+      let ctx = CGContext(
+        data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w, space: CGColorSpaceCreateDeviceGray(),
+        bitmapInfo: CGImageAlphaInfo.none.rawValue)
+    else { return nil }
+    ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+    guard let data = ctx.data else { return nil }
+    return Array(UnsafeBufferPointer(start: data.bindMemory(to: UInt8.self, capacity: w * h), count: w * h))
+  }
+
+  static func differs(_ a: [UInt8], _ b: [UInt8]) -> Bool {
+    guard a.count == b.count else { return true }
+    var changed = 0
+    for i in a.indices where abs(Int(a[i]) - Int(b[i])) > 12 { changed += 1 }
+    return changed > 6
   }
 
   // 보이는 글자 상자(글자 줄, SVG 글자, KaTeX 수식 하나)끼리 작은 쪽 넓이의 30% 넘게 겹친 쌍

@@ -238,6 +238,7 @@ struct FigureCheckCommand: AsyncParsableCommand {
     print("그려짐: \(result.painted ? "예" : "아니오") · 응답: \(result.responsive ? "예" : "아니오") · 받은 파일 \(result.fetched.count)개")
     for f in result.fetched { print("  + \(f)") }
     for e in result.errors { print("  ✗ \(e)") }
+    if result.controlsDead { print("  ⨯ 조작해도 화면이 바뀌지 않음") }
     for o in result.overlaps { print("  ⨯ 겹침 \(o)") }
     if !result.problems.isEmpty { throw ExitCode(1) }
   }

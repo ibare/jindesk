@@ -1,7 +1,8 @@
 // 학습 페이지 만들기 (page-build, JOBS.md). 개념 원문(concept.yaml)에서 학습 페이지(page.yaml)를 만든다. 개념마다 에이전트 하나, 셋씩 함께 돈다.
 // 문단은 원문 단위의 글을 그대로 쓴다. 에이전트는 문단의 차례와 수식 블록, 강조 상자, 한국어 제목을 정하고, 러너가 원문 글을 넣는다.
 // 시작할 때 페이지가 없거나 낡은 개념을 고른다. 낡은 것은 원문 단위의 해시가 바뀌었거나 지침 판이 바뀐 것이다.
-// 지금은 글 블록 가운데 math 만 있다. 풀이(derivation)와 그림 블록은 다음에 붙인다.
+// 블록은 수식(math)과 그림(figure)이 있다. 그림은 에이전트가 HTML 조각으로 짜고, 러너는 화면 밖 웹 보기에서 돌아가는지만 본다.
+// 풀이(derivation) 블록은 다음에 붙인다.
 import Foundation
 
 public enum PageBuild {
@@ -124,24 +125,70 @@ public enum PageBuild {
       prompt: prompt, onEvent: { kind, message in if kind != .text { await ctx.log(kind, "[\(tag)] \(message)") } })
     let result = try await AgentStep.run(options, ctx, label: "\(tag) 페이지")
     var checked = check(out: dirs.out, concept: concept, math: math)
-    if !checked.problems.isEmpty {
-      await ctx.log(.warn, "[\(tag)] 검사에서 \(checked.problems.count)건이 나와 고쳐 쓰게 합니다: \(checked.problems.prefix(3).joined(separator: " · "))")
-      try await AgentStep.fix(options, session: result.sessionID, problems: checked.problems, ctx: ctx, label: "\(tag) 페이지", events: "page-fix")
+    var figures = await checkFigures(checked.draft, ctx: ctx, tag: tag)
+    let first = checked.problems + figures.problems
+    if !first.isEmpty {
+      await ctx.log(.warn, "[\(tag)] 검사에서 \(first.count)건이 나와 고쳐 쓰게 합니다: \(first.prefix(3).joined(separator: " · "))")
+      try await AgentStep.fix(options, session: result.sessionID, problems: first, ctx: ctx, label: "\(tag) 페이지", events: "page-fix")
       checked = check(out: dirs.out, concept: concept, math: math)
+      figures = await checkFigures(checked.draft, ctx: ctx, tag: tag)
     }
-    guard checked.problems.isEmpty, let draft = checked.draft else {
+    guard checked.problems.isEmpty, var draft = checked.draft else {
       return .failed(concept.id, "검사 실패: " + checked.problems.prefix(5).joined(separator: " · "))
+    }
+    // 고쳐 써도 돌아가지 않는 그림은 그 블록만 넣지 않는다
+    if !figures.failed.isEmpty {
+      for (file, problems) in figures.failed.sorted(by: { $0.key < $1.key }) {
+        await ctx.log(.warn, "[\(tag)] 그림 \(file) 를 넣지 않았습니다: \(problems.prefix(2).joined(separator: " · "))")
+      }
+      draft = Draft(titleKo: draft.titleKo, units: draft.units.filter { $0.figure.map { figures.failed[$0.file] == nil } ?? true })
     }
     let built = assemble(draft, concept: concept, old: old, provenance: AgentStep.provenance(ctx, .pageBuild, instructions))
     // 쓰기 직전에 개념 원문이 그대로인지 다시 본다
     guard ConceptStore.fileHash(ctx.data, id: concept.cid) == conceptHash else { return .changed(concept.id) }
+    // 그림 코드는 판마다 파일 하나다 (figures/<단위 id>-r<판>.html). 고치지 않는다.
+    for (path, code) in built.figures where !FileOps.exists(folder.url.appending(path: path)) {
+      try FileOps.writeNew(code, to: folder.url.appending(path: path))
+    }
     for line in built.history { try FileOps.appendLine(JSONText.line(line), to: folder.history) }
     try built.page.write(folder)
-    await ctx.log(.info, "[\(tag)] 페이지: 단위 \(built.page.units.count)개")
+    let figureCount = built.page.units.filter(\.isFigure).count
+    await ctx.log(.info, "[\(tag)] 페이지: 단위 \(built.page.units.count)개\(figureCount > 0 ? ", 그림 \(figureCount)개" : "")")
     return .written(concept.id)
   }
 
+  struct FigureChecks: Sendable {
+    // 파일 이름 → 문제
+    var failed: [String: [String]] = [:]
+
+    var problems: [String] { failed.keys.sorted().flatMap { f in failed[f]!.map { "out/figures/\(f): \($0)" } } }
+  }
+
+  // 그림 블록마다 블록 틀에 넣어 화면 밖 웹 보기에서 돌려 본다. 그림이 부른 바깥 파일은 이때 library/vendor/ 에 받아 둔다.
+  static func checkFigures(_ draft: Draft?, ctx: JobContext, tag: String) async -> FigureChecks {
+    var out = FigureChecks()
+    let list = (draft?.units ?? []).compactMap(\.figure)
+    guard !list.isEmpty else { return out }
+    guard let checker = ctx.config.figureChecker else {
+      await ctx.log(.warn, "[\(tag)] 그림 검사기가 없어 그림이 돌아가는지 보지 않았습니다")
+      return out
+    }
+    let vendor = VendorStore(ctx.data)
+    for f in list {
+      let result = await checker.check(html: FigureFrame.compose(f.code), vendor: vendor)
+      if !result.fetched.isEmpty { await ctx.log(.info, "[\(tag)] 그림 \(f.file): 바깥 파일 \(result.fetched.count)개를 받아 두었습니다") }
+      if !result.problems.isEmpty { out.failed[f.file] = result.problems }
+    }
+    return out
+  }
+
   // MARK: - 검사
+
+  struct DraftFigure: Sendable {
+    let file: String
+    let title: String
+    let code: String
+  }
 
   struct DraftUnit: Sendable {
     let kind: PageUnitKind
@@ -150,7 +197,11 @@ public enum PageBuild {
     let text: String?
     let note: NoteKind?
     let tex: String?
+    var figure: DraftFigure? = nil
+    var caption: String? = nil
   }
+
+  static let figureSizeLimit = 400 * 1024
 
   struct Draft: Sendable {
     let titleKo: String
@@ -205,10 +256,38 @@ public enum PageBuild {
         for phrase in TextChecks.materialPhrases(text) { c.problems.append("\(at).text: 원래 자료가 있어야만 통하는 말입니다 (\"\(phrase)\")") }
         if let math { c.problems += math.problems(inText: text, field: "\(at).text") }
         units.append(DraftUnit(kind: .note, from: from, prov: prov, text: text, note: note, tex: nil))
+      case .block where AgentJSON.string(raw["block"]?["type"]) == "figure":
+        guard let file = AgentJSON.string(raw["block"]?["file"]), !file.contains("/"), !file.hasPrefix("."), file.hasSuffix(".html") else {
+          c.problems.append("\(at).block.file 은 out/figures/ 안의 .html 파일 이름이다")
+          continue
+        }
+        guard let data = try? Data(contentsOf: out.appending(path: "figures").appending(path: file)), let code = String(data: data, encoding: .utf8),
+          !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+          c.problems.append("\(at).block.file: out/figures/\(file) 가 없거나 비었습니다")
+          continue
+        }
+        if data.count > figureSizeLimit { c.problems.append("\(at).block.file: 그림 코드가 너무 큽니다 (\(data.count / 1024)KB, 상한 \(figureSizeLimit / 1024)KB)") }
+        if code.range(of: #"<\s*(html|head|body)[\s>]"#, options: [.regularExpression, .caseInsensitive]) != nil {
+          c.problems.append("\(at).block.file: 그림 코드는 HTML 조각이다. <html>, <head>, <body> 를 쓰지 않는다")
+        }
+        guard let title = AgentJSON.string(raw["block"]?["title"]) else {
+          c.problems.append("\(at).block.title 이 없습니다")
+          continue
+        }
+        let caption = AgentJSON.string(raw["caption"])
+        c.problems += TextChecks.englishProblems(title, field: "\(at).block.title")
+        if let caption {
+          c.problems += TextChecks.englishProblems(caption, field: "\(at).caption")
+          if let math { c.problems += math.problems(inText: caption, field: "\(at).caption") }
+        }
+        if TextChecks.hasHangul(code) { c.problems.append("\(at).block.file: 그림 안의 글자는 영어다. 한글이 섞였습니다") }
+        units.append(
+          DraftUnit(kind: .block, from: from, prov: "source", text: nil, note: nil, tex: nil, figure: DraftFigure(file: file, title: title, code: code), caption: caption))
       case .block:
         let type = AgentJSON.string(raw["block"]?["type"])
         guard type == "math" else {
-          c.problems.append("\(at).block.type: 지금은 math 블록만 쓸 수 있다")
+          c.problems.append("\(at).block.type 은 math 나 figure 다")
           continue
         }
         guard var tex = AgentJSON.string(raw["block"]?["tex"]) else {
@@ -237,7 +316,9 @@ public enum PageBuild {
 
   // 이전 페이지의 단위 id 를 이어 쓴다. (종류, 원문 단위, 그 안의 차례)가 같은 단위는 같은 id 이고, 내용이 바뀌었으면 판을 올린다.
   // 바뀌거나 빠진 이전 판은 history.jsonl 에 덧붙인다.
-  static func assemble(_ draft: Draft, concept: Concept, old: Page?, provenance: YAMLMap, at: String = Clock.isoLocal()) -> (page: Page, history: [JSONValue]) {
+  static func assemble(_ draft: Draft, concept: Concept, old: Page?, provenance: YAMLMap, at: String = Clock.isoLocal()) -> (
+    page: Page, history: [JSONValue], figures: [(path: String, code: String)]
+  ) {
     let unitByID = Dictionary(concept.units.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     func key(_ kind: PageUnitKind, _ from: String, _ n: Int) -> String { "\(kind.rawValue)|\(from)|\(n)" }
     var oldByKey: [String: PageUnit] = [:]
@@ -252,6 +333,7 @@ public enum PageBuild {
     var units: [PageUnit] = []
     var history: [JSONValue] = []
     var kept: Set<String> = []
+    var codes: [String: String] = [:]
     for d in draft.units {
       guard let source = unitByID[d.from] else { continue }
       let base = "\(d.kind.rawValue)|\(d.from)"
@@ -266,13 +348,18 @@ public enum PageBuild {
       case .note:
         unit = PageUnit(id: "", rev: 1, kind: .note, from: "\(source.id)@\(source.hash)", prov: d.prov, text: d.text, note: d.note)
       case .block:
-        unit = PageUnit(id: "", rev: 1, kind: .block, from: "\(source.id)@\(source.hash)", prov: "source", block: ["type": "math", "v": 1, "tex": .string(d.tex ?? "")])
+        if let f = d.figure {
+          let block: YAMLMap = ["type": "figure", "v": 1, "title": .string(f.title), "code_hash": .string(Hash.short(Data(f.code.utf8))), "parts": .int(FigureFrame.partsVersion)]
+          unit = PageUnit(id: "", rev: 1, kind: .block, from: "\(source.id)@\(source.hash)", prov: "source", block: block, caption: d.caption)
+        } else {
+          unit = PageUnit(id: "", rev: 1, kind: .block, from: "\(source.id)@\(source.hash)", prov: "source", block: ["type": "math", "v": 1, "tex": .string(d.tex ?? "")])
+        }
       }
       if let previous {
         kept.insert(previous.id)
         unit = PageUnit(
           id: previous.id, rev: previous.rev, kind: unit.kind, from: unit.from, prov: unit.prov, text: unit.text, note: unit.note, block: unit.block,
-          claims: unit.claims, conditions: unit.conditions)
+          caption: unit.caption, claims: unit.claims, conditions: unit.conditions)
         if !unit.sameContent(previous) {
           unit.rev = previous.rev + 1
           history.append(historyLine(previous, reason: "replaced", at: at, provenance: provenance))
@@ -280,13 +367,21 @@ public enum PageBuild {
       } else {
         unit = PageUnit(
           id: d.kind.prefix + String(next), rev: 1, kind: unit.kind, from: unit.from, prov: unit.prov, text: unit.text, note: unit.note, block: unit.block,
-          claims: unit.claims, conditions: unit.conditions)
+          caption: unit.caption, claims: unit.claims, conditions: unit.conditions)
         next += 1
+      }
+      if let f = d.figure {
+        let path = "figures/\(unit.id)-r\(unit.rev).html"
+        unit.block?["code"] = .string(path)
+        codes[path] = f.code
       }
       units.append(unit)
     }
     for u in old?.units ?? [] where !kept.contains(u.id) { history.append(historyLine(u, reason: "removed", at: at, provenance: provenance)) }
-    return (Page(concept: concept.id, titleKo: draft.titleKo, nextID: next, units: units, provenance: provenance), history)
+    return (
+      Page(concept: concept.id, titleKo: draft.titleKo, nextID: next, units: units, provenance: provenance), history,
+      codes.keys.sorted().map { ($0, codes[$0]!) }
+    )
   }
 
   static func historyLine(_ unit: PageUnit, reason: String, at: String, provenance: YAMLMap) -> JSONValue {

@@ -56,6 +56,19 @@
           m.section = .subjects
           m.selection = m.library.sources.last.map { .source($0.id) }
         },
+        // 학습 페이지의 그림 블록 (-snapshotConcept <개념 id> 로 개념을 고른다)
+        Scenario(name: "figure") { m in
+          m.phase = .ready
+          m.section = .subjects
+          m.scrollToFigure = true
+          m.selection = snapshotConcept(m).map { .concept($0) }
+        },
+        Scenario(name: "figure-dark", dark: true) { m in
+          m.phase = .ready
+          m.section = .subjects
+          m.scrollToFigure = true
+          m.selection = snapshotConcept(m).map { .concept($0) }
+        },
         // 학습 페이지: 한국어를 모두 펼친다
         Scenario(name: "page-ko-dark", dark: true) { m in
           m.phase = .ready
@@ -118,6 +131,7 @@
         for w in NSApp.windows where w.isVisible && w.identifier?.rawValue.hasPrefix("admin") == true { w.close() }
         model.showIntake = false
         model.openAllKorean = false
+        model.scrollToFigure = false
       }
       // 관리자 설정 메뉴 항목은 ⌥ 없이 열면 숨어 있어야 한다
       let adminItems = (NSApp.mainMenu?.items ?? []).flatMap { $0.submenu?.items ?? [] }.filter { $0.title == AdminMenu.title }
@@ -133,6 +147,13 @@
       }
       for window in NSApp.windows { window.isRestorable = false }
       NSApp.terminate(nil)
+    }
+
+    // 찍을 개념: -snapshotConcept 로 준 것, 없으면 그림이 있는 첫 개념
+    static func snapshotConcept(_ m: AppModel) -> String? {
+      if let id = UserDefaults.standard.string(forKey: "snapshotConcept") { return id }
+      let all = m.concepts.values.flatMap { $0 }.sorted { $0.id < $1.id }
+      return all.first { c in m.pageJSON(c).contains("\"figure\"") }?.id ?? all.first?.id
     }
 
     // 화면 밖으로 옮긴다. 사용자가 보는 화면을 가리지 않게 한다.

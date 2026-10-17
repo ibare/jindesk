@@ -1,0 +1,47 @@
+/* 그림 블록의 공통 부품 (부품 판 1). 블록 틀이 그림마다 넣는다. 학습 페이지(page.css)와 같은 색 변수를 쓴다. */
+:root {
+  --bg: #ffffff; --paper: #ffffff; --paper-2: #f5f7f9;
+  --ink: #16202a; --ink-2: #46525e; --ink-3: #727d89; --line: #d5dbe2; --line-2: #e7ebef;
+  --accent: #1b5fae; --accent-soft: #e2ecf8;
+  --good: #1d7a44; --bad: #b9382a;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #c2399b; --s5: #8a6d1f; --s6: #6250d6;
+  --f-body: -apple-system, "Apple SD Gothic Neo", system-ui, sans-serif;
+  --f-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1e1e1e; --paper: #1e1e1e; --paper-2: #262a2f;
+    --ink: #e5eaef; --ink-2: #a8b2bc; --ink-3: #7c8792; --line: #3a434c; --line-2: #2c333a;
+    --accent: #6ea8ec; --accent-soft: #1b2c41;
+    --good: #4cba78; --bad: #e66767;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #d55db0; --s5: #c4a24a; --s6: #9085e9;
+    color-scheme: dark;
+  }
+}
+/* JS 의 JD.colors() 이름(ink2, paper2 …)으로 써도 같은 색이 되게 한다 */
+:root { --ink2: var(--ink-2); --ink3: var(--ink-3); --paper2: var(--paper-2); --line2: var(--line-2); }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: transparent; }
+body { color: var(--ink); font-family: var(--f-body); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+#figure { width: 100%; overflow: hidden; }
+svg, canvas { max-width: 100%; }
+button, select, input { font: inherit; color: var(--ink); }
+button { border: 1px solid var(--line); background: var(--paper); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+button:hover { border-color: var(--accent); color: var(--accent); }
+button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+select { border: 1px solid var(--line); background: var(--paper); border-radius: 6px; padding: 2px 6px; }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+.jd-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px 18px; margin: 8px 0; }
+.jd-slider { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.jd-slider label { font-size: 12px; color: var(--ink-2); display: flex; justify-content: space-between; gap: 8px; }
+.jd-slider output { font-family: var(--f-mono); color: var(--ink); font-variant-numeric: tabular-nums; }
+.jd-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+/* 값 칸은 안에 <div><small>이름</small><b>값</b></div> 가 있을 때만 격자로 놓는다. 글만 넣으면 문단이다. */
+.jd-readout { display: block; }
+.jd-readout:has(> div) { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.jd-readout div { background: var(--paper-2); border-radius: 6px; padding: 6px 10px; display: flex; flex-direction: column; }
+.jd-readout small { font-size: 11px; color: var(--ink-3); }
+.jd-readout b { font-family: var(--f-mono); font-weight: 500; font-variant-numeric: tabular-nums; }
+.jd-note { font-size: 12px; color: var(--ink-3); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

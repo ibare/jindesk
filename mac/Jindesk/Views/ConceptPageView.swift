@@ -10,7 +10,7 @@ struct ConceptPageView: View {
 
   var body: some View {
     let json = model.pageJSON(concept)
-    PageWebView(json: json) { message in
+    PageWebView(json: json, data: model.data) { message in
       if message["type"]?.stringValue == "openSource", let source = message["source"]?.stringValue, let page = message["page"]?.numberValue {
         model.peek = SourcePeek(source: source, page: Int(page))
       }
@@ -20,13 +20,16 @@ struct ConceptPageView: View {
 
 struct PageWebView: NSViewRepresentable {
   let json: String
+  let data: DataFolder?
   let onMessage: (JSONValue) -> Void
 
   func makeCoordinator() -> Coordinator { Coordinator(onMessage: onMessage) }
 
   func makeNSView(context: Context) -> WKWebView {
     let configuration = WKWebViewConfiguration()
-    configuration.setURLSchemeHandler(RendererSchemeHandler(root: AppPaths.renderer), forURLScheme: RendererSchemeHandler.scheme)
+    configuration.setURLSchemeHandler(RendererSchemeHandler(root: AppPaths.renderer, data: data), forURLScheme: RendererSchemeHandler.scheme)
+    // 그림 블록의 바깥 라이브러리: 받아 둔 사본만 돌려준다 (보는 동안에는 네트워크를 쓰지 않는다)
+    if let data { configuration.setURLSchemeHandler(VendorSchemeHandler(store: VendorStore(data), download: false), forURLScheme: FigureFrame.vendorScheme) }
     configuration.userContentController.add(context.coordinator, name: "jindesk")
     configuration.websiteDataStore = .nonPersistent()
     let view = WKWebView(frame: .zero, configuration: configuration)
@@ -78,7 +81,7 @@ struct PageWebView: NSViewRepresentable {
       onMessage(value)
     }
 
-    // 렌더러 밖으로 나가는 이동은 막는다
+    // 렌더러 밖으로 나가는 이동은 막는다. 그림 블록의 iframe 은 같은 주소 체계다.
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
       action.request.url?.scheme == RendererSchemeHandler.scheme ? .allow : .cancel
     }
@@ -86,12 +89,18 @@ struct PageWebView: NSViewRepresentable {
 }
 
 // jindesk-page://app/<경로> → 앱 번들의 renderer/<경로>
+// jindesk-page://figure/<코드 경로>?c=<개념 id> → 개념 폴더의 그림 코드를 블록 틀에 넣은 것
+// jindesk-page://check/frame.html → 그림 검사기가 돌려 볼 블록 틀 (검사기가 넣는다)
 final class RendererSchemeHandler: NSObject, WKURLSchemeHandler {
-  static let scheme = "jindesk-page"
+  static let scheme = FigureFrame.pageScheme
   let root: URL
+  let data: DataFolder?
+  let checkPage: String?
 
-  init(root: URL) {
+  init(root: URL, data: DataFolder?, checkPage: String? = nil) {
     self.root = root.standardizedFileURL
+    self.data = data
+    self.checkPage = checkPage
   }
 
   static let types: [String: String] = [
@@ -101,18 +110,79 @@ final class RendererSchemeHandler: NSObject, WKURLSchemeHandler {
 
   func webView(_ webView: WKWebView, start task: any WKURLSchemeTask) {
     guard let url = task.request.url else { return task.didFailWithError(URLError(.badURL)) }
-    let file = root.appending(path: String(url.path.drop { $0 == "/" })).standardizedFileURL
-    guard file.path.hasPrefix(root.path + "/"), let data = try? Data(contentsOf: file) else {
-      return task.didFailWithError(URLError(.fileDoesNotExist))
+    switch url.host {
+    case "figure":
+      guard let data, let concept = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "c" })?.value,
+        let cid = ConceptID(concept)
+      else { return task.didFailWithError(URLError(.fileDoesNotExist)) }
+      let folder = data.conceptDir(cid).standardizedFileURL
+      let file = folder.appending(path: String(url.path.drop { $0 == "/" })).standardizedFileURL
+      guard file.path.hasPrefix(folder.path + "/figures/"), let code = FileOps.readIfExists(file) else {
+        return task.didFailWithError(URLError(.fileDoesNotExist))
+      }
+      Self.respond(task, url: url, data: Data(FigureFrame.compose(code).utf8), type: "text/html")
+    case "check":
+      guard let checkPage else { return task.didFailWithError(URLError(.fileDoesNotExist)) }
+      Self.respond(task, url: url, data: Data(checkPage.utf8), type: "text/html")
+    default:
+      let file = root.appending(path: String(url.path.drop { $0 == "/" })).standardizedFileURL
+      guard file.path.hasPrefix(root.path + "/"), let bytes = try? Data(contentsOf: file) else {
+        return task.didFailWithError(URLError(.fileDoesNotExist))
+      }
+      Self.respond(task, url: url, data: bytes, type: Self.types[file.pathExtension.lowercased()] ?? "application/octet-stream")
     }
-    let type = Self.types[file.pathExtension.lowercased()] ?? "application/octet-stream"
-    let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": type, "Content-Length": String(data.count)])!
-    task.didReceive(response)
+  }
+
+  // 그림 블록은 따로 떨어진 출처(sandbox)에서 돈다. 글꼴과 모듈을 불러갈 수 있게 모든 출처에 연다.
+  static func respond(_ task: any WKURLSchemeTask, url: URL, data: Data, type: String) {
+    let headers = ["Content-Type": type, "Content-Length": String(data.count), "Access-Control-Allow-Origin": "*"]
+    task.didReceive(HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: headers)!)
     task.didReceive(data)
     task.didFinish()
   }
 
   func webView(_ webView: WKWebView, stop task: any WKURLSchemeTask) {}
+}
+
+// jindesk-vendor://<호스트>/<경로> → library/vendor/ 의 사본. 그림 검사 때만(download) 없는 파일을 https 로 받아 남긴다.
+final class VendorSchemeHandler: NSObject, WKURLSchemeHandler {
+  let store: VendorStore
+  let download: Bool
+  // 이번에 받은 주소 (검사 결과에 적는다)
+  private(set) var fetched: [String] = []
+  private(set) var failures: [String] = []
+  private var stopped: Set<ObjectIdentifier> = []
+
+  init(store: VendorStore, download: Bool) {
+    self.store = store
+    self.download = download
+  }
+
+  func webView(_ webView: WKWebView, start task: any WKURLSchemeTask) {
+    guard let url = task.request.url, let original = VendorStore.original(url) else { return task.didFailWithError(URLError(.badURL)) }
+    if let hit = store.lookup(original) {
+      return RendererSchemeHandler.respond(task, url: url, data: hit.data, type: hit.type)
+    }
+    guard download else { return task.didFailWithError(URLError(.fileDoesNotExist)) }
+    let store = store
+    let id = ObjectIdentifier(task)
+    Task { @MainActor in
+      do {
+        let got = try await store.fetch(original)
+        self.fetched.append(original.absoluteString)
+        guard !self.stopped.contains(id) else { return }
+        RendererSchemeHandler.respond(task, url: url, data: got.data, type: got.type)
+      } catch {
+        self.failures.append("\(original.absoluteString): \(error.localizedDescription)")
+        guard !self.stopped.contains(id) else { return }
+        task.didFailWithError(error)
+      }
+    }
+  }
+
+  func webView(_ webView: WKWebView, stop task: any WKURLSchemeTask) {
+    stopped.insert(ObjectIdentifier(task))
+  }
 }
 
 // 출처 칩을 눌렀을 때 여는 원래 자료의 쪽

@@ -14,10 +14,10 @@ public enum Translation {
     }
   }
 
-  // 옮길 단위: 글이 있는 단위(문단, 강조 상자) 가운데 한국어가 없거나 낡은 것
+  // 옮길 단위: 글이 있는 단위(문단, 강조 상자, 그림 설명) 가운데 한국어가 없거나 낡은 것
   public static func targets(_ page: Page, layers: Layers?) -> [PageUnit] {
     page.units.filter { u in
-      guard u.text?.nilIfBlank != nil else { return false }
+      guard u.english != nil else { return false }
       guard let ko = layers?.ko[u.id] else { return true }
       return !ko.isCurrent(for: u)
     }
@@ -109,7 +109,7 @@ public enum Translation {
     try dirs.make()
     try FileOps.copy(folder.page, to: dirs.input.appending(path: "page.yaml"))
     try AgentStep.writeGlossary(ctx.data, into: dirs.input)
-    let list: JSONValue = .array(targets.map { .object(["id": .string($0.id), "kind": .string($0.kind.rawValue), "text": .string($0.text ?? "")]) })
+    let list: JSONValue = .array(targets.map { .object(["id": .string($0.id), "kind": .string($0.isFigure ? "caption" : $0.kind.rawValue), "text": .string($0.english ?? "")]) })
     try FileOps.write(JSONText.record(list), to: dirs.input.appending(path: "targets.json"))
 
     let tag = concept.cid.slug
@@ -168,7 +168,7 @@ public enum Translation {
         c.unitProblems[u.id] = ["번역이 없습니다"]
         continue
       }
-      let problems = unitProblems(en: u.text ?? "", ko: ko, glossary: glossary)
+      let problems = unitProblems(en: u.english ?? "", ko: ko, glossary: glossary)
       if problems.isEmpty { c.accepted[u.id] = ko } else { c.unitProblems[u.id] = problems }
     }
     for t in v["terms"]?.arrayValue ?? [] {

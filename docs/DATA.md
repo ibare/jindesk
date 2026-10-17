@@ -56,7 +56,8 @@ git 을 쓰지 않는다. 모든 산출물은 파일로 쓰고, 백업은 데이
     glossary.yaml               용어 어휘: 영어 용어 → 한국어
     facets.yaml                 관점 어휘
     references.yaml             레퍼런스 (관점 붙이기가 찾는다)
-    vendor/<호스트>/<경로>       그림 블록이 쓰는 바깥 라이브러리 사본. 그림을 만들 때 받는다
+    vendor/<호스트>/<경로>       그림 블록이 쓰는 바깥 라이브러리 사본. 그림을 만들 때 받는다. 질의가 있는 주소는 끝에 질의 해시를 붙인다
+    vendor/index.jsonl          받은 주소, 파일, 형식(Content-Type), 해시, 받은 때. 덧붙이기만 한다
   learner/
     comments.jsonl              코멘트와 답글
     directives.jsonl            요구

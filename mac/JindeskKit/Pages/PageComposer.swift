@@ -57,6 +57,12 @@ public enum PageComposer {
       if let text = u.text { o["text"] = .string(text) }
       if let note = u.note { o["note"] = .string(note.rawValue) }
       if let tex = u.block?["tex"]?.string { o["tex"] = .string(tex) }
+      if u.isFigure, let code = u.block?["code"]?.string {
+        o["figure"] = .object([
+          "src": .string(figureURL(concept: c.id, code: code)), "title": .string(u.block?["title"]?.string ?? ""),
+        ])
+      }
+      if let caption = u.caption { o["caption"] = .string(caption) }
       if let ko = input.layers?.ko[u.id] {
         o["ko"] = .string(ko.text)
         if !ko.isCurrent(for: u) { o["koStale"] = .bool(true) }
@@ -71,7 +77,8 @@ public enum PageComposer {
 
     var sources: [JSONValue] = []
     for id in c.sources {
-      let pages = Array(Set(c.occurrences.filter { $0.source == id }.flatMap(\.pages))).sorted()
+      let runs = input.library.source(id)?.meta.buildUps ?? []
+      let pages = Array(Set(c.occurrences.filter { $0.source == id }.flatMap(\.pages).map { p in runs.first { $0.contains(p) }?.last ?? p })).sorted()
       sources.append(.object(["id": .string(id), "title": .string(sourceTitle(id, library: input.library)), "pages": .array(pages.map { .number(Double($0)) })]))
     }
 
@@ -87,12 +94,23 @@ public enum PageComposer {
     return .object(page)
   }
 
-  // 같은 자료의 쪽은 칩 하나로 모은다: "Exponent rules · 4, 5"
+  // 그림 블록의 iframe 주소: jindesk-page://figure/<코드 경로>?c=<개념 id>. 앱이 개념 폴더의 코드를 블록 틀에 넣어 돌려준다.
+  public static func figureURL(concept: String, code: String) -> String {
+    var c = URLComponents()
+    c.scheme = FigureFrame.pageScheme
+    c.host = "figure"
+    c.path = "/" + code
+    c.queryItems = [URLQueryItem(name: "c", value: concept)]
+    return c.string ?? ""
+  }
+
+  // 같은 자료의 쪽은 칩 하나로 모은다: "Exponent rules · 4, 5". 이어 채운 쪽 묶음은 마지막 쪽 하나로 센다.
   static func chipList(_ refs: [String], library: SourceLibrary) -> [JSONValue] {
     var order: [String] = []
     var pages: [String: [Int]] = [:]
     for r in refs {
-      guard let (source, page) = SourceRef.parse(r) else { continue }
+      guard let (source, raw) = SourceRef.parse(r) else { continue }
+      let page = library.source(source)?.meta.buildUps.first { $0.contains(raw) }?.last ?? raw
       if pages[source] == nil { order.append(source) }
       if !(pages[source]?.contains(page) ?? false) { pages[source, default: []].append(page) }
     }

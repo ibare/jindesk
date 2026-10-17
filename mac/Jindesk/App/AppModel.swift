@@ -242,8 +242,9 @@ final class AppModel {
   func pageJSON(_ concept: Concept) -> String {
     guard let data else { return "{}" }
     var json = PageComposer.json(PageComposer.load(data, concept: concept, library: library))
-    if openAllKorean, case .object(var o) = json {
-      o["openAll"] = .bool(true)
+    if openAllKorean || scrollToFigure, case .object(var o) = json {
+      if openAllKorean { o["openAll"] = .bool(true) }
+      if scrollToFigure { o["scrollToFigure"] = .bool(true) }
       json = .object(o)
     }
     return JSONText.stringify(YAMLValue(json: json))
@@ -251,6 +252,8 @@ final class AppModel {
 
   // 학습 페이지를 한국어를 모두 펼친 채로 연다 (화면 찍기)
   var openAllKorean = false
+  // 학습 페이지를 첫 그림 블록까지 내려 연다 (화면 찍기)
+  var scrollToFigure = false
 
   // 자료의 읽기 상태
   func readingState(_ sourceID: String) -> ReadingState {
@@ -288,8 +291,10 @@ final class AppModel {
   // 에이전트 작업의 설정. 토큰이 없거나 claude 가 너무 오래됐으면 던진다.
   func agentConfig() async throws -> RunnerConfig {
     guard let data else { throw RequestError("데이터 폴더가 열려 있지 않습니다") }
-    return try await ConfigLoader.load(
+    var config = try await ConfigLoader.load(
       settings: admin, data: data, guardHelper: AppPaths.guardHelper, instructions: AppPaths.instructions, katex: AppPaths.katex)
+    config.figureChecker = WebFigureChecker(renderer: AppPaths.renderer)
+    return config
   }
 
   // 자료 넣기를 대기열에 넣는다. 넣기는 에이전트를 띄우지 않으므로 토큰이 없어도 된다.

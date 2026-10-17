@@ -124,7 +124,7 @@
     var en = el("div", "en", prose(unit.text, true));
     var first = en.firstElementChild;
     if (first && first.tagName === "UL") first = first.firstElementChild;
-    if (first) first.insertAdjacentHTML("afterbegin", unit.prov === "added" ? '<span class="prov add">보충</span>' : '<span class="prov src">자료</span>');
+    if (first && unit.prov) first.insertAdjacentHTML("afterbegin", unit.prov === "added" ? '<span class="prov add">보충</span>' : '<span class="prov src">자료</span>');
     var host = lastBlock(en);
     (unit.src || []).forEach(function (s) {
       var chip = el("button", "srcchip", esc(s.label));
@@ -158,7 +158,42 @@
     return wrap;
   }
 
+  // 그림 블록: 블록마다 iframe 하나에서 블록 틀과 함께 돈다. 한 그림이 깨지거나 멈춰도 페이지의 나머지는 살아 있다.
+  function figureNode(unit) {
+    var f = el("figure", "blk fig");
+    f.id = unit.id;
+    var head = el("div", "blk-head");
+    head.appendChild(el("span", "blk-kind", "Figure"));
+    head.appendChild(el("span", "blk-title", esc(unit.figure.title)));
+    f.appendChild(head);
+    var frame = document.createElement("iframe");
+    frame.className = "fig-frame";
+    frame.setAttribute("sandbox", "allow-scripts");
+    frame.title = unit.figure.title;
+    frame.src = unit.figure.src;
+    f.appendChild(frame);
+    if (unit.caption) {
+      var cap = paraBlock({ id: unit.id + "-caption", text: unit.caption, ko: unit.ko, koStale: unit.koStale, src: [] });
+      cap.classList.add("caption");
+      f.appendChild(cap);
+    }
+    return f;
+  }
+
+  // 그림이 알리는 내용 높이와 오류
+  window.addEventListener("message", function (e) {
+    var d = e.data;
+    if (!d || d.jindesk !== "figure") return;
+    var frame = Array.prototype.find.call(document.querySelectorAll("iframe.fig-frame"), function (f) { return f.contentWindow === e.source; });
+    if (!frame) return;
+    if (d.type === "height" && d.h > 0) frame.style.height = Math.min(Math.max(d.h, 60), 1200) + "px";
+    if (d.type === "error" && !frame.parentElement.querySelector(".fig-error")) {
+      frame.insertAdjacentElement("afterend", el("div", "fig-error", "그림을 그리다 오류가 났어요. " + esc(d.message || "")));
+    }
+  });
+
   function unitNode(unit) {
+    if (unit.kind === "block" && unit.figure) return figureNode(unit);
     if (unit.kind === "block") {
       var b = el("div", "blk math");
       b.id = unit.id;
@@ -216,6 +251,11 @@
       Array.prototype.forEach.call(document.querySelectorAll(".g-tr:not(:disabled)"), function (b) { b.click(); });
     }
     window.scrollTo(0, 0);
+    // 그림 블록까지 내려 연다 (화면 찍기)
+    if (page.scrollToFigure) {
+      var fig = document.querySelector("figure.fig");
+      if (fig) setTimeout(function () { fig.scrollIntoView({ block: "start" }); }, 300);
+    }
   }
 
   window.jindesk = { render: render };

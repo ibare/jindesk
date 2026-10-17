@@ -2,6 +2,7 @@
 //   Jindesk doctor [--data <데이터 폴더>] [--out <결과 파일>]
 //   Jindesk intake [--data <데이터 폴더>] --subject <과목> [--follow] <파일>…
 //   Jindesk continue [--data <데이터 폴더>] [--only <종류>]
+//   Jindesk check-figure --vendor <폴더> <그림 조각.html>
 //   Jindesk migrate --check <백업 폴더나 zip> [--sample <n>] [--keep]
 //   Jindesk backup --out <폴더> [--data <데이터 폴더>]
 //   Jindesk version
@@ -14,13 +15,15 @@ struct JindeskCommand: AsyncParsableCommand {
   static let configuration = CommandConfiguration(
     commandName: "Jindesk",
     abstract: "Jindesk 명령줄 모드",
-    subcommands: [DoctorCommand.self, IntakeCommand.self, ContinueCommand.self, MigrateCommand.self, BackupCommand.self, VersionCommand.self]
+    subcommands: [
+      DoctorCommand.self, IntakeCommand.self, ContinueCommand.self, FigureCheckCommand.self, MigrateCommand.self, BackupCommand.self, VersionCommand.self,
+    ]
   )
 }
 
 @MainActor
 enum CommandLineMode {
-  static let commands: Set<String> = ["doctor", "intake", "continue", "migrate", "backup", "version", "help", "--help", "-h"]
+  static let commands: Set<String> = ["doctor", "intake", "continue", "check-figure", "migrate", "backup", "version", "help", "--help", "-h"]
 
   // 첫 인자가 명령이면 명령줄 모드다. "-" 로 시작하는 인자(-snapshotDir, Xcode 가 붙이는 -NSDocumentRevisionsDebugMode 등)만 있으면 앱으로 뜬다.
   // 모르는 명령도 명령줄 모드로 받아 오류를 보인다. 화면 앱으로 떠 버리면 스크립트가 멈춘다.
@@ -32,6 +35,8 @@ enum CommandLineMode {
   static func run(_ arguments: [String]) -> Never {
     // 파일로 넘겨도 기록이 바로바로 보이도록 줄 단위로 내보낸다
     setvbuf(stdout, nil, _IOLBF, 0)
+    // 그림 검사기가 화면 밖 창을 쓴다. Dock 에는 나타나지 않게 한다.
+    NSApplication.shared.setActivationPolicy(.prohibited)
     Task { @MainActor in
       do {
         var command = try JindeskCommand.parseAsRoot(arguments)
@@ -49,6 +54,15 @@ enum CommandLineMode {
     Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in }
     RunLoop.main.run()
     exit(0)
+  }
+
+  // 에이전트 작업의 설정 (화면의 설정과 같다). 그림 검사기는 화면 밖 웹 보기를 쓴다.
+  static func agentConfig(_ folder: DataFolder) async throws -> RunnerConfig {
+    var config = try await ConfigLoader.load(
+      settings: AdminSettings.load(AppPaths.defaults), data: folder, guardHelper: AppPaths.guardHelper, instructions: AppPaths.instructions,
+      katex: AppPaths.katex)
+    config.figureChecker = WebFigureChecker(renderer: AppPaths.renderer)
+    return config
   }
 
   // 기록을 화면에 내보내는 작업 관리자
@@ -150,8 +164,7 @@ struct IntakeCommand: AsyncParsableCommand {
     let settings = AdminSettings.load(AppPaths.defaults)
     let config =
       follow
-      ? try await ConfigLoader.load(
-        settings: settings, data: folder, guardHelper: AppPaths.guardHelper, instructions: AppPaths.instructions, katex: AppPaths.katex)
+      ? try await CommandLineMode.agentConfig(folder)
       : await ConfigLoader.loadForRunner(settings: settings, guardHelper: AppPaths.guardHelper, instructions: AppPaths.instructions)
     let id = try await jobs.submit(config: config) { try SourceIntake.prepare(request, $0) }
     let end = await jobs.waitForEnd(id)
@@ -179,11 +192,28 @@ struct ContinueCommand: AsyncParsableCommand {
     if work.isEmpty { print("남은 일이 없습니다") }
     if list || work.isEmpty { return }
     let jobs = CommandLineMode.manager(folder)
-    let config = try await ConfigLoader.load(
-      settings: AdminSettings.load(AppPaths.defaults), data: folder, guardHelper: AppPaths.guardHelper, instructions: AppPaths.instructions,
-      katex: AppPaths.katex)
+    let config = try await CommandLineMode.agentConfig(folder)
     try await jobs.submitAll(config: config, work.map { Pipeline.prepare($0) })
     try await CommandLineMode.waitAll(jobs)
+  }
+}
+
+// 그림 조각 하나를 블록 틀에 넣어 학습 페이지 만들기의 러너 검사와 같게 돌려 본다
+struct FigureCheckCommand: AsyncParsableCommand {
+  static let configuration = CommandConfiguration(commandName: "check-figure", abstract: "그림 블록 조각이 돌아가는지 본다 (러너 검사와 같다)")
+
+  @Option(help: "바깥 라이브러리를 받아 둘 폴더 (데이터 폴더의 library/vendor 와 같은 모양)") var vendor: String
+  @Argument(help: "그림 조각 HTML 파일") var file: String
+
+  @MainActor
+  func run() async throws {
+    let code = try String(contentsOfFile: (file as NSString).expandingTildeInPath, encoding: .utf8)
+    let store = VendorStore(root: URL(fileURLWithPath: (vendor as NSString).expandingTildeInPath))
+    let result = await WebFigureChecker(renderer: AppPaths.renderer).check(html: FigureFrame.compose(code), vendor: store)
+    print("그려짐: \(result.painted ? "예" : "아니오") · 응답: \(result.responsive ? "예" : "아니오") · 받은 파일 \(result.fetched.count)개")
+    for f in result.fetched { print("  + \(f)") }
+    for e in result.errors { print("  ✗ \(e)") }
+    if !result.problems.isEmpty { throw ExitCode(1) }
   }
 }
 

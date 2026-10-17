@@ -42,6 +42,8 @@ public struct RunnerConfig: Sendable {
   public var katex: URL?
   // 자식 프로세스의 기본 환경 (자격 증명 변수를 뺀 앱 환경 + PATH + 로캘)
   public var baseEnvironment: [String: String]
+  // 그림 블록이 돌아가는지 보는 검사기. 앱이 WebKit 으로 만들어 넣는다. 없으면 그림을 검사하지 않고 받는다.
+  public var figureChecker: (any FigureChecking)?
   // 에이전트 출력에서 계정 사용량을 읽을 때마다 부른다. 작업 관리자가 작업을 시작할 때 넣는다.
   public var onUsage: (@Sendable (UsageReading) -> Void)?
 

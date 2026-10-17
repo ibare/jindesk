@@ -4,6 +4,33 @@ import Testing
 
 let repoKatex = repoRoot.appending(path: "renderer/katex/katex.min.js")
 
+extension URL {
+  // 부모 폴더를 만들고 자기를 돌려준다 (시험에서 파일을 바로 쓸 때)
+  func creatingParent() throws -> URL {
+    try FileManager.default.createDirectory(at: deletingLastPathComponent(), withIntermediateDirectories: true)
+    return self
+  }
+}
+
+@Suite struct VendorStoreTests {
+  @Test func 주소를_vendor_경로로_바꾸고_질의는_해시로_가른다() {
+    let store = VendorStore(root: URL(fileURLWithPath: "/v"))
+    #expect(store.file(for: URL(string: "https://cdn.jsdelivr.net/npm/d3@7.9.0/+esm")!)?.path == "/v/cdn.jsdelivr.net/npm/d3@7.9.0/+esm")
+    #expect(store.file(for: URL(string: "https://unpkg.com/x/")!)?.path == "/v/unpkg.com/x/index")
+    let q = store.file(for: URL(string: "https://a.com/lib.js?v=2")!)?.lastPathComponent ?? ""
+    #expect(q.hasPrefix("lib.js@q-") && q.count == "lib.js@q-".count + 8)
+    #expect(store.file(for: URL(string: "https://a.com/../../etc/passwd")!)?.path == "/v/a.com/etc/passwd")
+    #expect(VendorStore.original(URL(string: "jindesk-vendor://cdn.jsdelivr.net/npm/d3@7")!)?.absoluteString == "https://cdn.jsdelivr.net/npm/d3@7")
+  }
+
+  @Test func 블록_틀은_https_주소를_받아_둔_사본의_주소로_바꾼다() {
+    let html = FigureFrame.compose(#"<script type="module">import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7.9.0/+esm";</script>"#)
+    #expect(html.contains("jindesk-vendor://cdn.jsdelivr.net/npm/d3@7.9.0/+esm"))
+    #expect(!html.contains("https://"))
+    #expect(html.contains("jindesk-page://app/parts/parts.js"))
+  }
+}
+
 @Suite struct TextCheckTests {
   @Test func 한글과_한자_일본어를_가린다() {
     #expect(TextChecks.hasHangul("log 는"))
@@ -184,6 +211,45 @@ let repoKatex = repoRoot.appending(path: "renderer/katex/katex.min.js")
   }
 }
 
+extension CurationCheckTests {
+  @Test func 너무_커진_개념을_나누면_옮긴_단위가_원래_출처를_쓰고_출현_목록이_따라간다() throws {
+    let t = TempPlace()
+    try t.data.initialize(app: testApp)
+    // 기존 개념 k01 에 들어 있던 엔트리
+    let old = Entry(
+      id: "math/unplaced/old", subject: "math", item: nil, itemProposed: nil, title: "Old", source: "20261010-11112222", pages: [3],
+      claims: [EntryClaim(text: "x", src: ["20261010-11112222#p3"])], symbols: [], examples: [], misconceptions: [], body: "b", recorded: "", provenance: YAMLMap([]))
+    try FileOps.write(old.markdown, to: t.data.entryFile(old.id))
+    var k01 = existing()
+    k01.occurrences = [Occurrence(entry: old.id, source: old.source, pages: [3])]
+    let input = ConceptCuration.Input(
+      subject: "math", entries: [("e01", entry("math/unplaced/a", refs: ["20261017-aaaabbbb#p1"])), ("e02", entry("math/unplaced/b", refs: ["20261017-aaaabbbb#p2"]))],
+      concepts: [("k01", k01)], conceptHashes: [:])
+    let out = try plan([
+      "concepts": [
+        [
+          "concept": "k01", "entries": ["e01"],
+          "units": [["id": "u2", "text": "Old two"], ["id": NSNull(), "text": "New", "claims": [["text": "y", "src": ["20261017-aaaabbbb#p1"]]]]],
+          "removed_units": [["id": "u1", "reason": "definition-of-x 로 옮김"]],
+        ],
+        [
+          "concept": NSNull(), "slug": "definition-of-x", "title": "Definition of x", "entries": ["e02"],
+          "units": [
+            ["id": NSNull(), "text": "Old one", "claims": [["text": "x", "src": ["20261010-11112222#p3"]]]],
+            ["id": NSNull(), "text": "More", "claims": [["text": "z", "src": ["20261017-aaaabbbb#p2"]]]],
+          ],
+        ],
+      ],
+      "held": [],
+    ])
+    let c = ConceptCuration.check(out: out, input: input, math: nil)
+    #expect(c.problems.isEmpty, "\(c.problems)")
+    let written = try ConceptCuration.apply(try #require(c.plan), input: input, data: t.data, provenance: ["job": "j"])
+    #expect(written[0].occurrences.map(\.entry) == ["math/unplaced/a"])
+    #expect(Set(written[1].occurrences.map(\.entry)) == ["math/unplaced/b", "math/unplaced/old"])
+  }
+}
+
 @Suite struct PageBuildTests {
   let concept = Concept(
     cid: ConceptID(subject: "math", item: "unplaced", slug: "laws-of-indices"), title: "Laws of indices", itemProposed: nil, occurrences: [], symbols: [],
@@ -204,7 +270,35 @@ let repoKatex = repoRoot.appending(path: "renderer/katex/katex.min.js")
     let o = try out(["title_ko": "지수 법칙", "units": [["kind": "para", "from": "u1"], ["kind": "block", "from": "u1", "block": ["type": "figure"]]]])
     let c = PageBuild.check(out: o, concept: concept, math: nil)
     #expect(c.problems.contains { $0.contains("u2") })
-    #expect(c.problems.contains { $0.contains("math 블록만") })
+    #expect(c.problems.contains { $0.contains("block.file") })
+  }
+
+  @Test func 그림_블록은_조각_파일이_있어야_하고_다시_만들어도_코드가_같으면_판을_지킨다() throws {
+    let o = try out([
+      "title_ko": "지수 법칙",
+      "units": [
+        ["kind": "para", "from": "u1"], ["kind": "para", "from": "u2"],
+        ["kind": "block", "from": "u1", "block": ["type": "figure", "file": "g.html", "title": "Graph"], "caption": "Drag it."],
+        ["kind": "block", "from": "u2", "block": ["type": "figure", "file": "missing.html", "title": "그래프"]],
+      ],
+    ])
+    try "<svg></svg>".write(to: o.appending(path: "figures/g.html").creatingParent(), atomically: true, encoding: .utf8)
+    let bad = PageBuild.check(out: o, concept: concept, math: nil)
+    #expect(bad.problems.count == 1)
+    #expect(bad.problems.first?.contains("missing.html") == true)
+
+    let o2 = try out([
+      "title_ko": "지수 법칙",
+      "units": [["kind": "para", "from": "u1"], ["kind": "para", "from": "u2"], ["kind": "block", "from": "u1", "block": ["type": "figure", "file": "g.html", "title": "Graph"], "caption": "Drag it."]],
+    ])
+    try "<svg></svg>".write(to: o2.appending(path: "figures/g.html").creatingParent(), atomically: true, encoding: .utf8)
+    let draft = try #require(PageBuild.check(out: o2, concept: concept, math: nil).draft)
+    let first = PageBuild.assemble(draft, concept: concept, old: nil, provenance: ["job": "j1"])
+    #expect(first.figures.map(\.path) == ["figures/b3-r1.html"])
+    let again = PageBuild.assemble(draft, concept: concept, old: first.page, provenance: ["job": "j2"])
+    #expect(again.page.units[2].rev == 1)
+    #expect(again.page.units[2].block?["code"]?.string == "figures/b3-r1.html")
+    #expect(again.history.isEmpty)
   }
 
   @Test func 다시_만들면_같은_자리의_단위는_id_를_지키고_바뀐_것만_판을_올린다() throws {
@@ -290,6 +384,9 @@ let repoKatex = repoRoot.appending(path: "renderer/katex/katex.min.js")
         ids = re.search(r"원문 단위: (.*)", req).group(1).split(", ")
         units = [{"kind": "para", "from": i} for i in ids]
         units.append({"kind": "note", "from": ids[0], "note": "misconception", "prov": "source", "text": "\\(a^m + a^n\\) is not \\(a^{m+n}\\)."})
+        units.append({"kind": "block", "from": ids[0], "block": {"type": "figure", "file": "powers.html", "title": "Powers of two"},
+            "caption": "Move the slider to change the exponent and watch the bar grow."})
+        out("figures/powers.html", "<svg width=\"200\" height=\"40\"><rect width=\"120\" height=\"30\" fill=\"var(--accent)\"/></svg>")
         out("page.json", json.dumps({"title_ko": "지수 법칙", "units": units}))
     elif read("targets.json"):
         units = {}
@@ -332,9 +429,12 @@ let repoKatex = repoRoot.appending(path: "renderer/katex/katex.min.js")
     #expect(concept.occurrences.map(\.entry) == [entries[0].id])
     let folder = ConceptFolder(concept.cid, in: t.data)
     let page = try #require(Page.load(folder))
-    #expect(page.units.map(\.id) == ["p1", "n2"])
+    #expect(page.units.map(\.id) == ["p1", "n2", "b3"])
+    // 그림 코드는 판마다 파일 하나로 개념 폴더의 figures/ 에 둔다
+    #expect(page.units[2].block?["code"]?.string == "figures/b3-r1.html")
+    #expect(FileOps.exists(folder.url.appending(path: "figures/b3-r1.html")))
     let layers = try #require(Layers.load(folder))
-    #expect(Set(layers.ko.keys) == ["p1", "n2"])
+    #expect(Set(layers.ko.keys) == ["p1", "n2", "b3"])
     #expect(Translation.targets(page, layers: layers).isEmpty)
     #expect(Glossary.load(t.data).term("exponent")?.ko == "지수")
     #expect(Pipeline.pending(t.data, instructions: repoInstructions).isEmpty)
@@ -345,6 +445,8 @@ let repoKatex = repoRoot.appending(path: "renderer/katex/katex.min.js")
     #expect(units.first?["ko"]?.stringValue?.contains("지수") == true)
     #expect(units.first?["src"]?.arrayValue?.first?["label"]?.stringValue == "Laws of indices · 1")
     #expect(json["titleKo"]?.stringValue == "지수 법칙")
+    #expect(units[2]["figure"]?["src"]?.stringValue == "jindesk-page://figure/figures/b3-r1.html?c=extended-math/unplaced/laws-of-indices")
+    #expect(units[2]["caption"]?.stringValue?.hasPrefix("Move the slider") == true)
     // 기록
     let reading = SourceReading.readSources(t.data)
     #expect(reading.count == 1)

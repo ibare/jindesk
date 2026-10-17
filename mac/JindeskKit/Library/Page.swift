@@ -32,14 +32,16 @@ public struct PageUnit: Sendable, Equatable {
   public var prov: String
   public var text: String?
   public var note: NoteKind?
-  // 글 블록 명세 (type, v, …). 지금은 math 만 있다.
+  // 블록 명세 (type, v, …): math(TeX), figure(그림 코드 파일과 해시)
   public var block: YAMLMap?
+  // 그림 블록 아래의 설명 (영어). 번역 대상이다
+  public var caption: String?
   public var claims: [UnitClaim]
   public var conditions: [String]
 
   public init(
     id: String, rev: Int, kind: PageUnitKind, from: String, prov: String, text: String? = nil, note: NoteKind? = nil, block: YAMLMap? = nil,
-    claims: [UnitClaim] = [], conditions: [String] = []
+    caption: String? = nil, claims: [UnitClaim] = [], conditions: [String] = []
   ) {
     self.id = id
     self.rev = rev
@@ -49,6 +51,7 @@ public struct PageUnit: Sendable, Equatable {
     self.text = text
     self.note = note
     self.block = block
+    self.caption = caption
     self.claims = claims
     self.conditions = conditions
   }
@@ -57,12 +60,21 @@ public struct PageUnit: Sendable, Equatable {
   public var fromHash: String { from.split(separator: "@").dropFirst().first.map(String.init) ?? "" }
   public var ref: String { "\(id)@r\(rev)" }
 
-  // 페이지 단위의 해시: kind, text 또는 블록 명세, claims
+  // 옮길 영어 글: 문단과 강조 상자의 글, 그림 블록의 설명
+  public var english: String? { (text ?? caption)?.nilIfBlank }
+
+  public var isFigure: Bool { block?["type"]?.string == "figure" }
+
+  // 페이지 단위의 해시: kind, text 또는 블록 명세(그림 블록은 코드 경로 대신 코드 해시), claims
   public var hash: String {
     var o: [String: JSONValue] = ["kind": .string(kind.rawValue), "claims": .array(claims.map(\.json))]
     if let text { o["text"] = .string(text) }
     if let note { o["note"] = .string(note.rawValue) }
-    if let block { o["block"] = YAMLValue.map(block).json }
+    if var block {
+      block["code"] = nil
+      o["block"] = YAMLValue.map(block).json
+    }
+    if let caption { o["caption"] = .string(caption) }
     return MeaningHash.of(.object(o))
   }
 
@@ -76,6 +88,7 @@ public struct PageUnit: Sendable, Equatable {
     if let note { m["note"] = .string(note.rawValue) }
     if let text { m["text"] = .string(text) }
     if let block { m["block"] = .map(block) }
+    if let caption { m["caption"] = .string(caption) }
     if !conditions.isEmpty { m["conditions"] = .array(conditions.map(YAMLValue.string)) }
     if !claims.isEmpty { m["claims"] = .array(claims.map(\.yaml)) }
     return m
@@ -87,7 +100,7 @@ public struct PageUnit: Sendable, Equatable {
     }
     self.init(
       id: id, rev: yaml["rev"]?.int ?? 1, kind: kind, from: from, prov: yaml["prov"]?.string ?? "source", text: yaml["text"]?.string,
-      note: yaml["note"]?.string.flatMap(NoteKind.init(rawValue:)), block: yaml["block"]?.map,
+      note: yaml["note"]?.string.flatMap(NoteKind.init(rawValue:)), block: yaml["block"]?.map, caption: yaml["caption"]?.string,
       claims: (yaml["claims"]?.array ?? []).compactMap(UnitClaim.init(yaml:)), conditions: yaml["conditions"]?.strings ?? [])
   }
 }

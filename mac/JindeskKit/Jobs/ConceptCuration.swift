@@ -212,6 +212,8 @@ public enum ConceptCuration {
     let entryByKey = Dictionary(input.entries.map { ($0.key, $0.entry) }, uniquingKeysWith: { a, _ in a })
     var placedEntries: [String: Int] = [:]
     var usedConcepts: Set<String> = []
+    // 이미 있는 개념들의 출처. 너무 커진 개념을 나눌 때 옮긴 단위가 원래 출처를 그대로 쓴다.
+    let existingRefs = input.concepts.reduce(into: Set<String>()) { $0.formUnion($1.concept.refs) }
     var concepts: [PlannedConcept] = []
 
     for (i, raw) in (v["concepts"]?.arrayValue ?? []).enumerated() {
@@ -235,8 +237,8 @@ public enum ConceptCuration {
       }
       if entries.isEmpty && existing == nil { problems.append("\(at).entries 가 비었습니다") }
 
-      // 출처로 쓸 수 있는 쪽: 이 개념에 넣은 엔트리의 출처와 기존 개념의 출처
-      var allowed = existing?.refs ?? []
+      // 출처로 쓸 수 있는 쪽: 이 개념에 넣은 엔트리의 출처와 이미 있는 개념들의 출처. 정리가 새 출처를 만들지는 못한다.
+      var allowed = existingRefs
       for e in entries { allowed.formUnion(entryByKey[e]?.refs ?? []) }
 
       var units: [PlannedUnit] = []
@@ -262,7 +264,7 @@ public enum ConceptCuration {
           let src = AgentJSON.strings(cl["src"])
           if src.isEmpty { problems.append("\(uat).claims[\(k)]: 출처(src)가 없습니다") }
           for s in src where !allowed.contains(s) {
-            problems.append("\(uat).claims[\(k)]: 이 개념에 넣은 엔트리에 없는 출처입니다 (\(s)). 정리는 새 출처를 만들지 못한다")
+            problems.append("\(uat).claims[\(k)]: 이 개념에 넣은 엔트리에도, 이미 있는 개념에도 없는 출처입니다 (\(s)). 정리는 새 출처를 만들지 못한다")
           }
           claims.append((ct, src))
         }
@@ -366,14 +368,38 @@ public enum ConceptCuration {
       }
       concept.nextID = next
       if !p.symbols.isEmpty { concept.symbols = p.symbols }
-      for key in p.entries {
-        guard let e = entryByKey[key], !concept.occurrences.contains(where: { $0.entry == e.id }) else { continue }
-        concept.occurrences.append(Occurrence(entry: e.id, source: e.source, pages: e.pages))
-      }
       concept.provenance = provenance
       out.append(concept)
     }
+    occurrences(&out, plan: plan, input: input, data: data)
     for c in out { try c.write(data) }
     return out
+  }
+
+  // 출현 목록은 러너가 계산한다: 이 개념에 넣은 엔트리와, 주장의 출처가 이 개념의 출처와 겹치는 엔트리.
+  // 이전에 개념에 들어 있던 엔트리가 이번 정리로 어디에도 남지 않으면(그 출처의 단위가 모두 빠졌을 때) 원래 개념에 그대로 둔다.
+  static func occurrences(_ concepts: inout [Concept], plan: Plan, input: Input, data: DataFolder) {
+    let entryByKey = Dictionary(input.entries.map { ($0.key, $0.entry) }, uniquingKeysWith: { a, _ in a })
+    var pool: [Entry] = input.entries.map(\.entry)
+    var previous: [String: String] = [:]
+    for (_, c) in input.concepts {
+      for o in c.occurrences {
+        previous[o.entry] = previous[o.entry] ?? c.id
+        guard !pool.contains(where: { $0.id == o.entry }), let text = FileOps.readIfExists(data.entryFile(o.entry)), let e = try? Entry.parse(text) else { continue }
+        pool.append(e)
+      }
+    }
+    for (i, p) in zip(concepts.indices, plan.concepts) {
+      let assigned = Set(p.entries.compactMap { entryByKey[$0]?.id })
+      let refs = concepts[i].refs
+      concepts[i].occurrences = pool.filter { assigned.contains($0.id) || !$0.refs.isDisjoint(with: refs) }.map {
+        Occurrence(entry: $0.id, source: $0.source, pages: $0.pages)
+      }
+    }
+    let placed = Set(concepts.flatMap { $0.occurrences.map(\.entry) })
+    for (entry, conceptID) in previous where !placed.contains(entry) {
+      guard let i = concepts.firstIndex(where: { $0.id == conceptID }), let e = pool.first(where: { $0.id == entry }) else { continue }
+      concepts[i].occurrences.append(Occurrence(entry: e.id, source: e.source, pages: e.pages))
+    }
   }
 }

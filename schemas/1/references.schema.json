@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jindesk/1/references",
+  "title": "library/references.yaml",
+  "description": "개념마다 대표 공개 자료 (레퍼런스 찾기)",
+  "type": "object",
+  "required": [
+    "kind",
+    "v",
+    "concepts"
+  ],
+  "properties": {
+    "kind": {
+      "const": "references"
+    },
+    "v": {
+      "const": 1
+    },
+    "concepts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "searched",
+          "items"
+        ],
+        "properties": {
+          "searched": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "url",
+                "title",
+                "kind",
+                "why"
+              ],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "pattern": "^https://"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "why": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

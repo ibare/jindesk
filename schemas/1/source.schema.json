@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jindesk/1/source",
+  "title": "sources/<자료 id>/meta.yaml",
+  "description": "받을 때 정해진 사실. 고치지 않는다",
+  "type": "object",
+  "required": [
+    "kind",
+    "v",
+    "id",
+    "original",
+    "received",
+    "converted",
+    "pages",
+    "text_layer",
+    "build_ups"
+  ],
+  "properties": {
+    "kind": {
+      "const": "source"
+    },
+    "v": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^\\d{8}-[0-9a-f]{8}$"
+    },
+    "original": {
+      "type": "object",
+      "required": [
+        "name",
+        "bytes",
+        "sha256"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "integer"
+        },
+        "sha256": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "received": {
+      "type": "string"
+    },
+    "converted": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "to",
+            "by"
+          ],
+          "properties": {
+            "to": {
+              "type": "string"
+            },
+            "by": {
+              "type": "string"
+            },
+            "app_version": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "pages": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "text_layer": {
+      "type": "object",
+      "required": [
+        "by",
+        "pages_with_text"
+      ],
+      "properties": {
+        "by": {
+          "type": "string"
+        },
+        "pages_with_text": {
+          "type": "integer"
+        },
+        "ocr": {
+          "type": "object",
+          "required": [
+            "by",
+            "pages"
+          ],
+          "properties": {
+            "by": {
+              "type": "string"
+            },
+            "pages": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "build_ups": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "integer"
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

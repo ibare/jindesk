@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jindesk/1/glossary",
+  "title": "library/glossary.yaml",
+  "description": "용어 어휘: 영어 용어 → 한국어",
+  "type": "object",
+  "required": [
+    "kind",
+    "v",
+    "terms"
+  ],
+  "properties": {
+    "kind": {
+      "const": "glossary"
+    },
+    "v": {
+      "const": 1
+    },
+    "terms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "en",
+          "ko"
+        ],
+        "properties": {
+          "en": {
+            "type": "string"
+          },
+          "ko": {
+            "type": "string"
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "subjects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

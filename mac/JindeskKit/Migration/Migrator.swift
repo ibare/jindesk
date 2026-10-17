@@ -97,13 +97,25 @@ public struct Migrator: Sendable {
   public let app: AppVersion
   public let steps: [any MigrationStep]
   public let target: Int
+  // 앱 번들의 schemas/ (있으면 사본의 모든 데이터 파일을 목표 판의 스키마로 본다)
+  public var schemas: URL?
 
-  public init(data: DataFolder, folders: AppFolders, app: AppVersion, steps: [any MigrationStep] = MigrationPlan.steps, target: Int = CurrentSchema.version) {
+  public init(
+    data: DataFolder, folders: AppFolders, app: AppVersion, steps: [any MigrationStep] = MigrationPlan.steps, target: Int = CurrentSchema.version,
+    schemas: URL? = nil
+  ) {
     self.data = data
     self.folders = folders
     self.app = app
     self.steps = steps
     self.target = target
+    self.schemas = schemas
+  }
+
+  static func schemaSet(_ schemas: URL?, target: Int) -> SchemaSet? {
+    guard let schemas else { return nil }
+    let dir = schemas.appending(path: String(target))
+    return FileOps.exists(dir) ? SchemaSet(dir) : nil
   }
 
   var parent: URL { data.url.deletingLastPathComponent() }
@@ -193,7 +205,7 @@ public struct Migrator: Sendable {
 
       // 4. 검증
       FileOps.remove(marker)
-      let issues = MigrationVerifier.verify(before: before, copy: copy, steps: plan, target: target)
+      let issues = MigrationVerifier.verify(before: before, copy: copy, steps: plan, target: target, schemas: Self.schemaSet(schemas, target: target))
       let checks = issues.isEmpty ? ["검증 통과"] : issues
       try writeRecord(copy, from: from, plan: plan, checks: checks)
       guard issues.isEmpty else { throw MigrationFailure(issues: issues) }
@@ -259,8 +271,10 @@ public struct MigrationSnapshot: Sendable {
 
 // 바꿔 끼우기 전에 사본 전체를 본다 (MIGRATION.md 의 검증 표). 하나라도 어긋나면 실패다.
 public enum MigrationVerifier {
-  public static func verify(before: MigrationSnapshot, copy: DataFolder, steps: [any MigrationStep], target: Int) -> [String] {
+  public static func verify(before: MigrationSnapshot, copy: DataFolder, steps: [any MigrationStep], target: Int, schemas: SchemaSet? = nil) -> [String] {
     var issues: [String] = []
+    // 스키마 파일이 있으면 모든 데이터 파일을 그 판의 스키마로 본다
+    if let schemas { issues += DataValidation.validate(copy, schemas: schemas) }
 
     // 스키마: 모든 YAML 이 읽히고 kind 와 v 가 있다. 모든 JSONL 줄이 읽힌다. 스키마 버전이 목표와 같다.
     for rel in FileOps.files(under: copy.url) {
@@ -331,8 +345,9 @@ public enum MigrationCheck {
 
   public static func run(
     source: URL, folders: AppFolders, app: AppVersion, steps: [any MigrationStep] = MigrationPlan.steps, target: Int = CurrentSchema.version,
-    sample: Int? = nil, log: @escaping @Sendable (String) async -> Void = { _ in }
+    sample: Int? = nil, schemas: URL? = nil, log: @escaping @Sendable (String) async -> Void = { _ in }
   ) async throws -> Report {
+    let schemaSet = Migrator.schemaSet(schemas, target: target)
     let work = folders.cache.appending(path: "migrate-check/\(JobID.stamp(Date()))-\(UUID().uuidString.prefix(6))")
     try FileOps.makeDirectory(work)
     var folder = source
@@ -354,7 +369,7 @@ public enum MigrationCheck {
       throw ToolError("데이터의 스키마 \(v) 가 앱의 스키마 \(target) 보다 높습니다")
     case .current:
       report.notes.append("스키마가 이미 \(target) 이라 마이그레이션할 것이 없습니다")
-      report.issues = MigrationVerifier.verify(before: try MigrationSnapshot.take(copy), copy: copy, steps: [], target: target)
+      report.issues = MigrationVerifier.verify(before: try MigrationSnapshot.take(copy), copy: copy, steps: [], target: target, schemas: schemaSet)
       return report
     case .older(let from):
       report.from = from
@@ -370,7 +385,7 @@ public enum MigrationCheck {
         schema.history.append(.init(from: step.from, to: step.to, app: app.app, at: Clock.isoLocal(), kind: step.kind.rawValue, backup: "(check)"))
         try schema.write(to: copy)
       }
-      report.issues = MigrationVerifier.verify(before: before, copy: copy, steps: plan, target: target)
+      report.issues = MigrationVerifier.verify(before: before, copy: copy, steps: plan, target: target, schemas: schemaSet)
       let allAfter = try fileHashes(copy)
       report.added = allAfter.keys.filter { allBefore[$0] == nil }.sorted()
       report.removed = allBefore.keys.filter { allAfter[$0] == nil }.sorted()

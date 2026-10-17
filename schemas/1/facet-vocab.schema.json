@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jindesk/1/facet-vocab",
+  "title": "library/facets.yaml",
+  "description": "과목별 관련 개념과 NOS 어휘",
+  "type": "object",
+  "required": [
+    "kind",
+    "v",
+    "related_concepts",
+    "nos"
+  ],
+  "properties": {
+    "kind": {
+      "const": "facet-vocab"
+    },
+    "v": {
+      "const": 1
+    },
+    "related_concepts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "nos": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

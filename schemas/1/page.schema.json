@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jindesk/1/page",
+  "title": "library/…/<개념>/page.yaml",
+  "description": "학습 페이지: 단위와 블록 명세",
+  "type": "object",
+  "required": [
+    "kind",
+    "v",
+    "concept",
+    "title_ko",
+    "next_id",
+    "units",
+    "provenance"
+  ],
+  "properties": {
+    "kind": {
+      "const": "page"
+    },
+    "v": {
+      "const": 1
+    },
+    "concept": {
+      "type": "string"
+    },
+    "title_ko": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "next_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "units": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "rev",
+          "kind",
+          "from",
+          "prov"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[pnbsq]\\d+$"
+          },
+          "rev": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "kind": {
+            "enum": [
+              "para",
+              "note",
+              "block",
+              "step",
+              "check"
+            ]
+          },
+          "from": {
+            "type": "string"
+          },
+          "prov": {
+            "enum": [
+              "source",
+              "added"
+            ]
+          },
+          "note": {
+            "enum": [
+              "misconception",
+              "key-idea",
+              "command-term"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "block": {
+            "type": "object"
+          },
+          "caption": {
+            "type": "string"
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "claims": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "text",
+                "src"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "src": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "directives": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "provenance": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

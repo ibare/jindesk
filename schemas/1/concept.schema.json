@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jindesk/1/concept",
+  "title": "library/concepts/<과목 id>/<항목>/<slug>/concept.yaml",
+  "description": "정리된 개념 원문. 목차 밖 개념은 library/unplaced/<과목 id>/<slug>/",
+  "type": "object",
+  "required": [
+    "kind",
+    "v",
+    "id",
+    "title",
+    "subject",
+    "item",
+    "item_proposed",
+    "level",
+    "occurrences",
+    "symbols",
+    "prerequisites",
+    "links",
+    "next_id",
+    "units",
+    "provenance"
+  ],
+  "properties": {
+    "kind": {
+      "const": "concept"
+    },
+    "v": {
+      "const": 1
+    },
+    "id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "subject": {
+      "type": "string"
+    },
+    "item": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "item_proposed": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "level": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "occurrences": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "entry",
+          "source",
+          "pages"
+        ],
+        "properties": {
+          "entry": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "symbols": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "symbol",
+          "meaning"
+        ],
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "meaning": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "prerequisites": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "concept",
+          "note"
+        ],
+        "properties": {
+          "concept": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "next_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "units": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "hash",
+          "text",
+          "conditions",
+          "claims"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^u\\d+$"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "claims": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "text",
+                "src"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "src": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "provenance": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

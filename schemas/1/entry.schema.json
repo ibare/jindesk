@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jindesk/1/entry",
+  "title": "library/entries/<과목 id>/<항목>/<slug>.md 의 머리말",
+  "description": "원시 개념 엔트리. 고치지 않는다",
+  "type": "object",
+  "required": [
+    "kind",
+    "v",
+    "id",
+    "subject",
+    "item",
+    "item_proposed",
+    "title",
+    "source",
+    "pages",
+    "claims",
+    "symbols",
+    "examples",
+    "misconceptions",
+    "recorded",
+    "provenance"
+  ],
+  "properties": {
+    "kind": {
+      "const": "entry"
+    },
+    "v": {
+      "const": 1
+    },
+    "id": {
+      "type": "string"
+    },
+    "subject": {
+      "type": "string"
+    },
+    "item": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "item_proposed": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "string"
+    },
+    "pages": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      }
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "text",
+          "src"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "src": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "symbols": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "symbol",
+          "meaning"
+        ],
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "meaning": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "examples": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "misconceptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "recorded": {
+      "type": "string"
+    },
+    "provenance": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

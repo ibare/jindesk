@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jindesk/1/facets",
+  "title": "library/…/<개념>/facets.yaml",
+  "description": "개념의 관점",
+  "type": "object",
+  "required": [
+    "kind",
+    "v",
+    "concept",
+    "from",
+    "item",
+    "level",
+    "command_terms",
+    "key_concepts",
+    "related_concepts",
+    "global_contexts",
+    "nos",
+    "tok",
+    "provenance"
+  ],
+  "properties": {
+    "kind": {
+      "const": "facets"
+    },
+    "v": {
+      "const": 1
+    },
+    "concept": {
+      "type": "string"
+    },
+    "from": {
+      "type": "string"
+    },
+    "item": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "level": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "command_terms": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "key_concepts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "related_concepts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "global_contexts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "nos": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tok": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "provenance": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

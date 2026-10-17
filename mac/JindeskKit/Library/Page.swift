@@ -4,7 +4,8 @@
 import Foundation
 
 public enum PageUnitKind: String, Sendable, CaseIterable {
-  case para, note, block
+  // 문단, 강조 상자, 블록(수식, 풀이, 그림), 풀이 단계, 확인 문제
+  case para, note, block, step, check
 
   // 단위 id 앞 글자
   var prefix: String {
@@ -12,6 +13,8 @@ public enum PageUnitKind: String, Sendable, CaseIterable {
     case .para: "p"
     case .note: "n"
     case .block: "b"
+    case .step: "s"
+    case .check: "q"
     }
   }
 }
@@ -38,6 +41,8 @@ public struct PageUnit: Sendable, Equatable {
   public var caption: String?
   public var claims: [UnitClaim]
   public var conditions: [String]
+  // 이 단위에 적용된 살아 있는 요구 (d7 …)
+  public var directives: [String] = []
 
   public init(
     id: String, rev: Int, kind: PageUnitKind, from: String, prov: String, text: String? = nil, note: NoteKind? = nil, block: YAMLMap? = nil,
@@ -64,6 +69,9 @@ public struct PageUnit: Sendable, Equatable {
   public var english: String? { (text ?? caption)?.nilIfBlank }
 
   public var isFigure: Bool { block?["type"]?.string == "figure" }
+  public var isDerivation: Bool { block?["type"]?.string == "derivation" }
+  // 풀이 단계가 속한 풀이 블록의 id
+  public var parent: String? { kind == .step ? block?["parent"]?.string : nil }
 
   // 페이지 단위의 해시: kind, text 또는 블록 명세(그림 블록은 코드 경로 대신 코드 해시), claims
   public var hash: String {
@@ -91,6 +99,7 @@ public struct PageUnit: Sendable, Equatable {
     if let caption { m["caption"] = .string(caption) }
     if !conditions.isEmpty { m["conditions"] = .array(conditions.map(YAMLValue.string)) }
     if !claims.isEmpty { m["claims"] = .array(claims.map(\.yaml)) }
+    if !directives.isEmpty { m["directives"] = .array(directives.map(YAMLValue.string)) }
     return m
   }
 
@@ -102,6 +111,7 @@ public struct PageUnit: Sendable, Equatable {
       id: id, rev: yaml["rev"]?.int ?? 1, kind: kind, from: from, prov: yaml["prov"]?.string ?? "source", text: yaml["text"]?.string,
       note: yaml["note"]?.string.flatMap(NoteKind.init(rawValue:)), block: yaml["block"]?.map, caption: yaml["caption"]?.string,
       claims: (yaml["claims"]?.array ?? []).compactMap(UnitClaim.init(yaml:)), conditions: yaml["conditions"]?.strings ?? [])
+    directives = yaml["directives"]?.strings ?? []
   }
 }
 
@@ -178,10 +188,51 @@ public struct LayerText: Sendable, Equatable {
   }
 }
 
+// 곁 설명 (쉽게, 자세히): 영어와 그 한국어. 다시 만들기의 요구로 만든다.
+public struct SideLayer: Sendable, Equatable {
+  public let from: String
+  public let unitHash: String
+  public let en: String
+  public let ko: String
+  public let directive: String?
+  public let checks: [String]
+  public let prov: YAMLMap
+
+  public init(from: String, unitHash: String, en: String, ko: String, directive: String?, checks: [String], prov: YAMLMap) {
+    self.from = from
+    self.unitHash = unitHash
+    self.en = en
+    self.ko = ko
+    self.directive = directive
+    self.checks = checks
+    self.prov = prov
+  }
+
+  public func isCurrent(for unit: PageUnit) -> Bool { from == unit.ref && unitHash == unit.hash }
+
+  var yaml: YAMLMap {
+    var m: YAMLMap = ["from": .string(from), "unit_hash": .string(unitHash), "en": .string(en), "ko": .string(ko)]
+    if let directive { m["directive"] = .string(directive) }
+    m["checks"] = .array(checks.map(YAMLValue.string))
+    m["prov"] = .map(prov)
+    return m
+  }
+
+  init?(yaml: YAMLValue?) {
+    guard let y = yaml, let from = y["from"]?.string, let en = y["en"]?.string else { return nil }
+    self.init(
+      from: from, unitHash: y["unit_hash"]?.string ?? "", en: en, ko: y["ko"]?.string ?? "", directive: y["directive"]?.string,
+      checks: y["checks"]?.strings ?? [], prov: y["prov"]?.map ?? YAMLMap([]))
+  }
+}
+
 public struct Layers: Sendable, Equatable {
   public var concept: String
   // 단위 id → 한국어
   public var ko: [String: LayerText]
+  // 단위 id → 곁 설명
+  public var easy: [String: SideLayer] = [:]
+  public var detail: [String: SideLayer] = [:]
 
   public init(concept: String, ko: [String: LayerText] = [:]) {
     self.concept = concept
@@ -191,19 +242,28 @@ public struct Layers: Sendable, Equatable {
   // 페이지 단위 차례대로 쓴다. 페이지에 없는 단위의 층은 끝에 이름 차례로 둔다.
   public func yaml(order: [String]) -> YAMLMap {
     var units = YAMLMap([])
-    let ids = order.filter { ko[$0] != nil } + ko.keys.filter { !order.contains($0) }.sorted()
-    for id in ids { units[id] = .map(YAMLMap([("ko", .map(ko[id]!.yaml.with(style: .block)))], style: .block)) }
+    let all = Set(ko.keys).union(easy.keys).union(detail.keys)
+    let ids = order.filter { all.contains($0) } + all.filter { !order.contains($0) }.sorted()
+    for id in ids {
+      var m = YAMLMap([], style: .block)
+      if let k = ko[id] { m["ko"] = .map(k.yaml.with(style: .block)) }
+      if let e = easy[id] { m["easy"] = .map(e.yaml.with(style: .block)) }
+      if let d = detail[id] { m["detail"] = .map(d.yaml.with(style: .block)) }
+      units[id] = .map(m)
+    }
     return ["kind": "layers", "v": 1, "concept": .string(concept), "units": .map(units.with(style: .block))]
   }
 
   public static func read(_ url: URL) throws -> Layers {
     let v = try YAML.read(url)
     guard v["kind"]?.string == "layers", let concept = v["concept"]?.string else { throw ToolError("\(url.path) 의 모양이 맞지 않습니다") }
-    var ko: [String: LayerText] = [:]
+    var layers = Layers(concept: concept)
     for entry in v["units"]?.map?.entries ?? [] {
-      if let layer = entry.value["ko"].flatMap(LayerText.init(yaml:)) { ko[entry.key] = layer }
+      if let layer = entry.value["ko"].flatMap(LayerText.init(yaml:)) { layers.ko[entry.key] = layer }
+      if let e = SideLayer(yaml: entry.value["easy"]) { layers.easy[entry.key] = e }
+      if let d = SideLayer(yaml: entry.value["detail"]) { layers.detail[entry.key] = d }
     }
-    return Layers(concept: concept, ko: ko)
+    return layers
   }
 
   public static func load(_ folder: ConceptFolder) -> Layers? { try? read(folder.layers) }

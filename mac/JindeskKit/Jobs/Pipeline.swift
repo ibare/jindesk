@@ -25,6 +25,15 @@ public enum Pipeline {
     }
     let pageVersion = (try? Instructions.read(instructions, kind: .pageBuild))?.version
     let subjects = Set(EntryStore.subjects(data) + ConceptStore.subjects(data)).sorted()
+    for d in Regen.pending(data) {
+      out.append(PendingWork(kind: .regen, target: d.id, label: "\(d.op.label) · \(d.target.unit)"))
+    }
+    for c in Ask.unanswered(data) {
+      out.append(PendingWork(kind: .ask, target: c.id, label: FileOps.prefix(c.text ?? "", 40)))
+    }
+    for s in library.subjects where SyllabusBuild.needed(data, subject: s.id, library: library) {
+      out.append(PendingWork(kind: .syllabusBuild, target: s.id, label: s.name))
+    }
     for subject in subjects where !busySubjects.contains(subject) {
       if !ConceptCuration.pending(data, subject: subject).isEmpty {
         out.append(PendingWork(kind: .conceptCuration, target: subject, label: subject))
@@ -32,6 +41,8 @@ public enum Pipeline {
         out.append(PendingWork(kind: .pageBuild, target: subject, label: subject))
       } else if !Translation.pending(data, subject: subject).isEmpty {
         out.append(PendingWork(kind: .translation, target: subject, label: subject))
+      } else if !Facets.pendingFacets(data, subject: subject).isEmpty || !Facets.pendingReferences(data, subject: subject).isEmpty {
+        out.append(PendingWork(kind: .facets, target: subject, label: subject))
       }
     }
     return out
@@ -43,6 +54,10 @@ public enum Pipeline {
     case .sourceReading: return { try SourceReading.prepare(sourceID: target, $0) }
     case .conceptCuration: return { try ConceptCuration.prepare(subject: target, $0) }
     case .pageBuild: return { try PageBuild.prepare(subject: target, $0) }
+    case .syllabusBuild: return { try SyllabusBuild.prepare(subject: target, $0) }
+    case .ask: return { try Ask.prepare(commentID: target, $0) }
+    case .regen: return { try Regen.prepare(directiveID: target, $0) }
+    case .facets: return { try Facets.prepare(subject: target, $0) }
     default: return { try Translation.prepare(subject: target, $0) }
     }
   }

@@ -8,9 +8,13 @@
 
 | 종류 | 지침 |
 |---|---|
+| 목차 만들기 | `syllabus-build/INSTRUCTIONS.md` |
 | 자료 읽기 | `source-reading/INSTRUCTIONS.md` |
 | 개념 정리 | `concept-curation/INSTRUCTIONS.md` |
 | 학습 페이지 만들기 | `page-build/INSTRUCTIONS.md` |
 | 번역 | `translation/INSTRUCTIONS.md` |
+| 관점 붙이기 | `facets/INSTRUCTIONS.md` |
+| 물어보기 | `ask/INSTRUCTIONS.md` |
+| 부분 다시 만들기 | `regen/INSTRUCTIONS.md` |
 
-목차 만들기(`syllabus-build`)는 아직 없다.
+확인 문제(`practice`)는 4단계에 더한다.

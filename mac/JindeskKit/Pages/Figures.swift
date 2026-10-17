@@ -56,18 +56,22 @@ public struct FigureCheckResult: Sendable, Equatable {
   public var responsive: Bool
   // 이번에 받아 둔 바깥 파일 주소
   public var fetched: [String]
+  // 처음 장면에서 겹친 글자 쌍 ("A" ↔ "B")
+  public var overlaps: [String]
 
-  public init(errors: [String] = [], painted: Bool, responsive: Bool, fetched: [String] = []) {
+  public init(errors: [String] = [], painted: Bool, responsive: Bool, fetched: [String] = [], overlaps: [String] = []) {
     self.errors = errors
     self.painted = painted
     self.responsive = responsive
     self.fetched = fetched
+    self.overlaps = overlaps
   }
 
   public var problems: [String] {
     var out = errors.prefix(5).map { "스크립트 오류: \($0)" }
     if !painted { out.append("3초 안에 아무것도 그려지지 않았습니다") }
     if !responsive { out.append("그린 뒤 페이지가 응답하지 않습니다 (멈춤)") }
+    out += overlaps.prefix(3).map { "글자가 겹쳐 읽을 수 없습니다: \($0). 자리를 옮기거나 줄인다" }
     return out
   }
 }

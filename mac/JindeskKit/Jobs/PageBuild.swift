@@ -88,6 +88,10 @@ public enum PageBuild {
     if !written.isEmpty, await ctx.queueFollowUp("번역", { try Translation.prepare(subject: subject, $0) }) != nil {
       await ctx.log(.info, "번역을 대기열에 넣었습니다")
     }
+    // 관점이 없는 개념(새 개념)이 있으면 관점 붙이기도 넣는다
+    if !Facets.pendingFacets(ctx.data, subject: subject).isEmpty, await ctx.queueFollowUp("관점 붙이기", { try Facets.prepare(subject: subject, $0) }) != nil {
+      await ctx.log(.info, "관점 붙이기를 대기열에 넣었습니다")
+    }
     if warnings.contains(where: { $0.hasSuffix("개념이 바뀌어 쓰지 않았습니다") }) {
       _ = await ctx.queueFollowUp("학습 페이지 만들기", { try prepare(subject: subject, $0) })
     }
@@ -108,7 +112,14 @@ public enum PageBuild {
     let dirs = AgentDirs(ctx.folders, ctx.id, sub: "c\(n)")
     try dirs.make()
     try FileOps.copy(folder.concept, to: dirs.input.appending(path: "concept.yaml"))
-    if old != nil { try FileOps.copy(folder.page, to: dirs.input.appending(path: "page.yaml")) }
+    // 학생 요구로 더한 단위(예시 더, 그림으로)는 러너가 다시 넣는다. 에이전트가 베껴 두 번 만들지 않게 이전 페이지에서 뺀다.
+    let inserting = Set(DirectiveStore.forConcept(DirectiveStore.load(ctx.data), concept: concept.id).filter { $0.status.isLiving && $0.op.inserts }.map(\.id))
+    var added: [String] = []
+    if var shown = old {
+      added = shown.units.filter { !Set($0.directives).isDisjoint(with: inserting) }.map(\.id)
+      shown.units.removeAll { !Set($0.directives).isDisjoint(with: inserting) }
+      try FileOps.write(YAML.stringify(shown.yaml), to: dirs.input.appending(path: "page.yaml"))
+    }
     try AgentStep.writeGlossary(ctx.data, into: dirs.input)
     var request = ["# 학습 페이지 요청", "", "- 개념: \(concept.id)", "- 제목: \(concept.title)"]
     if let labels {
@@ -117,6 +128,9 @@ public enum PageBuild {
     }
     request.append("- 원문 단위: \(concept.units.map(\.id).joined(separator: ", "))")
     request.append("- 이전 페이지: \(old == nil ? "없다. 처음 만든다" : "input/page.yaml")")
+    if !added.isEmpty {
+      request.append("- 학생 요구로 더한 단위 \(added.joined(separator: ", ")): 러너가 그대로 다시 넣는다. input/page.yaml 에서 뺐다. 그 예제나 그림을 다시 만들지 않는다")
+    }
     try FileOps.write(request.joined(separator: "\n") + "\n", to: dirs.input.appending(path: "request.md"))
 
     let tag = concept.cid.slug
@@ -143,7 +157,10 @@ public enum PageBuild {
       }
       draft = Draft(titleKo: draft.titleKo, units: draft.units.filter { $0.figure.map { figures.failed[$0.file] == nil } ?? true })
     }
-    let built = assemble(draft, concept: concept, old: old, provenance: AgentStep.provenance(ctx, .pageBuild, instructions))
+    let livingDirectives = DirectiveStore.forConcept(DirectiveStore.load(ctx.data), concept: concept.id).filter(\.status.isLiving)
+    let built = assemble(
+      draft, concept: concept, old: old, provenance: AgentStep.provenance(ctx, .pageBuild, instructions), living: Set(livingDirectives.map(\.id)),
+      inserting: Set(livingDirectives.filter { $0.op.inserts }.map(\.id)))
     // 쓰기 직전에 개념 원문이 그대로인지 다시 본다
     guard ConceptStore.fileHash(ctx.data, id: concept.cid) == conceptHash else { return .changed(concept.id) }
     // 그림 코드는 판마다 파일 하나다 (figures/<단위 id>-r<판>.html). 고치지 않는다.
@@ -151,7 +168,12 @@ public enum PageBuild {
       try FileOps.writeNew(code, to: folder.url.appending(path: path))
     }
     for line in built.history { try FileOps.appendLine(JSONText.line(line), to: folder.history) }
-    try built.page.write(folder)
+    try PageLock.withLock { try built.page.write(folder) }
+    // 원문이 바뀌어 요구를 다시 확인해야 한다: 같은 요구로 다시 만든다
+    for d in built.recheck {
+      try DirectiveStore.update(ctx.data, id: d, status: .recheck)
+      _ = await ctx.queueFollowUp("다시 만들기", { try Regen.prepare(directiveID: d, $0) })
+    }
     let figureCount = built.page.units.filter(\.isFigure).count
     await ctx.log(.info, "[\(tag)] 페이지: 단위 \(built.page.units.count)개\(figureCount > 0 ? ", 그림 \(figureCount)개" : "")")
     return .written(concept.id)
@@ -194,11 +216,13 @@ public enum PageBuild {
     let kind: PageUnitKind
     let from: String
     let prov: String
-    let text: String?
-    let note: NoteKind?
-    let tex: String?
+    var text: String? = nil
+    var note: NoteKind? = nil
+    var tex: String? = nil
     var figure: DraftFigure? = nil
     var caption: String? = nil
+    // 풀이 블록 명세 (type, v, title, vars, check), 풀이 단계 (tex, expr, approx), 확인 문제 (answer, solution, verify)
+    var spec: YAMLMap? = nil
   }
 
   static let figureSizeLimit = 400 * 1024
@@ -224,13 +248,31 @@ public enum PageBuild {
     }
     let titleKo = AgentJSON.string(v["title_ko"])
     if let titleKo { c.problems += TextChecks.koreanProblems(titleKo, field: "title_ko") } else { c.problems.append("title_ko 가 없습니다") }
+    let parsed = parseUnits(v["units"]?.arrayValue ?? [], concept: concept, out: out, math: math, label: "units")
+    c.problems += parsed.problems
+    for id in concept.units.map(\.id) {
+      switch parsed.paras[id] ?? 0 {
+      case 0: c.problems.append("원문 단위 \(id) 의 문단(para)이 없습니다. 원문 단위마다 문단 하나를 둔다")
+      case 1: break
+      default: c.problems.append("원문 단위 \(id) 의 문단(para)이 둘 이상입니다")
+      }
+    }
+    if c.problems.isEmpty, let titleKo { c.draft = Draft(titleKo: titleKo, units: parsed.units) }
+    return c
+  }
+
+  // 페이지 단위 목록을 읽고 검사한다. 다시 만들기(예시 더, 그림으로, 단계 더)도 이것으로 새 단위를 본다.
+  static func parseUnits(_ list: [JSONValue], concept: Concept, out: URL, math: MathChecker?, label: String) -> (
+    units: [DraftUnit], paras: [String: Int], problems: [String]
+  ) {
+    var c = Checked()
     let unitIDs = Set(concept.units.map(\.id))
     var paras: [String: Int] = [:]
     var units: [DraftUnit] = []
-    for (i, raw) in (v["units"]?.arrayValue ?? []).enumerated() {
-      let at = "units[\(i)]"
-      guard let kindText = AgentJSON.string(raw["kind"]), let kind = PageUnitKind(rawValue: kindText) else {
-        c.problems.append("\(at).kind 는 para, note, block 가운데 하나다")
+    for (i, raw) in list.enumerated() {
+      let at = "\(label)[\(i)]"
+      guard let kindText = AgentJSON.string(raw["kind"]), let kind = PageUnitKind(rawValue: kindText), kind != .step else {
+        c.problems.append("\(at).kind 는 para, note, block, check 가운데 하나다 (풀이 단계는 derivation 블록의 steps 에 쓴다)")
         continue
       }
       guard let from = AgentJSON.string(raw["from"]), unitIDs.contains(from) else {
@@ -240,7 +282,93 @@ public enum PageBuild {
       switch kind {
       case .para:
         paras[from, default: 0] += 1
-        units.append(DraftUnit(kind: .para, from: from, prov: "source", text: nil, note: nil, tex: nil))
+        units.append(DraftUnit(kind: .para, from: from, prov: "source"))
+      case .step:
+        continue
+      case .check:
+        // page.yaml 의 저장 모양(text 와 block 안의 answer)으로 써도 받는다
+        let inner = raw["block"]
+        guard let question = AgentJSON.string(raw["question"]) ?? AgentJSON.string(raw["text"]) ?? AgentJSON.string(inner?["question"]),
+          let answer = AgentJSON.string(raw["answer"]) ?? AgentJSON.string(inner?["answer"])
+        else {
+          c.problems.append("\(at): 확인 문제에는 question 과 answer 가 있어야 한다")
+          continue
+        }
+        let solution = AgentJSON.string(raw["solution"]) ?? AgentJSON.string(inner?["solution"])
+        for (field, text) in [("question", question), ("answer", answer), ("solution", solution ?? "")] where !text.isEmpty {
+          c.problems += TextChecks.englishProblems(text, field: "\(at).\(field)")
+          if let math { c.problems += math.problems(inText: text, field: "\(at).\(field)") }
+          c.problems += TexText.asciiMath(text, field: "\(at).\(field)")
+        }
+        var spec: YAMLMap = ["type": "check", "v": 1, "answer": .string(answer)]
+        if let solution { spec["solution"] = .string(solution) }
+        // 답을 계산으로 확인한다: verify.expr 의 값이 verify.equals 와 같아야 한다
+        if let v = raw["verify"] ?? inner?["verify"], let expr = AgentJSON.string(v["expr"]), let equals = AgentJSON.string(v["equals"]) {
+          c.problems += DerivationCheck.problems(
+            steps: [.init(expr: expr, approx: false), .init(expr: equals, approx: equals.contains("."))], vars: [:], equation: nil, solution: [:],
+            field: "\(at).verify")
+          spec["verify"] = ["expr": .string(expr), "equals": .string(equals)]
+        }
+        let prov = AgentJSON.string(raw["prov"]) ?? "added"
+        units.append(DraftUnit(kind: .check, from: from, prov: prov, text: question, spec: spec))
+      case .block where AgentJSON.string(raw["block"]?["type"]) == "derivation":
+        guard let block = raw["block"], let title = AgentJSON.string(block["title"]) else {
+          c.problems.append("\(at).block.title 이 없습니다")
+          continue
+        }
+        c.problems += TextChecks.englishProblems(title, field: "\(at).block.title")
+        var vars: [String: ClosedRange<Double>] = [:]
+        var varsYAML = YAMLMap([])
+        for (name, range) in block["vars"]?.objectValue ?? [:] {
+          let r = AgentJSON.numbers(range)
+          guard r.count == 2, r[0] < r[1] else {
+            c.problems.append("\(at).block.vars.\(name) 는 [아래, 위] 두 수다")
+            continue
+          }
+          vars[name] = r[0]...r[1]
+          varsYAML[name] = .array([.double(r[0]), .double(r[1])])
+        }
+        let rawSteps = block["steps"]?.arrayValue ?? []
+        if rawSteps.count < 2 { c.problems.append("\(at).block.steps: 풀이 단계가 둘 이상 있어야 한다") }
+        var steps: [DraftUnit] = []
+        var checks: [DerivationCheck.Step] = []
+        for (j, st) in rawSteps.enumerated() {
+          guard let tex = AgentJSON.string(st["tex"]) else {
+            c.problems.append("\(at).block.steps[\(j)].tex 가 없습니다")
+            continue
+          }
+          // 까닭은 why 에 쓴다 (page.yaml 의 저장 모양인 text 로 써도 받는다)
+          let why = AgentJSON.string(st["why"]) ?? AgentJSON.string(st["text"])
+          if why == nil { c.problems.append("\(at).block.steps[\(j)].why 가 없습니다 (그 단계를 하는 까닭, 영어 한 문장)") }
+          if let problem = math?.problem(tex, display: true) { c.problems.append("\(at).block.steps[\(j)].tex: 수식을 그릴 수 없습니다: \(problem)") }
+          c.problems += TextChecks.englishProblems(tex, field: "\(at).block.steps[\(j)].tex")
+          if let why {
+            c.problems += TextChecks.englishProblems(why, field: "\(at).block.steps[\(j)].why")
+            if let math { c.problems += math.problems(inText: why, field: "\(at).block.steps[\(j)].why") }
+            c.problems += TexText.asciiMath(why, field: "\(at).block.steps[\(j)].why")
+          }
+          let expr = AgentJSON.string(st["expr"])
+          let approx = tex.contains("\\approx") || st["approx"]?.boolValue == true
+          checks.append(.init(expr: expr, approx: approx))
+          var spec: YAMLMap = ["tex": .string(tex)]
+          if let expr { spec["expr"] = .string(expr) }
+          if approx { spec["approx"] = .bool(true) }
+          steps.append(DraftUnit(kind: .step, from: from, prov: "source", text: why, spec: spec))
+        }
+        let equation = AgentJSON.string(block["check"]?["equation"])
+        var solution: [String: String] = [:]
+        for (k, v) in block["check"]?["solution"]?.objectValue ?? [:] { if let t = v.stringValue ?? v.numberValue.map({ YAML.formatNumber($0) }) { solution[k] = t } }
+        c.problems += DerivationCheck.problems(steps: checks, vars: vars, equation: equation, solution: solution, field: "\(at).block")
+        if checks.allSatisfy({ $0.expr == nil }) && equation == nil {
+          c.problems.append("\(at).block: 계산으로 확인할 수 있게 단계의 expr 이나 check 를 하나 이상 둔다")
+        }
+        var spec: YAMLMap = ["type": "derivation", "v": 1, "title": .string(title)]
+        if !varsYAML.isEmpty { spec["vars"] = .map(varsYAML.with(style: .flow)) }
+        if let equation {
+          spec["check"] = .map(["equation": .string(equation), "solution": .map(YAMLMap(solution.sorted { $0.key < $1.key }.map { ($0.key, .string($0.value)) }))])
+        }
+        units.append(DraftUnit(kind: .block, from: from, prov: "source", spec: spec))
+        units += steps
       case .note:
         guard let noteText = AgentJSON.string(raw["note"]), let note = NoteKind(rawValue: noteText) else {
           c.problems.append("\(at).note 는 \(NoteKind.allCases.map(\.rawValue).joined(separator: ", ")) 가운데 하나다")
@@ -255,7 +383,8 @@ public enum PageBuild {
         c.problems += TextChecks.englishProblems(text, field: "\(at).text")
         for phrase in TextChecks.materialPhrases(text) { c.problems.append("\(at).text: 원래 자료가 있어야만 통하는 말입니다 (\"\(phrase)\")") }
         if let math { c.problems += math.problems(inText: text, field: "\(at).text") }
-        units.append(DraftUnit(kind: .note, from: from, prov: prov, text: text, note: note, tex: nil))
+        c.problems += TexText.asciiMath(text, field: "\(at).text")
+        units.append(DraftUnit(kind: .note, from: from, prov: prov, text: text, note: note))
       case .block where AgentJSON.string(raw["block"]?["type"]) == "figure":
         guard let file = AgentJSON.string(raw["block"]?["file"]), !file.contains("/"), !file.hasPrefix("."), file.hasSuffix(".html") else {
           c.problems.append("\(at).block.file 은 out/figures/ 안의 .html 파일 이름이다")
@@ -280,14 +409,15 @@ public enum PageBuild {
         if let caption {
           c.problems += TextChecks.englishProblems(caption, field: "\(at).caption")
           if let math { c.problems += math.problems(inText: caption, field: "\(at).caption") }
+          c.problems += TexText.asciiMath(caption, field: "\(at).caption")
         }
         if TextChecks.hasHangul(code) { c.problems.append("\(at).block.file: 그림 안의 글자는 영어다. 한글이 섞였습니다") }
         units.append(
-          DraftUnit(kind: .block, from: from, prov: "source", text: nil, note: nil, tex: nil, figure: DraftFigure(file: file, title: title, code: code), caption: caption))
+          DraftUnit(kind: .block, from: from, prov: "source", figure: DraftFigure(file: file, title: title, code: code), caption: caption))
       case .block:
         let type = AgentJSON.string(raw["block"]?["type"])
         guard type == "math" else {
-          c.problems.append("\(at).block.type 은 math 나 figure 다")
+          c.problems.append("\(at).block.type 은 math, derivation, figure 가운데 하나다")
           continue
         }
         guard var tex = AgentJSON.string(raw["block"]?["tex"]) else {
@@ -298,32 +428,33 @@ public enum PageBuild {
         if tex.hasPrefix("\\[") && tex.hasSuffix("\\]") { tex = String(tex.dropFirst(2).dropLast(2)).trimmingCharacters(in: .whitespacesAndNewlines) }
         if let problem = math?.problem(tex, display: true) { c.problems.append("\(at).block.tex: 수식을 그릴 수 없습니다: \(problem)") }
         c.problems += TextChecks.englishProblems(tex, field: "\(at).block.tex")
-        units.append(DraftUnit(kind: .block, from: from, prov: "source", text: nil, note: nil, tex: tex))
+        units.append(DraftUnit(kind: .block, from: from, prov: "source", tex: tex))
       }
     }
-    for id in concept.units.map(\.id) {
-      switch paras[id] ?? 0 {
-      case 0: c.problems.append("원문 단위 \(id) 의 문단(para)이 없습니다. 원문 단위마다 문단 하나를 둔다")
-      case 1: break
-      default: c.problems.append("원문 단위 \(id) 의 문단(para)이 둘 이상입니다")
-      }
-    }
-    if c.problems.isEmpty, let titleKo { c.draft = Draft(titleKo: titleKo, units: units) }
-    return c
+    return (units, paras, c.problems)
   }
 
   // MARK: - 조합
 
   // 이전 페이지의 단위 id 를 이어 쓴다. (종류, 원문 단위, 그 안의 차례)가 같은 단위는 같은 id 이고, 내용이 바뀌었으면 판을 올린다.
   // 바뀌거나 빠진 이전 판은 history.jsonl 에 덧붙인다.
-  static func assemble(_ draft: Draft, concept: Concept, old: Page?, provenance: YAMLMap, at: String = Clock.isoLocal()) -> (
-    page: Page, history: [JSONValue], figures: [(path: String, code: String)]
-  ) {
+  // 살아 있는 요구(living)가 적용된 이전 단위는 원문 단위가 그대로면 그대로 옮긴다. 원문 단위가 바뀌었으면 새로 만들고 그 요구를 recheck 로 돌려준다.
+  // 요구로 더해진 단위(inserting: 예시 더, 그림으로)는 초안의 단위와 짝짓지 않고, 이전 페이지에서 바로 앞에 있던 단위 뒤에 다시 넣는다.
+  // 요구로 새 판이 된 풀이 블록은 그 단계들과 함께 옮기고, 초안의 그 풀이 단계는 버린다.
+  static func assemble(
+    _ draft: Draft, concept: Concept, old: Page?, provenance: YAMLMap, living: Set<String> = [], inserting: Set<String> = [],
+    at: String = Clock.isoLocal()
+  ) -> (page: Page, history: [JSONValue], figures: [(path: String, code: String)], recheck: [String]) {
     let unitByID = Dictionary(concept.units.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     func key(_ kind: PageUnitKind, _ from: String, _ n: Int) -> String { "\(kind.rawValue)|\(from)|\(n)" }
+    let oldUnits = old?.units ?? []
+    func isLiving(_ u: PageUnit) -> Bool { !Set(u.directives).isDisjoint(with: living) }
+    func isInserted(_ u: PageUnit) -> Bool { !Set(u.directives).isDisjoint(with: inserting) }
+    let livingBlocks = Set(oldUnits.filter { $0.isDerivation && isLiving($0) && !isInserted($0) }.map(\.id))
+    func isOwnedStep(_ u: PageUnit) -> Bool { u.parent.map(livingBlocks.contains) == true }
     var oldByKey: [String: PageUnit] = [:]
     var counts: [String: Int] = [:]
-    for u in old?.units ?? [] {
+    for u in oldUnits where !isInserted(u) && !isOwnedStep(u) {
       let base = "\(u.kind.rawValue)|\(u.fromUnit)"
       counts[base, default: 0] += 1
       oldByKey[key(u.kind, u.fromUnit, counts[base]!)] = u
@@ -334,8 +465,12 @@ public enum PageBuild {
     var history: [JSONValue] = []
     var kept: Set<String> = []
     var codes: [String: String] = [:]
+    var recheck: [String] = []
+    var skippingSteps = false
     for d in draft.units {
       guard let source = unitByID[d.from] else { continue }
+      if d.kind == .step && skippingSteps { continue }
+      skippingSteps = false
       let base = "\(d.kind.rawValue)|\(d.from)"
       counts[base, default: 0] += 1
       let previous = oldByKey[key(d.kind, d.from, counts[base]!)]
@@ -347,6 +482,12 @@ public enum PageBuild {
           claims: source.claims, conditions: source.conditions)
       case .note:
         unit = PageUnit(id: "", rev: 1, kind: .note, from: "\(source.id)@\(source.hash)", prov: d.prov, text: d.text, note: d.note)
+      case .step:
+        unit = PageUnit(id: "", rev: 1, kind: .step, from: "\(source.id)@\(source.hash)", prov: "source", text: d.text, block: d.spec)
+      case .check:
+        unit = PageUnit(id: "", rev: 1, kind: .check, from: "\(source.id)@\(source.hash)", prov: d.prov, text: d.text, block: d.spec)
+      case .block where d.spec != nil:
+        unit = PageUnit(id: "", rev: 1, kind: .block, from: "\(source.id)@\(source.hash)", prov: "source", block: d.spec)
       case .block:
         if let f = d.figure {
           let block: YAMLMap = ["type": "figure", "v": 1, "title": .string(f.title), "code_hash": .string(Hash.short(Data(f.code.utf8))), "parts": .int(FigureFrame.partsVersion)]
@@ -354,6 +495,21 @@ public enum PageBuild {
         } else {
           unit = PageUnit(id: "", rev: 1, kind: .block, from: "\(source.id)@\(source.hash)", prov: "source", block: ["type": "math", "v": 1, "tex": .string(d.tex ?? "")])
         }
+      }
+      if let previous, isLiving(previous) {
+        if previous.fromHash == source.hash {
+          kept.insert(previous.id)
+          units.append(previous)
+          if livingBlocks.contains(previous.id) {
+            for s in oldUnits where s.parent == previous.id {
+              kept.insert(s.id)
+              units.append(s)
+            }
+            skippingSteps = true
+          }
+          continue
+        }
+        recheck += previous.directives.filter(living.contains)
       }
       if let previous {
         kept.insert(previous.id)
@@ -377,10 +533,38 @@ public enum PageBuild {
       }
       units.append(unit)
     }
+    // 요구로 더해졌거나 짝을 찾지 못한 살아 있는 이전 단위를 다시 넣는다. 이전 페이지에서 바로 앞에 있던 단위 뒤에 둔다.
+    // 다시 만든 풀이 블록(id 가 남은 것)의 옛 단계는 넣지 않는다.
+    for (i, u) in oldUnits.enumerated() where !kept.contains(u.id) && isLiving(u) {
+      if let parent = u.parent, isOwnedStep(u), units.contains(where: { $0.id == parent }) { continue }
+      guard let source = unitByID[u.fromUnit] else {
+        recheck += u.directives.filter(living.contains)
+        continue
+      }
+      if u.fromHash != source.hash { recheck += u.directives.filter(living.contains) }
+      var at: Int?
+      for prior in oldUnits[..<i].reversed() {
+        guard let index = units.firstIndex(where: { $0.id == prior.id }) else { continue }
+        at = index + 1
+        // 앞 단위가 풀이 블록이나 그 단계면 이어지는 단계들 뒤에 둔다 (초안의 단계는 아직 parent 가 없다)
+        while let j = at, j < units.count, units[j].kind == .step, prior.isDerivation || prior.kind == .step { at = j + 1 }
+        break
+      }
+      let fallback = units.lastIndex { $0.fromUnit == u.fromUnit }.map { $0 + 1 } ?? units.count
+      units.insert(u, at: min(at ?? fallback, units.count))
+      kept.insert(u.id)
+    }
+    // 풀이 단계는 앞의 풀이 블록에 속한다
+    var parent: String?
+    for i in units.indices {
+      if units[i].isDerivation { parent = units[i].id }
+      if units[i].kind == .step { units[i].block?["parent"] = parent.map(YAMLValue.string) }
+      if units[i].kind != .step && !units[i].isDerivation { parent = nil }
+    }
     for u in old?.units ?? [] where !kept.contains(u.id) { history.append(historyLine(u, reason: "removed", at: at, provenance: provenance)) }
     return (
       Page(concept: concept.id, titleKo: draft.titleKo, nextID: next, units: units, provenance: provenance), history,
-      codes.keys.sorted().map { ($0, codes[$0]!) }
+      codes.keys.sorted().map { ($0, codes[$0]!) }, Array(Set(recheck)).sorted()
     )
   }
 

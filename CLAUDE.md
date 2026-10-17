@@ -30,6 +30,7 @@ mac/
   Jindesk/                  앱(화면, 학습 페이지 웹 보기, 그림 검사기(화면 밖 WKWebView), 메뉴 막대, Sparkle 업데이트, 명령줄 모드, 화면 찍기)
   JindeskKitTests/          엔진 시험 (Swift Testing)
   scripts/release.sh        릴리즈 (docs/UPDATES.md)
+  scripts/make-icon.sh      앱 아이콘을 다시 그려 Jindesk/Assets.xcassets 에 넣는다 (그림은 make-icon.swift)
 ```
 
 ## 빌드와 시험

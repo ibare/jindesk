@@ -167,6 +167,28 @@ struct StatusFooter: View {
         Label("준비가 덜 된 것이 있습니다. 관리자에게 알려 주세요.", systemImage: "exclamationmark.triangle")
           .font(.caption).foregroundStyle(.orange)
       }
+      // 데이터 리포에 올리지 못했거나 받지 못했다 (DATA.md 의 데이터 리포)
+      if let problem = model.repoProblem {
+        VStack(alignment: .leading, spacing: 4) {
+          Label(model.repo?.error != nil ? "데이터 리포에 올리지 못했습니다" : "데이터 리포에서 받지 못했습니다", systemImage: "exclamationmark.icloud")
+            .font(.caption).foregroundStyle(.orange)
+          Text(problem).font(.caption2).foregroundStyle(.secondary).lineLimit(4).textSelection(.enabled)
+          Button(model.repoSyncing ? "올리는 중…" : "다시 올리기") { model.syncNow() }
+            .controlSize(.small)
+            .disabled(model.repoSyncing)
+        }
+      }
+      // 자료 버킷에 올리지 못했거나 받지 못했다 (DATA.md 의 자료 버킷)
+      if let problem = model.bucket?.error {
+        VStack(alignment: .leading, spacing: 4) {
+          Label("자료 버킷에 올리지 못했습니다", systemImage: "exclamationmark.icloud")
+            .font(.caption).foregroundStyle(.orange)
+          Text(problem).font(.caption2).foregroundStyle(.secondary).lineLimit(4).textSelection(.enabled)
+          Button(model.bucketSyncing ? "올리는 중…" : "다시 올리기") { model.syncBucket() }
+            .controlSize(.small)
+            .disabled(model.bucketSyncing)
+        }
+      }
       Text("Jindesk \(model.app.app)").font(.caption2).foregroundStyle(.tertiary)
     }
     .frame(maxWidth: .infinity, alignment: .leading)

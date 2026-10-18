@@ -1,6 +1,6 @@
 # Jindesk 아키텍처
 
-학교 자료를 격리된 headless Claude Code(`claude -p`)로 읽어 정리하고, 그 결과를 학생이 공부하는 화면으로 펼치는 Mac 앱이다. 작업은 학생 맥에서 돈다.
+학교 자료를 격리된 headless Claude Code(`claude -p`)로 읽어 정리하고, 그 결과를 학생이 공부하는 화면으로 펼치는 Mac 앱이다. 작업은 학생 맥에서 돈다. 맥 앱은 데이터 폴더를 비공개 GitHub 리포로 올리고, 폰 앱(iOS)은 그것을 받아 읽기만 한다(`MOBILE.md`).
 
 ## 원칙
 
@@ -15,7 +15,7 @@
 7. **영어가 원문, 한국어는 문단 곁에.** 학습 페이지는 영어로 쓰고, 한국어는 단위마다 곁 층으로 둔다.
 8. **바뀐 곳만 다시, 요구는 남긴다.** 단위마다 id, 판, 어디서 왔는지의 해시가 있다. 요구는 데이터로 남는다.
 9. **파일이 원본이다.** YAML, JSONL, JSON 파일이 원본이고 화면은 그것을 조합해 그린다. SQLite 는 다시 만들 수 있는 색인이다.
-10. **쓰는 사람과 고치는 사람이 다르다.** 학생이 쓰고 관리자가 고친다. 관리자가 고친 것은 릴리즈로 학생 맥에 간다. 학생의 기록은 관리자가 학생 맥이나 백업에서 직접 본다.
+10. **쓰는 사람과 고치는 사람이 다르다.** 학생이 쓰고 관리자가 고친다. 관리자가 고친 것은 릴리즈로 학생 맥에 간다. 학생의 기록은 관리자가 학생 맥이나 백업, 데이터 리포에서 직접 본다.
 
 ## 전체 구조
 
@@ -38,13 +38,27 @@ Jindesk.app (학생 맥)
   Index/      SQLite 색인과 검색 (캐시의 index.sqlite, 영어·한국어 trigram FTS5)
   Learner/    학생의 코멘트(comments.jsonl)와 요구(directives.jsonl)
   Backup/     백업 만들기와 되살리기
+  Sync/       데이터 리포: 앱 설정의 리포 연결(클론, init), 커밋과 올리기, 받기(fast-forward), 뺄 파일 적기. 자료 버킷: 원본 자료와 쪽 이미지를 GCS 에 올리고 받기
   Update/     Sparkle 연결, 작업 중 설치 미루기
   Migration/  스키마 버전, 마이그레이션 실행과 검증
   Util/       YAML, JSON, 해시, 원자적 쓰기
   │
   ├─ claude -p (작업마다 격리된 작업 공간)
+  ├─ git (데이터 폴더에서 커밋하고 올린다)
+  ├─ 자료 버킷 GCS (원본 자료와 쪽 이미지를 올린다)
   └─ 데이터 폴더 ~/Jindesk/ · 캐시 · 작업 공간 (DATA.md)
+        │ git push
+        ▼
+  데이터 리포 (비공개 GitHub 리포)
+        │ GitHub API 로 바뀐 파일만 받는다
+        ▼
+Jindesk iOS 앱 (학생 폰, 읽기만)
+  화면 (SwiftUI) ── 과목 → 개념 목록 → 학습 페이지 (같은 렌더러, 읽기 전용)
+  과목 개념 지도, 출처의 쪽 이미지(누를 때 받는다)
+  받아 둔 사본 (앱 지원 폴더의 mirror/)
 ```
+
+폰 앱은 자세히 `MOBILE.md`에 있다.
 
 앱 번들 하나에 앱, 명령줄 모드, 훅 실행 파일, 작업 지침, 렌더러가 함께 들어간다.
 
@@ -101,7 +115,7 @@ Assayer 의 코드를 옮겨 와 고친다. 공유 패키지로 떼지는 않는
 | `AssayerKit/Agent/AwakeTimer.swift` | `Agent/` | 그대로 |
 | `AssayerKit/Agent/Readability.swift` | `Agent/ReaderTest.swift` | 학생 독자 시험. 독자 수준(MYP 10, DP SL, DP HL)을 받고, "슬라이드 3 참고"처럼 원래 자료가 있어야만 통하는 말을 기계적으로 찾는다 |
 | `AssayerKit/Guard/*`, `AssayerGuard/` | `Guard/`, `JindeskGuard/` | 금지어 검사를 뺀다. 로컬·사설망 주소 막기와 기록만 남긴다 (`DECISIONS.md` 24) |
-| `AssayerKit/Process/*` | `Process/` | 그대로. 도구 찾기에서 `gh`, `git`을 빼고 Keynote, LibreOffice(`soffice`)를 더한다 |
+| `AssayerKit/Process/*` | `Process/` | 그대로. 도구 찾기에서 `gh`를 빼고 Keynote, LibreOffice(`soffice`)를 더한다. `git`은 데이터 리포에 쓴다 |
 | `AssayerKit/Config/Keychain.swift` | `Config/` | 그대로. 서비스 이름 `com.mintae.Jindesk` |
 | `AssayerKit/Config/DataRoot.swift` | `Config/DataFolder.swift` | 데이터 폴더 고르기와 기억. iCloud 동기화 폴더 경고를 더한다 |
 | `AssayerKit/Config/DotEnv.swift` | 가져오지 않는다 | `.env`를 쓰지 않는다 |
@@ -120,7 +134,7 @@ Assayer 의 코드를 옮겨 와 고친다. 공유 패키지로 떼지는 않는
 ```
 docs/                       설계 문서
 jobs/<종류>/INSTRUCTIONS.md 작업 지침. 빌드할 때 앱 번들에 들어간다. 내용을 바꾸면 파일 위의 버전을 올린다
-renderer/                   학습 페이지 렌더러. 번들 JS·CSS, KaTeX, 글 블록 렌더러, 그림 블록 틀과 공통 부품
+renderer/                   학습 페이지 렌더러. 번들 JS·CSS, KaTeX, 글 블록 렌더러, 그림 블록 틀과 공통 부품. 맥과 폰 앱이 함께 쓴다
 schemas/<스키마 버전>/       데이터 파일의 JSON Schema. 러너 검증과 마이그레이션이 쓴다
 mac/
   project.yml               XcodeGen 정의 (Jindesk.xcodeproj 는 생성물이라 커밋하지 않는다)
@@ -129,11 +143,18 @@ mac/
   Jindesk/                  앱 (화면, WKWebView, 메뉴 막대, 명령줄 모드)
   JindeskKitTests/          엔진 시험
   scripts/release.sh        릴리즈
+ios/
+  project.yml               XcodeGen 정의 (JindeskMobile.xcodeproj 는 생성물이라 커밋하지 않는다). mac/JindeskKit 의 일부 파일을 함께 빌드한다
+  JindeskMobile/            폰 앱 (화면, 데이터 리포 받기, 학습 페이지 웹 보기)
+  JindeskMobileTests/       받기 시험
 ```
 
 ## 보안과 개인정보
 
-- 학생의 데이터는 학생 맥의 데이터 폴더에만 있다.
+- 학생의 데이터는 학생 맥의 데이터 폴더와, 그것을 올려 두는 비공개 데이터 리포에만 있다. 폰 앱은 그 가운데 읽는 데 필요한 것만 받아 둔다.
+- 데이터 리포는 그 리포만 읽고 쓸 수 있는 fine-grained 토큰으로 올린다. 토큰은 키체인에 두고 git 을 띄울 때만 넘기며 `.git/config`에는 적지 않는다. 에이전트에게는 넘기지 않는다. 폰 앱은 그 리포만 읽을 수 있는 토큰을 폰의 키체인에 둔다.
+- 어느 리포에 올릴지는 그 맥의 앱 설정에 있다. 개발 맥은 시험 리포, 학생 맥은 실제 리포에 연결한다(`DECISIONS.md` 28).
+- 원본 자료와 쪽 이미지는 자료 버킷(GCS)에 둔다. 맥은 쓰기용, 폰은 읽기 전용 HMAC 키를 각자 키체인에 둔다. 버킷도 개발용과 실제를 나눈다(`DECISIONS.md` 31).
 - 이 리포는 공개다. 리포와 릴리즈에는 학생의 자료, 기록, 이름이 들어가지 않는다.
 - Sparkle 의 EdDSA 비밀 키와 공증 자격 증명은 관리자 맥의 키체인에만 있다.
 - 에이전트의 웹 호출은 레퍼런스 찾기 한 곳뿐이고, 로컬 주소 검사를 거친다. 검색어와 조회 주소에 학교나 단원 이름이 들어가도 막지 않는다(`DECISIONS.md` 24). 러너는 그림 블록을 만들 때 그 그림이 부르는 라이브러리를 받는다.

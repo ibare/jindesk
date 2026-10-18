@@ -25,3 +25,29 @@ enum DataFolderStore {
     defaults.set(DataFolder(url).path, forKey: pathKey)
   }
 }
+
+// 이 맥의 앱 설정에서 연결한 자료 버킷 (DATA.md 의 자료 버킷). 키는 키체인(BucketKeyStore.mac)에 둔다.
+enum BucketLinkStore {
+  static let key = "filesBucket"
+
+  static func load() -> BucketLink? {
+    AppPaths.defaults.data(forKey: key).flatMap { try? JSONDecoder().decode(BucketLink.self, from: $0) }
+  }
+
+  static func save(_ link: BucketLink) {
+    AppPaths.defaults.set(try? JSONEncoder().encode(link), forKey: key)
+  }
+}
+
+// 이 맥의 앱 설정에서 연결한 데이터 리포 (DATA.md 의 데이터 리포). 데이터 폴더 안에는 두지 않는다. 명령줄 모드도 읽는다.
+enum RepoLinkStore {
+  static let key = "dataRepoLink"
+
+  static func load() -> RepoLink? {
+    AppPaths.defaults.data(forKey: key).flatMap { try? JSONDecoder().decode(RepoLink.self, from: $0) }
+  }
+
+  static func save(_ link: RepoLink) {
+    AppPaths.defaults.set(try? JSONEncoder().encode(link), forKey: key)
+  }
+}

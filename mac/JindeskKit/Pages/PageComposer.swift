@@ -220,6 +220,8 @@ public enum PageComposer {
         "id": .string(d.id), "op": .string(d.op.rawValue), "label": .string(d.op.label), "status": .string(d.status.rawValue),
         "statusLabel": .string(d.status.label), "note": .string(d.note ?? ""),
       ]
+      // 후보는 작업 기록(records/regen)에 있다. 폰 앱은 기록을 받지 않고 비교도 보이지 않는다 (MOBILE.md).
+      #if os(macOS)
       if d.status == .candidate, let job = d.job, let data = input.data {
         let record = data.record(JobKind.regen.rawValue, job)
         if let cand = Regen.Candidate.read(record.appending(path: "candidate.json")) {
@@ -234,6 +236,7 @@ public enum PageComposer {
         }
         if let checks = try? JSONValue.parse(Data(contentsOf: record.appending(path: "checks.json"))) { o["checks"] = checks["checks"] ?? .array([]) }
       }
+      #endif
       return .object(o)
     }
   }

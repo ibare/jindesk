@@ -49,10 +49,13 @@ public enum Doctor {
     public var folders: AppFolders?
     public var claudePath: String?
     public var app: AppVersion?
+    // 앱 설정에서 연결한 데이터 리포와 자료 버킷
+    public var repo: RepoLink?
+    public var bucket: BucketLink?
 
     public init(
       guardHelper: String? = nil, instructions: InstructionSource? = nil, schemas: URL? = nil, data: DataFolder? = nil, folders: AppFolders? = nil,
-      claudePath: String? = nil, app: AppVersion? = nil
+      claudePath: String? = nil, app: AppVersion? = nil, repo: RepoLink? = nil, bucket: BucketLink? = nil
     ) {
       self.guardHelper = guardHelper
       self.instructions = instructions
@@ -61,6 +64,8 @@ public enum Doctor {
       self.folders = folders
       self.claudePath = claudePath
       self.app = app
+      self.repo = repo
+      self.bucket = bucket
     }
   }
 
@@ -100,9 +105,25 @@ public enum Doctor {
     let base = ChildEnvironment.base(toolDirectories: ToolLocator.commonDirectories())
     items.append(await processGroupCheck(environment: base))
 
-    if let data = input.data { items += dataCheck(data, app: input.app) }
+    if let data = input.data {
+      items += dataCheck(data, app: input.app)
+      items.append(await DataRepo.check(input.repo, data: data))
+      items.append(await bucketCheck(input.bucket))
+    }
     if let folders = input.folders { items.append(foldersCheck(folders)) }
     return items
+  }
+
+  // 자료 버킷에 쓰기용 키로 닿는지 (DATA.md 의 자료 버킷)
+  static func bucketCheck(_ link: BucketLink?) async -> CheckItem {
+    guard let link, !link.name.isEmpty else { return CheckItem("자료 버킷", .warn, "연결하지 않았습니다. 원본 자료와 쪽 이미지를 올리지 않습니다 (SETUP.md 의 자료 버킷)") }
+    guard let key = BucketKeyStore.mac.read() else { return CheckItem("자료 버킷", .fail, "\(link.name) · 키가 키체인에 없습니다") }
+    do {
+      try await GCSClient(bucket: link.name, key: key).check()
+      return CheckItem("자료 버킷", .ok, link.name)
+    } catch {
+      return CheckItem("자료 버킷", .fail, "\(link.name) · \(error.localizedDescription)")
+    }
   }
 
   // claude 위치와 최소 버전

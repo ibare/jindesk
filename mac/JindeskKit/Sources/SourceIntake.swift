@@ -174,6 +174,8 @@ public enum SourceIntake {
         if n == total || n % 20 == 0 { await context.log(.info, "\(candidate.name): \(n)/\(total)쪽") }
       }
       for p in pages.texts { try FileOps.write(p.text.isEmpty ? "" : p.text + "\n", to: staging.pageText(p.page)) }
+      // 맥과 폰이 보는 쪽 이미지 (HEIC, 긴 변 2000). 자료 버킷에 올린다 (DATA.md 의 자료 버킷).
+      try SourcePages.makeViewImages(SourceFolder(id: id, url: staging.url), pages: pages.count, folders: context.folders)
 
       let meta = SourceMeta(
         id: id, original: .init(name: candidate.name, bytes: candidate.bytes, sha256: String(candidate.sha256.prefix(16))),

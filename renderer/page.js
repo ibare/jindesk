@@ -3,6 +3,7 @@
 //   openSource { source, page }   출처 칩을 눌렀다
 //   openConcept { id }            앞뒤 개념 지도의 이웃이나 개념 카드를 눌렀다
 //   openMap { concept }           앞뒤 개념 지도의 "개념 지도에서 보기"를 눌렀다
+// page.readOnly 이면(폰 앱) 쓰는 단추(코멘트 남기기·지우기, 다시 만들기, 새 판 받아들이기)를 그리지 않는다.
 //   ready                         그릴 준비가 됐다
 (function () {
   "use strict";
@@ -121,6 +122,8 @@
 
   // 코멘트 스레드: 단위 아래에 열린다. 메모, 질문(물어보기가 답한다), 이상해요.
   var current = null, openThreads = {};
+  // 읽기 전용 보기(폰 앱)가 아닌가 (docs/PAGES.md 의 읽기 전용)
+  function canWrite() { return !(current && current.readOnly); }
   function plain(text) { return String(text || "").replace(/\\[()\[\]]/g, "").replace(/\s+/g, " ").trim().slice(0, 120); }
 
   function threadNode(unitID, rev, quote, unit) {
@@ -131,10 +134,12 @@
       var head = el("div", "cm-head");
       head.appendChild(el("span", "kind " + c.kind, esc(c.label)));
       head.appendChild(el("time", null, esc(String(c.at).slice(5, 16).replace("T", " "))));
-      var del = el("button", "cm-del", "지우기");
-      del.type = "button";
-      del.addEventListener("click", function () { post({ type: "deleteComment", id: c.id }); });
-      head.appendChild(del);
+      if (canWrite()) {
+        var del = el("button", "cm-del", "지우기");
+        del.type = "button";
+        del.addEventListener("click", function () { post({ type: "deleteComment", id: c.id }); });
+        head.appendChild(del);
+      }
       item.appendChild(head);
       if (c.old) item.appendChild(el("div", "cm-old", "이전 판에 단 코멘트 · “" + esc(c.quote) + "”"));
       item.appendChild(el("div", "cm-text", esc(c.text)));
@@ -144,7 +149,7 @@
         item.appendChild(rep);
       });
       if (c.waiting) item.appendChild(el("div", "cm-waiting", "답을 쓰는 중이에요…"));
-      if (c.kind === "flag" && unit && unit.regen && unit.regen.length) {
+      if (canWrite() && c.kind === "flag" && unit && unit.regen && unit.regen.length) {
         var send = el("button", "cm-regen", "다시 만들기로 보내기");
         send.type = "button";
         send.addEventListener("click", function () {
@@ -154,20 +159,9 @@
       }
       t.appendChild(item);
     });
+    if (!canWrite()) return t;
+    // 코멘트는 메모만 남긴다 (DECISIONS 30). 이미 남긴 질문과 이상해요는 위 목록에서 읽는다.
     var form = el("div", "cm-form");
-    var kinds = el("div", "seg");
-    var chosen = "memo";
-    [["memo", "메모"], ["ask", "질문"], ["flag", "이상해요"]].forEach(function (k) {
-      var b = el("button", null, k[1]);
-      b.type = "button";
-      b.setAttribute("aria-pressed", String(k[0] === chosen));
-      b.addEventListener("click", function () {
-        chosen = k[0];
-        Array.prototype.forEach.call(kinds.children, function (x) { x.setAttribute("aria-pressed", String(x === b)); });
-        area.placeholder = chosen === "ask" ? "무엇이 궁금한가요? 자료를 보고 답해 드려요" : chosen === "flag" ? "무엇이 이상한가요?" : "나를 위한 메모";
-      });
-      kinds.appendChild(b);
-    });
     var area = document.createElement("textarea");
     area.rows = 2;
     area.placeholder = "나를 위한 메모";
@@ -176,12 +170,11 @@
     send.addEventListener("click", function () {
       var text = area.value.trim();
       if (!text) return;
-      post({ type: "comment", unit: unitID, rev: rev || 1, quote: quote, kind: chosen, text: text });
+      post({ type: "comment", unit: unitID, rev: rev || 1, quote: quote, kind: "memo", text: text });
       area.value = "";
       send.textContent = "남겼어요";
       setTimeout(function () { send.textContent = "남기기"; }, 1500);
     });
-    form.appendChild(kinds);
     form.appendChild(area);
     form.appendChild(send);
     t.appendChild(form);
@@ -191,6 +184,8 @@
   function commentButton(unit, wrap) {
     var unitID = unit.commentUnit || unit.id;
     var list = ((current && current.comments) || {})[unitID] || [];
+    // 읽기 전용이면 코멘트가 있는 단위에만 읽는 단추를 단다
+    if (!canWrite() && !list.length) return null;
     var b = el("button", "g-cm" + (list.length ? " has" : ""), list.length ? "✎ " + list.length : "✎");
     b.type = "button";
     b.title = "코멘트";
@@ -226,7 +221,7 @@
       if (d.status === "applied" || d.status === "accepted") return;
       var row = el("div", "dir " + d.status);
       row.appendChild(el("span", "dir-label", "↻ " + esc(d.label) + " · " + esc(d.statusLabel)));
-      if (d.status === "candidate") {
+      if (d.status === "candidate" && canWrite()) {
         var open = el("button", "dir-open", "새 판 · 비교");
         open.type = "button";
         var panel = null;
@@ -328,8 +323,9 @@
     pc.appendChild(tb);
     if (unit.easy) pc.appendChild(sideButton(unit, "easy", "쉽게", wrap));
     if (unit.detail) pc.appendChild(sideButton(unit, "detail", "자세히", wrap));
-    if (!unit.noComments) pc.appendChild(commentButton(unit, wrap));
-    if (unit.regen && unit.regen.length) pc.appendChild(regenButton(unit));
+    var cb = unit.noComments ? null : commentButton(unit, wrap);
+    if (cb) pc.appendChild(cb);
+    if (canWrite() && unit.regen && unit.regen.length) pc.appendChild(regenButton(unit));
     host.appendChild(pc);
     wrap.appendChild(en);
     if (ko) wrap.appendChild(ko);
@@ -344,7 +340,7 @@
     var head = el("div", "blk-head");
     head.appendChild(el("span", "blk-kind", "Figure"));
     head.appendChild(el("span", "blk-title", esc(unit.figure.title)));
-    if (unit.regen && unit.regen.length) { var rg = regenButton(unit, "↻ 다시 만들기"); rg.classList.add("blk-regen"); head.appendChild(rg); }
+    if (canWrite() && unit.regen && unit.regen.length) { var rg = regenButton(unit, "↻ 다시 만들기"); rg.classList.add("blk-regen"); head.appendChild(rg); }
     f.appendChild(head);
     var frame = document.createElement("iframe");
     frame.className = "fig-frame";
@@ -383,7 +379,7 @@
     var toggle = el("button", "step-toggle", "한 단계씩");
     toggle.type = "button";
     head.appendChild(toggle);
-    if (unit.regen && unit.regen.length) { var rg = regenButton(unit, "↻ 다시 만들기"); rg.classList.add("blk-regen"); head.appendChild(rg); }
+    if (canWrite() && unit.regen && unit.regen.length) { var rg = regenButton(unit, "↻ 다시 만들기"); rg.classList.add("blk-regen"); head.appendChild(rg); }
     b.appendChild(head);
     directiveBadges(unit, b);
     var list = el("ol", "steps");

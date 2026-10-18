@@ -165,7 +165,9 @@ enum SampleFiles {
     #expect(index.contains("| 1 |") && index.contains("2쪽으로 이어짐") && index.contains("마지막 모습"))
     // 쪽 이미지는 캐시에 둔다 (긴 변 1600px)
     let images = FileOps.list(t.folders.pageImages(source.id)).sorted()
-    #expect(images == ["0001.png", "0002.png", "0003.png", "0004.png"])
+    #expect(images == ["0001.png", "0002.png", "0003.png", "0004.png", "view"])
+    // 맥과 폰이 보는 쪽 이미지 (HEIC, 긴 변 2000)
+    #expect(FileOps.list(t.folders.viewImages(source.id)).sorted() == ["0001.heic", "0002.heic", "0003.heic", "0004.heic"])
     let image = CGImageSourceCreateImageAtIndex(CGImageSourceCreateWithURL(t.folders.pageImages(source.id).appending(path: "0001.png") as CFURL, nil)!, 0, nil)!
     #expect(image.width == 1600 && image.height == 900)
     #expect(FileOps.list(t.data.sources).filter { $0.hasPrefix(".") }.isEmpty)

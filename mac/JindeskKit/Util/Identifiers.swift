@@ -93,7 +93,7 @@ public enum Clock {
 extension String {
   var nilIfEmpty: String? { isEmpty ? nil : self }
 
-  var nilIfBlank: String? {
+  public var nilIfBlank: String? {
     let t = trimmingCharacters(in: .whitespacesAndNewlines)
     return t.isEmpty ? nil : t
   }

@@ -6,6 +6,7 @@
 //   Jindesk directive --data <데이터 폴더> (--accept | --keep) <요구 id>
 //   Jindesk migrate --check <백업 폴더나 zip> [--sample <n>] [--keep]
 //   Jindesk backup --out <폴더> [--data <데이터 폴더>]
+//   Jindesk sync [--data <데이터 폴더>]
 //   Jindesk version
 import AppKit
 import ArgumentParser
@@ -18,7 +19,7 @@ struct JindeskCommand: AsyncParsableCommand {
     abstract: "Jindesk 명령줄 모드",
     subcommands: [
       DoctorCommand.self, IntakeCommand.self, ContinueCommand.self, DirectiveCommand.self, FigureCheckCommand.self, OutcomeCheckCommand.self, MigrateCommand.self,
-      BackupCommand.self,
+      BackupCommand.self, SyncCommand.self,
       VersionCommand.self,
     ]
   )
@@ -26,7 +27,7 @@ struct JindeskCommand: AsyncParsableCommand {
 
 @MainActor
 enum CommandLineMode {
-  static let commands: Set<String> = ["doctor", "intake", "continue", "directive", "check-figure", "outcome-check", "migrate", "backup", "version", "help", "--help", "-h"]
+  static let commands: Set<String> = ["doctor", "intake", "continue", "directive", "check-figure", "outcome-check", "migrate", "backup", "sync", "version", "help", "--help", "-h"]
 
   // 첫 인자가 명령이면 명령줄 모드다. "-" 로 시작하는 인자(-snapshotDir, Xcode 가 붙이는 -NSDocumentRevisionsDebugMode 등)만 있으면 앱으로 뜬다.
   // 모르는 명령도 명령줄 모드로 받아 오류를 보인다. 화면 앱으로 떠 버리면 스크립트가 멈춘다.
@@ -79,21 +80,39 @@ enum CommandLineMode {
     return jobs
   }
 
-  // 대기열이 빌 때까지 기다린다. 실패한 작업이 있으면 끝 코드 1.
-  static func waitAll(_ jobs: JobManager) async throws {
+  // 대기열이 빌 때까지 기다린 뒤 데이터 리포에 올린다. 실패한 작업이 있으면 끝 코드 1.
+  // also: 이 전에 끝난 작업 (커밋 글에 함께 적는다)
+  static func waitAll(_ jobs: JobManager, also: [String] = []) async throws {
     var failed = false
+    var done = also
     let previous = jobs.onFinish
     jobs.onFinish = { s in
       previous?(s)
+      done.append(reason(s))
       if s.phase == "failed" { failed = true }
     }
     await jobs.waitUntilIdle()
+    await syncRepo(jobs.data, done)
     if failed { throw ExitCode(1) }
   }
 
-  // --data 를 주지 않으면 앱에서 고른 데이터 폴더
+  // 커밋 글에 적는 작업 이름
+  static func reason(_ s: JobSnapshot) -> String {
+    "\(s.typeLabel) · \(s.title)\(s.phase == "failed" ? " (실패)" : "")"
+  }
+
+  // 앱 설정에서 연결한 데이터 리포에 커밋하고 올린다 (DATA.md 의 데이터 리포). 연결한 데이터 폴더가 아니면 아무것도 하지 않는다.
+  static func syncRepo(_ folder: DataFolder, _ reasons: [String]) async {
+    guard let link = RepoLinkStore.load(), link.owns(folder) else { return }
+    let out = await DataRepo.sync(folder, link: link, token: RepoToken.read(), message: DataRepo.message(reasons))
+    let commit = out.commit.map { "커밋 \($0.prefix(7))" } ?? "바뀐 것 없음"
+    print("· 데이터 리포: \(commit) · \(out.pushed ? "올림" : "올리지 못함")\(out.error.map { " — " + $0 } ?? "")")
+    for f in out.excluded { print("! 데이터 리포에서 뺀 파일 (100MB 이상): \(f)") }
+  }
+
+  // --data 를 주지 않으면 앱에서 연결한 데이터 폴더
   static func dataFolder(_ path: String?) -> DataFolder? {
-    path.map(DataFolder.init(path:)) ?? DataFolderStore.load()
+    path.map(DataFolder.init(path:)) ?? RepoLinkStore.load()?.folder ?? DataFolderStore.load()
   }
 }
 
@@ -128,7 +147,7 @@ struct DoctorCommand: AsyncParsableCommand {
     output.line("실행 파일: \(AppPaths.executable.path)")
     let input = await Doctor.Input(
       guardHelper: AppPaths.guardHelper, instructions: AppPaths.instructions, schemas: AppPaths.schemas, data: CommandLineMode.dataFolder(data),
-      folders: .standard(), claudePath: AdminSettings.load(AppPaths.defaults).claudePath, app: AppPaths.version)
+      folders: .standard(), claudePath: AdminSettings.load(AppPaths.defaults).claudePath, app: AppPaths.version, repo: RepoLinkStore.load(), bucket: BucketLinkStore.load())
     let items = await Doctor.run(input)
     for item in items {
       let mark = switch item.status {
@@ -172,8 +191,15 @@ struct IntakeCommand: AsyncParsableCommand {
     let id = try await jobs.submit(config: config) { try SourceIntake.prepare(request, $0) }
     let end = await jobs.waitForEnd(id)
     print("\(end.phaseLabel): " + (end.counts ?? []).map { "\($0.label) \($0.count)" }.joined(separator: " · "))
-    if end.phase != "done" { throw ExitCode(1) }
-    if follow { try await CommandLineMode.waitAll(jobs) }
+    guard end.phase == "done" else {
+      await CommandLineMode.syncRepo(folder, [CommandLineMode.reason(end)])
+      throw ExitCode(1)
+    }
+    if follow {
+      try await CommandLineMode.waitAll(jobs, also: [CommandLineMode.reason(end)])
+    } else {
+      await CommandLineMode.syncRepo(folder, [CommandLineMode.reason(end)])
+    }
   }
 }
 
@@ -217,9 +243,11 @@ struct DirectiveCommand: AsyncParsableCommand {
     if keep {
       try Regen.keep(folder, directiveID: id)
       print("\(id): 지금 판 유지")
+      await CommandLineMode.syncRepo(folder, ["지금 판 유지 · \(id)"])
     } else {
       let unit = try Regen.accept(folder, directiveID: id)
       print("\(id): 받아들임 (\(unit ?? "-"))")
+      await CommandLineMode.syncRepo(folder, ["새 판 받아들이기 · \(id)"])
     }
   }
 }
@@ -340,6 +368,31 @@ struct BackupCommand: AsyncParsableCommand {
       print("다른 Jindesk 프로세스가 작업 중입니다. 끝나기를 기다립니다…")
     }
     print(url.path)
+  }
+}
+
+// 데이터 폴더의 바뀐 것을 데이터 리포에 커밋하고 올린다 (화면에서는 작업이 끝날 때마다 저절로 한다)
+struct SyncCommand: AsyncParsableCommand {
+  static let configuration = CommandConfiguration(commandName: "sync", abstract: "데이터 폴더를 앱 설정에서 연결한 데이터 리포에 커밋하고 올린다")
+
+  @Option(help: "데이터 폴더. 주지 않으면 앱에서 고른 폴더") var data: String?
+
+  @MainActor
+  func run() async throws {
+    guard let folder = CommandLineMode.dataFolder(data), folder.isInitialized else { throw ValidationError("Jindesk 데이터 폴더를 찾지 못했습니다") }
+    guard let link = RepoLinkStore.load() else {
+      print("데이터 리포를 연결하지 않았습니다. 앱의 관리자 설정에서 연결합니다 (SETUP.md 의 데이터 리포)")
+      throw ExitCode(1)
+    }
+    guard link.owns(folder) else {
+      print("연결한 데이터 폴더(\(link.path))가 아니라 올리지 않습니다")
+      throw ExitCode(1)
+    }
+    let out = await DataRepo.sync(folder, link: link, token: RepoToken.read(), message: "명령줄에서 올리기")
+    print(out.commit.map { "커밋 \($0)" } ?? "바뀐 것이 없습니다")
+    print(out.pushed ? "올렸습니다: \(out.remote)" : "올리지 못했습니다: \(out.error ?? "")")
+    for f in out.excluded { print("100MB 이상이라 뺀 파일: \(f)") }
+    if out.error != nil { throw ExitCode(1) }
   }
 }
 

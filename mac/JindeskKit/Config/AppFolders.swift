@@ -32,6 +32,9 @@ public struct AppFolders: Sendable, Equatable {
   // 자료의 쪽 이미지 (긴 변 1600px PNG). 원본에서 언제든 다시 그릴 수 있어 캐시에 둔다.
   public func pageImages(_ sourceID: String) -> URL { cache.appending(path: "pages").appending(path: sourceID) }
 
+  // 맥과 폰이 보는 쪽 이미지 (HEIC, 긴 변 2000). 자료 버킷에도 올린다 (DATA.md 의 자료 버킷).
+  public func viewImages(_ sourceID: String) -> URL { pageImages(sourceID).appending(path: "view") }
+
   public func prepare() throws {
     for dir in [work, backups, cache] { try FileOps.makeDirectory(dir) }
   }

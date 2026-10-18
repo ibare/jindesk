@@ -9,8 +9,8 @@ struct RootView: View {
     switch model.phase {
     case .starting:
       ProgressView("여는 중…").frame(maxWidth: .infinity, maxHeight: .infinity)
-    case .choosingFolder(let message):
-      FolderSetupView(message: message)
+    case .connecting(let message):
+      RepoSetupView(message: message)
     case .migrating(let message):
       StatusScreen(icon: "arrow.triangle.2.circlepath", title: "데이터를 새 모양으로 바꾸고 있습니다", detail: message, busy: true)
     case .migrationFailed(let message):

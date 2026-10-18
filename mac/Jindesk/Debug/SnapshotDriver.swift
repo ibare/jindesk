@@ -30,8 +30,8 @@
 
     static func scenarios() -> [Scenario] {
       [
-        Scenario(name: "setup") { $0.phase = .choosingFolder(nil) },
-        Scenario(name: "setup-missing", dark: true) { $0.phase = .choosingFolder("데이터 폴더를 찾지 못했습니다: /Users/학생/Jindesk") },
+        Scenario(name: "setup") { $0.phase = .connecting(nil) },
+        Scenario(name: "setup-missing", dark: true) { $0.phase = .connecting("데이터 폴더를 찾지 못했습니다: /Users/학생/Jindesk. 리포를 다시 연결합니다") },
         Scenario(name: "today") { m in
           m.phase = .ready
           m.section = .today

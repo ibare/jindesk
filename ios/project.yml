@@ -1,0 +1,95 @@
+# Jindesk 폰 앱 (docs/MOBILE.md). xcodegen generate 로 JindeskMobile.xcodeproj 를 만든다 (생성물은 커밋하지 않는다).
+name: JindeskMobile
+options:
+  bundleIdPrefix: com.mintae
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6"
+    SWIFT_STRICT_CONCURRENCY: complete
+    IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    DEVELOPMENT_TEAM: 5NK357FRB5
+    # 학생 폰에는 관리자가 Xcode 로 개발 서명해 설치한다 (SETUP.md 의 폰 앱)
+    CODE_SIGN_STYLE: Automatic
+packages:
+  Yams:
+    url: https://github.com/jpsim/Yams
+    exactVersion: 6.2.2
+targets:
+  # 엔진의 읽기 쪽. 맥 앱과 같은 파일(mac/JindeskKit)을 iOS 로 빌드한다. 넣는 것과 넣지 않는 것은 MOBILE.md 의 "엔진을 함께 쓰는 방식".
+  JindeskKit:
+    type: framework
+    platform: iOS
+    sources:
+      - path: ../mac/JindeskKit/Util
+      - path: ../mac/JindeskKit/Library
+      - path: ../mac/JindeskKit/Pages
+      - path: ../mac/JindeskKit/Learner
+      - path: ../mac/JindeskKit/Config
+      - path: ../mac/JindeskKit/Sources
+        includes: [SourceLibrary.swift, Labels.swift, SourceRecord.swift]
+      - path: ../mac/JindeskKit/Migration
+        includes: [SchemaFile.swift]
+      # 자료 버킷에서 쪽 이미지를 받는 GCS 요청
+      - path: ../mac/JindeskKit/Sync
+        includes: [FileBucket.swift]
+    dependencies:
+      - package: Yams
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mintae.JindeskKit
+        GENERATE_INFOPLIST_FILE: YES
+        SKIP_INSTALL: YES
+  JindeskMobile:
+    type: application
+    platform: iOS
+    sources: [JindeskMobile]
+    dependencies:
+      - target: JindeskKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mintae.Jindesk.mobile
+        PRODUCT_NAME: Jindesk
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Jindesk
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.education
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
+        # 아래 "렌더러 넣기"가 리포의 renderer/ 를 읽는다
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    # 학습 페이지 렌더러는 맥 앱과 같은 리포의 renderer/ 다. 앱 번들에 넣는다.
+    postCompileScripts:
+      - name: 렌더러 넣기
+        basedOnDependencyAnalysis: false
+        script: |
+          set -eu
+          resources="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
+          rm -rf "$resources/renderer"
+          cp -R "$SRCROOT/../renderer" "$resources/renderer"
+  # 받기 시험. 앱을 띄우지 않고, 받기 코드(JindeskMobile/Sync)를 시험 묶음에 함께 빌드한다.
+  JindeskMobileTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [JindeskMobileTests, JindeskMobile/Sync]
+    dependencies:
+      - target: JindeskKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mintae.JindeskMobileTests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  JindeskMobile:
+    build:
+      targets:
+        JindeskMobile: all
+        JindeskMobileTests: [test]
+    test:
+      targets: [JindeskMobileTests]

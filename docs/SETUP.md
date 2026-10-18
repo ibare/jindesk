@@ -1,6 +1,6 @@
-# 설치 (학생 맥)
+# 설치 (학생 맥과 폰)
 
-관리자가 학생 맥에서 한 번 한다. 그 뒤의 판은 자동 업데이트로 간다.
+관리자가 학생 맥과 폰에서 한 번 한다. 맥 앱의 다음 판은 자동 업데이트로 간다. 폰 앱은 관리자가 Xcode 로 다시 설치한다(8).
 
 ## 필요한 것
 
@@ -9,6 +9,9 @@
 - 토큰을 낼 Claude 구독 계정.
 - Keynote. PPT 를 PDF 로 바꾼다. 없으면 LibreOffice 를 쓴다.
 - 자료에 따라 수 GB 의 디스크.
+- git. 없으면 `xcode-select --install`로 Command Line Tools 를 넣는다.
+- 데이터 리포를 둘 GitHub 계정. 비공개 리포 하나를 쓴다.
+- 폰 앱을 설치할 관리자 맥의 Xcode 와 유료 개발자 계정.
 
 ## 1. Claude Code 설치
 
@@ -107,21 +110,97 @@ security find-generic-password -s com.mintae.Jindesk -a claude-oauth-token
 
 ## 4. 처음 켜기
 
-1. **데이터 폴더를 고른다.** 기본은 `~/Jindesk`다. iCloud 로 동기화되는 폴더를 고르면 경고가 보인다(`DATA.md`).
+1. **데이터 리포를 연결한다.** 리포와 토큰을 만드는 법과 연결은 5 에 있다. 로컬 위치의 기본은 `~/Jindesk`다. iCloud 로 동기화되는 위치를 고르면 경고가 보인다(`DATA.md`).
 2. **관리자 설정을 채운다.**
    - 모델, 상한, 사용량 미루기 기준. 기본값 그대로 둬도 된다.
 3. **환경 점검.** claude 위치와 버전, 토큰이 키체인에 있는지, Keynote, 데이터 폴더, 캐시를 본다.
 4. **학생이 자료를 넣기 시작한다.** 과목을 따로 등록하지 않는다. 자료를 넣을 때 학년·과목·수준 꼬리표를 붙이면 과목이 생긴다(`DECISIONS.md` 21).
 5. **목차를 만든다.** 과목 가이드, 공개 과목 요약, 선생님의 과정·단원 안내를 받으면 자료 넣기에서 "목차의 근거"로 표시해 넣는다. 목차 만들기가 돌면 관리자가 화면에서 목차를 확인한다.
 
-## 5. 백업
+## 5. 데이터 리포
+
+데이터 폴더는 GitHub 비공개 리포의 클론이다(`DATA.md`의 데이터 리포). 리포와 토큰은 관리자가 만들고, 연결은 앱 설정에서 한다. 그 뒤의 커밋과 올리기는 앱이 한다.
+
+1. **리포를 만든다.** 빈 비공개 리포다. 학생 맥이 쓸 실제 리포와 개발 맥이 쓸 시험 리포를 따로 둔다.
+
+   ```sh
+   gh repo create <주인>/jindesk-data --private
+   gh repo create <주인>/jindesk-data-dev --private
+   ```
+
+2. **쓰기 토큰을 만든다.** GitHub 설정 → Developer settings → Fine-grained personal access tokens 에서 만든다.
+   - Repository access: Only select repositories → 그 맥이 쓸 리포 하나
+   - Permissions: Contents → Read and write (Metadata 는 저절로 읽기가 된다)
+   - 만료는 관리자가 정한다. 만료되면 앱이 올리지 못한다고 알린다.
+   - 학생 맥의 토큰은 실제 리포만, 개발 맥의 토큰은 시험 리포만 고른다.
+3. **앱에서 연결한다.** 처음 켤 때의 화면이나, ⌥ 키를 누른 채 연 관리자 설정의 "데이터와 업데이트" 탭에서 한다.
+   - 리포 주소, 토큰, 로컬 위치(기본 `~/Jindesk`)를 넣고 "연결"을 누른다.
+   - 빈 리포면 앱이 데이터 폴더를 새로 만들어 첫 커밋을 올린다. Jindesk 데이터가 있는 리포면 클론해서 연다.
+   - 리포를 바꿀 때도 같다. 새 리포와 새 로컬 위치를 넣고 연결한다. 이전 리포와 폴더는 그대로 남는다.
+4. **확인.** 같은 탭에 연결한 리포, 마지막으로 올린 때와 커밋, 오류가 보인다. 환경 점검에도 "데이터 리포" 줄이 있다.
+
+- 토큰은 키체인에만 있다. `.git/config`에도 백업 zip 에도 들어가지 않는다.
+- 연결은 그 맥의 앱 설정에 있다. 다른 맥의 데이터 폴더나 백업을 열어도 그 폴더의 원격이 연결한 리포와 다르면 올리지 않는다.
+
+## 6. 자료 버킷
+
+원본 자료와 쪽 이미지는 리포가 아니라 GCS 버킷에 둔다(`DATA.md`의 자료 버킷, `DECISIONS.md` 31). 관리자의 개인 Google 계정 프로젝트에 만든다. 이 맥의 gcloud 가 다른 계정으로 잡혀 있을 수 있으므로, 명령마다 계정과 프로젝트를 준다.
+
+버킷, 서비스 계정, 키를 개발 맥용과 학생 맥용으로 따로 만든다. 개발 맥의 키로 학생의 버킷에 닿지 않게 하려는 것이다. 아래는 하나를 만드는 순서이고, `<이름>`을 바꿔 두 번 한다(예: `jindesk-files`, `jindesk-files-dev`).
+
+```sh
+A=<관리자 개인 계정>
+P=<GCP 프로젝트>
+B=<이름>
+gcloud storage buckets create gs://$B --account=$A --project=$P --location=me-central1 --uniform-bucket-level-access --public-access-prevention
+# 맥이 쓰는 서비스 계정과 폰이 읽는 서비스 계정
+gcloud iam service-accounts create $B-mac --account=$A --project=$P
+gcloud iam service-accounts create $B-phone --account=$A --project=$P
+gcloud storage buckets add-iam-policy-binding gs://$B --account=$A \
+  --member=serviceAccount:$B-mac@$P.iam.gserviceaccount.com --role=roles/storage.objectAdmin
+gcloud storage buckets add-iam-policy-binding gs://$B --account=$A \
+  --member=serviceAccount:$B-phone@$P.iam.gserviceaccount.com --role=roles/storage.objectViewer
+# HMAC 키. 비밀은 만들 때 한 번만 보인다
+gcloud storage hmac create $B-mac@$P.iam.gserviceaccount.com --account=$A --project=$P
+gcloud storage hmac create $B-phone@$P.iam.gserviceaccount.com --account=$A --project=$P
+```
+
+- 프로젝트에 결제 계정이 이어져 있어야 버킷을 만들 수 있다.
+- 맥: 관리자 설정의 "데이터와 업데이트" 탭에서 버킷 이름과 맥용 키(접근 id, 비밀)를 넣는다. 키는 키체인에 들어간다. 넣으면 이미 넣은 자료의 원본과 쪽 이미지를 올린다.
+- 폰: 설정에 같은 버킷 이름과 폰용 키를 넣는다(8).
+- 키가 샜다고 의심되면 `gcloud storage hmac update <접근 id> --deactivate` 로 끊고 새로 만든다.
+- 키를 만들 때 비밀을 화면에 내지 않고 관리자 맥의 키체인에 넣어 두면 옮기기 쉽다(서비스 `com.mintae.Jindesk.handoff`, 이름표 "Jindesk 자료 버킷 키 · 학생 맥" 등). 키체인 접근에서 꺼내 학생 맥과 폰의 설정에 넣는다.
+- 실제 버킷으로 해 보는 시험(`FileBucketLiveTests`)은 개발 버킷의 키를 `TEST_RUNNER_JINDESK_GCS_LIVE_*` 환경 변수로 줄 때만 돈다. 끝나면 올린 시험 객체를 지운다.
+
+## 7. 백업
 
 - **만들기.** 파일 메뉴의 "백업 만들기"로 zip 을 만든다. 외장 디스크 같은 다른 곳에 둔다. 앱이 잠금을 잡고 만들어서, 작업 중이어도 어긋난 사본이 되지 않는다.
 - **Time Machine.** 켜져 있으면 데이터 폴더가 함께 백업된다. 캐시는 빠진다.
-- **되살리기.** zip 을 풀고, 그 폴더를 데이터 폴더로 고른다. 필요하면 마이그레이션이 돌고, 색인은 다시 만든다.
+- **되살리기.** 새 맥이나 다시 깐 앱에서 같은 리포를 연결하면 클론으로 되살아난다. zip 으로 되살릴 때는 풀어 둔 폴더를 로컬 위치로 두고 같은 리포를 연결한다. 필요하면 마이그레이션이 돌고, 색인은 다시 만든다.
 
-## 6. 문제가 생기면
+## 8. 폰 앱
+
+폰 앱은 데이터 리포를 받아 읽기만 한다(`MOBILE.md`). App Store 에 올리지 않고 관리자가 Xcode 로 설치한다.
+
+1. **읽기 토큰을 만든다.** GitHub 설정 → Developer settings → Fine-grained personal access tokens.
+   - Repository access: Only select repositories → `<주인>/jindesk-data`
+   - Permissions: Contents → Read-only (Metadata 는 저절로 읽기가 된다)
+   - 만료는 관리자가 정한다. 만료되면 폰 앱이 "받지 못했습니다 · 토큰"을 보인다.
+2. **설치한다.** 관리자 맥에서:
+
+   ```sh
+   cd ios
+   xcodegen generate
+   open JindeskMobile.xcodeproj
+   ```
+
+   학생 폰을 이어 대상으로 고르고 실행한다. 처음에는 폰의 설정 → 개인정보 보호 및 보안 → 개발자 모드를 켜야 한다. 유료 개발자 계정의 개발 서명은 1년 동안 간다. 그 전에 다시 설치한다.
+3. **차린다.** 폰 앱의 설정(톱니)에 리포 주인, 이름, 가지(`main`), 토큰, 자료 버킷 이름과 폰용 키(6)를 넣고 "지금 받기"를 누른다. 토큰과 키는 폰의 키체인에 들어간다.
+4. **다시 설치할 때.** 맥 앱의 스키마 버전이 오르는 릴리즈를 내면 폰 앱도 같은 커밋으로 다시 설치한다. 그 전까지 폰 앱은 앱을 업데이트하라는 안내를 띄우고 마지막으로 받은 판을 보인다(`MIGRATION.md`).
+
+## 9. 문제가 생기면
 
 관리자가 학생 맥에서 직접 본다.
 - 환경 점검: `/Applications/Jindesk.app/Contents/MacOS/Jindesk doctor`
-- 코멘트와 기록은 데이터 폴더에, 작업 공간과 이벤트 기록은 앱 지원 폴더의 `work/`에 있다(`DATA.md`).
+- 코멘트와 기록은 데이터 폴더(데이터 리포에도 올라간다)에, 작업 공간과 이벤트 기록은 앱 지원 폴더의 `work/`에 있다(`DATA.md`).
+- 데이터 리포에 올라가지 않으면: 관리자 설정의 오류를 보고, 데이터 폴더에서 `git status`, `git log origin/main..HEAD`로 남은 커밋을 본다. 인증 오류면 토큰을 다시 넣는다.

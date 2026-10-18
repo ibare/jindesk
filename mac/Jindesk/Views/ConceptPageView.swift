@@ -276,6 +276,37 @@ struct RegenSheet: View {
   }
 }
 
+// 쪽 이미지를 확대해 본다 (DECISIONS.md 31): 트랙패드로 벌리거나 두 번 눌러 2배, 단추로 1.5배씩. 1배는 칸에 맞춘 크기다.
+struct ZoomablePage: View {
+  let image: NSImage
+  @Binding var zoom: CGFloat
+  @GestureState private var pinch: CGFloat = 1
+  static let range: ClosedRange<CGFloat> = 1...4
+
+  static func clamp(_ z: CGFloat) -> CGFloat { min(max(z, range.lowerBound), range.upperBound) }
+
+  var body: some View {
+    GeometryReader { geo in
+      let fit = Self.fit(image.size, in: geo.size)
+      let scale = Self.clamp(zoom * pinch)
+      ScrollView([.horizontal, .vertical]) {
+        Image(nsImage: image).resizable().interpolation(.high)
+          .frame(width: fit.width * scale, height: fit.height * scale)
+          .frame(minWidth: geo.size.width, minHeight: geo.size.height)
+      }
+      .scrollIndicators(scale > 1 ? .automatic : .hidden)
+      .gesture(MagnifyGesture().updating($pinch) { value, state, _ in state = value.magnification }.onEnded { value in zoom = Self.clamp(zoom * value.magnification) })
+      .onTapGesture(count: 2) { withAnimation { zoom = zoom > 1 ? 1 : 2 } }
+    }
+  }
+
+  static func fit(_ size: CGSize, in box: CGSize) -> CGSize {
+    guard size.width > 0, size.height > 0 else { return box }
+    let s = min(box.width / size.width, box.height / size.height)
+    return CGSize(width: size.width * s, height: size.height * s)
+  }
+}
+
 // 출처 칩을 눌렀을 때 여는 원래 자료의 쪽
 struct SourcePeek: Identifiable, Equatable {
   let source: String
@@ -288,6 +319,7 @@ struct SourcePeekSheet: View {
   @Environment(\.dismiss) private var dismiss
   @State var peek: SourcePeek
   @State private var image: NSImage?
+  @State private var zoom: CGFloat = 1
 
   var body: some View {
     let source = model.library.source(peek.source)
@@ -298,6 +330,12 @@ struct SourcePeekSheet: View {
           Text("\(peek.page)쪽 / \(source?.meta.pages ?? 0)쪽").font(.caption).foregroundStyle(.secondary)
         }
         Spacer()
+        Button("축소", systemImage: "minus.magnifyingglass") { withAnimation { zoom = ZoomablePage.clamp(zoom / 1.5) } }
+          .disabled(zoom <= ZoomablePage.range.lowerBound)
+          .keyboardShortcut("-", modifiers: .command)
+        Button("확대", systemImage: "plus.magnifyingglass") { withAnimation { zoom = ZoomablePage.clamp(zoom * 1.5) } }
+          .disabled(zoom >= ZoomablePage.range.upperBound)
+          .keyboardShortcut("=", modifiers: .command)
         Button("앞 쪽", systemImage: "chevron.left") { peek.page -= 1 }
           .disabled(peek.page <= 1)
           .keyboardShortcut(.leftArrow, modifiers: [])
@@ -308,7 +346,7 @@ struct SourcePeekSheet: View {
       .labelStyle(.iconOnly)
       Group {
         if let image {
-          Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
+          ZoomablePage(image: image, zoom: $zoom)
         } else {
           Rectangle().fill(Color.secondary.opacity(0.08)).aspectRatio(16 / 9, contentMode: .fit).overlay(ProgressView().controlSize(.small))
         }
@@ -328,6 +366,7 @@ struct SourcePeekSheet: View {
     .frame(minWidth: 720, idealWidth: 860, minHeight: 520)
     .task(id: peek.page) {
       image = nil
+      zoom = 1
       guard let source, let url = await model.pageImage(source, page: peek.page) else { return }
       image = NSImage(contentsOf: url)
     }

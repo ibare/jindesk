@@ -16,7 +16,7 @@ public struct DataFolder: Sendable, Equatable {
   }
 
   public static var defaultURL: URL {
-    FileManager.default.homeDirectoryForCurrentUser.appending(path: "Jindesk")
+    URL(fileURLWithPath: NSHomeDirectory()).appending(path: "Jindesk")
   }
 
   public var path: String { url.path }
@@ -108,7 +108,7 @@ public struct DataFolder: Sendable, Equatable {
   // 동기화되는 폴더면 그 까닭. iCloud Drive("데스크탑 및 문서 폴더" 동기화를 켠 ~/Documents 포함)와 다른 클라우드 저장소.
   // 동기화가 파일을 자리표시자로 내리거나 충돌 사본을 만들 수 있다.
   static func syncReason(_ url: URL) -> String? {
-    let home = FileManager.default.homeDirectoryForCurrentUser.path
+    let home = NSHomeDirectory()
     let p = url.path
     if p.hasPrefix(home + "/Library/Mobile Documents") {
       return "iCloud Drive 로 동기화되는 폴더입니다. 동기화가 파일을 내려 두거나 충돌 사본을 만들 수 있습니다."

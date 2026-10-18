@@ -59,8 +59,8 @@ enum ReadingState: Equatable {
 final class AppModel {
   enum Phase: Equatable {
     case starting
-    // 처음 켤 때, 또는 기억한 폴더를 찾지 못했을 때
-    case choosingFolder(String?)
+    // 처음 켤 때, 또는 연결한 데이터 폴더를 찾지 못했을 때: 데이터 리포를 연결한다 (DATA.md 의 데이터 리포)
+    case connecting(String?)
     case migrating(String)
     case migrationFailed(String)
     // 데이터가 더 새 판의 Jindesk 가 만든 것이다
@@ -113,6 +113,21 @@ final class AppModel {
   @ObservationIgnored private lazy var searchIndex = SearchIndex(folders)
   var showIntake = false
   let update = UpdateStatus()
+  // 데이터 리포 (DATA.md 의 데이터 리포): 이 맥의 앱 설정에서 연결한 리포, 마지막으로 커밋하고 올린 결과, 켤 때 받기의 문제
+  private(set) var repoLink: RepoLink?
+  private(set) var repo: DataRepo.Outcome?
+  private(set) var repoPullProblem: String?
+  private(set) var repoSyncing = false
+  private(set) var repoTokenSaved = RepoToken.exists
+  // 자료 버킷 (DATA.md 의 자료 버킷): 이 맥의 앱 설정에서 연결한 버킷, 마지막으로 맞춘 결과
+  private(set) var bucketLink = BucketLinkStore.load()
+  private(set) var bucketKeySaved = BucketKeyStore.mac.exists
+  private(set) var bucket: SourceFiles.Outcome?
+  private(set) var bucketSyncing = false
+  @ObservationIgnored private var bucketAgain = false
+  // 다음 커밋에 담을 까닭 (몇 초 모았다가 한 번에 커밋한다)
+  @ObservationIgnored private var syncReasons: [String] = []
+  @ObservationIgnored private var syncWait: Task<Void, Never>?
 
   @ObservationIgnored var updater: UpdateController?
   @ObservationIgnored private let sleepGuard = SleepGuard()
@@ -149,15 +164,18 @@ final class AppModel {
         return
       }
     #endif
-    guard let saved = DataFolderStore.load() else {
-      phase = .choosingFolder(nil)
+    guard let link = RepoLinkStore.load() else {
+      phase = .connecting(nil)
       return
     }
-    // 기억한 폴더가 없어졌으면 새로 만들지 않고 고르게 한다 (학생의 데이터가 사라진 것처럼 보이지 않게)
+    // 연결한 폴더가 없어졌으면 새로 만들지 않고 다시 연결하게 한다 (데이터가 사라진 것처럼 보이지 않게)
+    let saved = link.folder
     guard FileOps.exists(saved.url) || hasMigrationLeftovers(saved) else {
-      phase = .choosingFolder("데이터 폴더를 찾지 못했습니다: \(saved.path)")
+      phase = .connecting("데이터 폴더를 찾지 못했습니다: \(saved.path). 리포를 다시 연결합니다")
       return
     }
+    repoLink = link
+    await pullOnOpen(saved, link)
     await open(saved, creating: false)
   }
 
@@ -165,29 +183,68 @@ final class AppModel {
     FileOps.list(data.url.deletingLastPathComponent()).contains { $0.hasPrefix(".Jindesk-before-") }
   }
 
-  // 화면에서 고른 폴더를 쓴다. 비어 있거나 없는 폴더면 새 데이터 폴더로 만든다.
-  func useFolder(_ url: URL) async {
-    let data = DataFolder(url)
-    let errors = data.issues(appBundle: AppPaths.bundle).filter(\.isError)
-    guard errors.isEmpty else {
-      phase = .choosingFolder(errors.map(\.message).joined(separator: " "))
-      return
+  // 데이터 리포를 연결하고 그 클론을 데이터 폴더로 연다 (처음 켤 때, 관리자 설정의 리포 바꾸기).
+  // 빈 리포면 데이터 폴더를 새로 만들어 첫 커밋을 올리고, Jindesk 리포면 클론한다. 이전 리포와 그 폴더는 건드리지 않는다.
+  // 실패하면 그 까닭을 돌려준다.
+  func connect(url: String, token: String, path: String) async -> String? {
+    guard !(jobs?.isBusy ?? false) else { return "작업이 도는 동안에는 바꿀 수 없습니다. 작업이 끝난 뒤 다시 합니다" }
+    let link = RepoLink(url: url, path: DataFolder(path: (path as NSString).expandingTildeInPath).path)
+    let errors = link.folder.issues(appBundle: AppPaths.bundle).filter { $0.isError && !$0.message.contains("다른 파일이 들어 있는") }
+    guard errors.isEmpty else { return errors.map(\.message).joined(separator: " ") }
+    if let value = token.nilIfBlank {
+      do { try RepoToken.save(value) } catch { return error.localizedDescription }
+      repoTokenSaved = RepoToken.exists
     }
-    await open(data, creating: true)
+    guard let saved = RepoToken.read() else { return "토큰을 넣습니다" }
+    do {
+      let result = try await DataRepo.connect(link, token: saved, app: app)
+      RepoLinkStore.save(link)
+      DataFolderStore.save(link.folder.url)
+      repoLink = link
+      repoPullProblem = nil
+      if case .opened = result { await pullOnOpen(link.folder, link) }
+      await open(link.folder, creating: false)
+      if case .created(let error?) = result { repo = DataRepo.Outcome(at: Clock.isoLocal(), remote: link.url, error: error) }
+      return nil
+    } catch {
+      return error.localizedDescription
+    }
+  }
+
+  func saveRepoToken(_ token: String) throws {
+    try RepoToken.save(token)
+    repoTokenSaved = RepoToken.exists
+  }
+
+  // 켤 때 원격이 앞서 있으면 받는다. 받지 못한 까닭은 앱 창에 보인다.
+  private func pullOnOpen(_ data: DataFolder, _ link: RepoLink) async {
+    guard let result = await DataRepo.pull(data, link: link, token: RepoToken.read()) else { return }
+    switch result {
+    case .pulled: notes.append("데이터 리포에서 새 판을 받았습니다")
+    case .diverged: repoPullProblem = "기록이 갈라졌습니다. 다른 곳에서 이 리포에 올렸습니다. 올리지 않습니다"
+    case .blocked: repoPullProblem = "리포에 새 판이 있는데 올리지 않은 변경이 있어 받지 못했습니다"
+    case .unreachable(let why): repoPullProblem = "리포에 닿지 못해 새 판을 받지 못했습니다 — \(why)"
+    case .same, .ahead: repoPullProblem = nil
+    }
   }
 
   func open(_ data: DataFolder, creating: Bool) async {
     phase = .starting
     jobs?.shutdown()
     jobs = nil
+    syncWait?.cancel()
+    syncReasons = []
+    repo = nil
     let migrator = Migrator(data: data, folders: folders, app: app, schemas: AppPaths.schemas)
+    // 켠 뒤 첫 커밋의 까닭 (마이그레이션했으면 그 결과가 담긴다)
+    var opened = "켤 때 남은 변경"
     do {
       notes = try migrator.recoverInterrupted()
       notes += migrator.removePreviousCopies()
       switch migrator.state() {
       case .uninitialized:
         guard creating else {
-          phase = .choosingFolder("\(data.path) 는 Jindesk 데이터 폴더가 아닙니다")
+          phase = .connecting("\(data.path) 는 Jindesk 데이터 폴더가 아닙니다")
           return
         }
         try data.initialize(app: app)
@@ -206,6 +263,7 @@ final class AppModel {
           await MainActor.run { [weak self] in if case .migrating = self?.phase { self?.phase = .migrating(message) } }
         }
         notes.append("스키마 \(report.from) → \(report.to) 마이그레이션 · 백업 \(report.backup.lastPathComponent)")
+        opened = "스키마 \(report.from) → \(report.to) 마이그레이션"
       case .current:
         break
       }
@@ -226,11 +284,18 @@ final class AppModel {
     reloadLibrary()
     let manager = JobManager(data: data, folders: folders)
     apply(admin, to: manager)
-    manager.onFinish = { [weak self] _ in self?.jobsChanged() }
+    manager.onFinish = { [weak self] s in
+      self?.jobsChanged()
+      // 넣은 자료의 원본과 쪽 이미지를 자료 버킷에 올린다
+      if s.kind == .sourceIntake && s.phase == "done" { self?.syncBucket() }
+      self?.scheduleSync("\(s.typeLabel) · \(s.title)\(s.phase == "failed" ? " (실패)" : "")")
+    }
     manager.onPhase = { [weak self] _ in self?.jobsChanged() }
     jobs = manager
     history = RunHistory.load(folders, data: data)
     phase = .ready
+    scheduleSync(opened)
+    syncBucket()
     Task { await runDoctor() }
   }
 
@@ -349,6 +414,7 @@ final class AppModel {
       text: body)
     try CommentStore.append(data, comment)
     commentsVersion += 1
+    scheduleSync("코멘트")
     if kind == .ask, let jobs {
       let config = try await agentConfig()
       let id = comment.id
@@ -360,6 +426,7 @@ final class AppModel {
     guard let data else { return }
     try CommentStore.append(data, Comment(id: Comment.makeID(), at: Clock.isoLocal(), by: "learner", kind: .delete, target: id))
     commentsVersion += 1
+    scheduleSync("코멘트 지우기")
   }
 
   // MARK: - 오늘과 모아 보기
@@ -444,6 +511,7 @@ final class AppModel {
     let d = try DirectiveStore.request(
       data, op: op, target: DirectiveTarget(concept: target.concept, unit: target.unit, rev: target.rev), note: note, fromComment: from)
     commentsVersion += 1
+    scheduleSync("다시 만들기 요구 · \(op.label)")
     let id = d.id
     try await jobs.submit(config: config) { try Regen.prepare(directiveID: id, $0) }
   }
@@ -453,6 +521,7 @@ final class AppModel {
     do {
       _ = try Regen.accept(data, directiveID: id)
       commentsVersion += 1
+      scheduleSync("새 판 받아들이기")
       if let d = DirectiveStore.load(data).first(where: { $0.id == id }), let cid = ConceptID(d.target.concept), let jobs, let config = try? await agentConfig() {
         let subject = cid.subject
         _ = try? await jobs.submit(config: config) { try Translation.prepare(subject: subject, $0) }
@@ -467,6 +536,7 @@ final class AppModel {
     guard let data else { return }
     try? Regen.keep(data, directiveID: id)
     commentsVersion += 1
+    scheduleSync("지금 판 유지")
   }
 
   // 화면에 보일 마지막 오류 (다시 만들기 받아들이기 등)
@@ -481,6 +551,7 @@ final class AppModel {
     s.confirmed = (by: "관리자", at: Clock.isoLocal())
     try s.write(data)
     reloadLibrary()
+    scheduleSync("목차 확인 · \(subject)")
   }
 
   // 과목 꼬리표의 이름을 바꾸거나 다른 과목에 합친다. 작업이 도는 동안에는 하지 않는다.
@@ -493,6 +564,7 @@ final class AppModel {
     let result = try SubjectRename.run(data, from: subject, toName: name)
     selection = nil
     reloadLibrary()
+    scheduleSync("과목 이름 바꾸기 · \(subject) → \(name)")
     return result
   }
 
@@ -548,13 +620,15 @@ final class AppModel {
     let canonical = LabelMatch.canonical(labels) { name in library.usedValues(name) }
     try SourceLabelsFile(source: source.id, labels: canonical, memo: memo, syllabusBasis: syllabusBasis).write(to: source.folder)
     reloadLibrary()
+    scheduleSync("자료 꼬리표")
   }
 
   // 쪽 이미지. 캐시에 없으면 다시 그린다 (메인 스레드 밖에서).
+  // 쪽 보기: 맥과 폰이 같이 보는 쪽 이미지(HEIC, 긴 변 2000). 로컬에 없으면 원본에서 그리거나 자료 버킷에서 받는다.
   func pageImage(_ source: SourceSummary, page: Int) async -> URL? {
-    let folder = source.folder
     let folders = folders
-    return await Task.detached { try? SourcePages.image(folder, page: page, folders: folders) }.value
+    let client = bucketClient()
+    return await Task.detached { try? await SourceFiles.viewImage(source, page: page, folders: folders, client: client) }.value
   }
 
   // 업데이트를 설치해도 되는가: 작업도, 백업도, 마이그레이션도 돌고 있지 않다
@@ -571,7 +645,7 @@ final class AppModel {
     doctorRunning = true
     let input = Doctor.Input(
       guardHelper: AppPaths.guardHelper, instructions: AppPaths.instructions, schemas: AppPaths.schemas, data: data, folders: folders,
-      claudePath: admin.claudePath, app: app)
+      claudePath: admin.claudePath, app: app, repo: repoLink, bucket: bucketLink)
     doctor = await Doctor.run(input)
     tokenSaved = ClaudeToken.exists
     doctorRunning = false
@@ -588,6 +662,8 @@ final class AppModel {
       backupStatus = nil
       jobs?.release(.backup)
       jobsChanged()
+      // 백업하는 동안 미룬 커밋
+      if !syncReasons.isEmpty { armSync() }
     }
     do {
       let url = try await Backup.make(data, into: directory) {
@@ -598,6 +674,95 @@ final class AppModel {
     } catch {
       return "백업을 만들지 못했습니다: \(error.localizedDescription)"
     }
+  }
+
+  // MARK: - 데이터 리포
+
+  // 바뀐 것을 몇 초 모았다가 커밋하고 올린다 (DATA.md 의 데이터 리포). 연결한 리포의 데이터 폴더가 아니면 하지 않는다.
+  func scheduleSync(_ reason: String) {
+    guard let data, let link = repoLink, link.owns(data) else { return }
+    if !syncReasons.contains(reason) { syncReasons.append(reason) }
+    armSync()
+  }
+
+  // "지금 올리기", "다시 올리기"
+  func syncNow() {
+    guard let data, let link = repoLink, link.owns(data) else { return }
+    if syncReasons.isEmpty { syncReasons.append("다시 올리기") }
+    armSync(after: .zero)
+  }
+
+  private func armSync(after delay: Duration = .seconds(3)) {
+    syncWait?.cancel()
+    syncWait = Task { [weak self] in
+      try? await Task.sleep(for: delay)
+      guard !Task.isCancelled else { return }
+      await self?.runSync()
+    }
+  }
+
+  // 한 번에 하나만 돈다. 도는 동안 들어온 까닭은 끝난 뒤에 다시 한다. 백업을 만드는 동안과 마이그레이션 중에는 하지 않는다.
+  private func runSync() async {
+    guard let data, let link = repoLink, !repoSyncing, backupStatus == nil, phase == .ready, !syncReasons.isEmpty else { return }
+    repoSyncing = true
+    let reasons = syncReasons
+    syncReasons = []
+    let outcome = await DataRepo.sync(data, link: link, token: RepoToken.read(), message: DataRepo.message(reasons))
+    repoSyncing = false
+    repo = outcome
+    if outcome.pushed { repoPullProblem = nil }
+    if !syncReasons.isEmpty { armSync() }
+  }
+
+  // MARK: - 자료 버킷
+
+  func bucketClient() -> GCSClient? {
+    guard let link = bucketLink, !link.name.isEmpty, let key = BucketKeyStore.mac.read() else { return nil }
+    return GCSClient(bucket: link.name, key: key)
+  }
+
+  // 버킷 이름과 쓰기용 키를 저장하고 맞춘다 (관리자 설정)
+  func saveBucket(name: String, accessID: String, secret: String) throws {
+    let link = BucketLink(name: name)
+    guard !link.name.isEmpty else { throw RequestError("버킷 이름을 넣습니다") }
+    if !accessID.trimmingCharacters(in: .whitespaces).isEmpty || !secret.trimmingCharacters(in: .whitespaces).isEmpty {
+      try BucketKeyStore.mac.save(BucketKey(accessID: accessID, secret: secret))
+    }
+    guard BucketKeyStore.mac.exists else { throw RequestError("접근 id 와 비밀을 넣습니다") }
+    BucketLinkStore.save(link)
+    bucketLink = link
+    bucketKeySaved = true
+    bucket = nil
+    syncBucket()
+  }
+
+  // 로컬에 없는 원본을 받고, 다 올리지 않은 자료를 올린다. 한 번에 하나만 돈다. 도는 동안 부르면 끝난 뒤 한 번 더 한다.
+  func syncBucket() {
+    guard phase == .ready, let client = bucketClient() else { return }
+    guard !bucketSyncing else {
+      bucketAgain = true
+      return
+    }
+    bucketSyncing = true
+    let library = library
+    let folders = folders
+    Task { [weak self] in
+      let outcome = await Task.detached { await SourceFiles.sync(library, folders: folders, client: client) }.value
+      guard let self else { return }
+      self.bucket = outcome
+      self.bucketSyncing = false
+      if outcome.downloaded > 0 { self.reloadLibrary() }
+      if self.bucketAgain {
+        self.bucketAgain = false
+        self.syncBucket()
+      }
+    }
+  }
+
+  // 앱 창에 보일 데이터 리포의 문제 (올리지 못했거나 받지 못했다)
+  var repoProblem: String? {
+    if let error = repo?.error { return error }
+    return repoPullProblem
   }
 
   // MARK: - 관리자 설정

@@ -108,6 +108,10 @@ public enum PageRenderer {
     try write(image, to: url, type: .png)
   }
 
+  public static func writeHEIC(_ image: CGImage, to url: URL, quality: Double = 0.7) throws {
+    try write(image, to: url, type: .heic, properties: [kCGImageDestinationLossyCompressionQuality: quality])
+  }
+
   public static func writeJPEG(_ image: CGImage, to url: URL, quality: Double = 0.9) throws {
     try write(image, to: url, type: .jpeg, properties: [kCGImageDestinationLossyCompressionQuality: quality])
   }

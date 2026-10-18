@@ -1,7 +1,7 @@
 import JindeskKit
 import SwiftUI
 
-// 관리자 설정: 토큰, 모델과 상한, 동시 실행 수, 환경 점검, 데이터 폴더, 업데이트. 학생 화면에서는 감춘다.
+// 관리자 설정: 토큰, 모델과 상한, 동시 실행 수, 환경 점검, 데이터 폴더, 데이터 리포, 업데이트. 학생 화면에서는 감춘다.
 struct AdminSettingsView: View {
   @Environment(AppModel.self) private var model
 
@@ -125,20 +125,83 @@ struct DoctorPane: View {
 
 struct DataPane: View {
   @Environment(AppModel.self) private var model
+  @State private var newToken = ""
+  @State private var tokenMessage: String?
+  @State private var changingRepo = false
+  @State private var bucketName = ""
+  @State private var bucketAccessID = ""
+  @State private var bucketSecret = ""
+  @State private var bucketMessage: String?
 
   var body: some View {
     Form {
       Section("데이터 폴더") {
         LabeledContent("위치") { Text(model.data?.path ?? "없음").textSelection(.enabled) }
-        HStack {
-          Button("Finder 에서 보기") { if let data = model.data { model.reveal(data.url) } }
-          Button("다른 폴더로 바꾸기…") { change() }.disabled(model.isBusy)
-        }
+        Button("Finder 에서 보기") { if let data = model.data { model.reveal(data.url) } }
         LabeledContent("스키마") { Text("\(CurrentSchema.version)") }
         LabeledContent("앱 지원 폴더") { Text(model.folders.support.path).textSelection(.enabled) }
         LabeledContent("캐시") { Text(model.folders.cache.path).textSelection(.enabled) }
         if !model.notes.isEmpty {
           LabeledContent("켤 때 한 일") { Text(model.notes.joined(separator: "\n")).font(.caption) }
+        }
+      }
+      // DATA.md 의 데이터 리포. 이 맥의 앱 설정에 두는 연결이다.
+      Section("데이터 리포") {
+        LabeledContent("리포") { Text(model.repoLink?.url ?? "연결하지 않았습니다").textSelection(.enabled) }
+        LabeledContent("토큰") { Text(model.repoTokenSaved ? "키체인에 있음" : "없음").foregroundStyle(model.repoTokenSaved ? Color.primary : .red) }
+        HStack {
+          SecureField("새 토큰", text: $newToken, prompt: Text("바꿀 때만 넣습니다"))
+          Button("토큰 바꾸기") {
+            do {
+              try model.saveRepoToken(newToken)
+              newToken = ""
+              tokenMessage = "바꿨습니다"
+            } catch {
+              tokenMessage = error.localizedDescription
+            }
+          }
+          .disabled(newToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        if let tokenMessage { Text(tokenMessage).font(.caption).foregroundStyle(.secondary) }
+        if let repo = model.repo {
+          LabeledContent("마지막") { Text(repoText(repo)) }
+          if let error = repo.error { LabeledContent("오류") { Text(error).font(.caption).textSelection(.enabled) } }
+          if !repo.excluded.isEmpty {
+            LabeledContent("100MB 이상이라 뺀 파일") { Text(repo.excluded.joined(separator: "\n")).font(.caption).textSelection(.enabled) }
+          }
+        }
+        if let pull = model.repoPullProblem { LabeledContent("받기") { Text(pull).font(.caption).textSelection(.enabled) } }
+        HStack {
+          Button(model.repoSyncing ? "올리는 중…" : "지금 올리기") { model.syncNow() }.disabled(model.repoSyncing || model.repoLink == nil)
+          Button("리포 바꾸기…") { changingRepo = true }.disabled(model.isBusy)
+        }
+      }
+      // DATA.md 의 자료 버킷. 원본 자료와 쪽 이미지를 둔다. 개발 맥과 학생 맥의 버킷이 다르다.
+      Section("자료 버킷") {
+        TextField("버킷 이름", text: $bucketName, prompt: Text("jindesk-files"))
+        LabeledContent("쓰기 키") { Text(model.bucketKeySaved ? "키체인에 있음" : "없음").foregroundStyle(model.bucketKeySaved ? Color.primary : .red) }
+        TextField("접근 id", text: $bucketAccessID, prompt: Text(model.bucketKeySaved ? "바꿀 때만 넣습니다" : "GOOG1…"))
+        SecureField("비밀", text: $bucketSecret, prompt: Text(model.bucketKeySaved ? "바꿀 때만 넣습니다" : ""))
+        if let bucket = model.bucket {
+          LabeledContent("마지막") {
+            Text("\(bucket.at.prefix(16).replacingOccurrences(of: "T", with: " ")) · 올림 \(bucket.uploaded) · 받음 \(bucket.downloaded)")
+          }
+          if let error = bucket.error { LabeledContent("오류") { Text(error).font(.caption).textSelection(.enabled) } }
+        }
+        if let bucketMessage { Text(bucketMessage).font(.caption).foregroundStyle(.secondary) }
+        HStack {
+          Button("저장하고 맞추기") {
+            do {
+              try model.saveBucket(name: bucketName, accessID: bucketAccessID, secret: bucketSecret)
+              bucketAccessID = ""
+              bucketSecret = ""
+              bucketMessage = "저장했습니다"
+            } catch {
+              bucketMessage = error.localizedDescription
+            }
+          }
+          .disabled(bucketName.trimmingCharacters(in: .whitespaces).isEmpty)
+          Button(model.bucketSyncing ? "맞추는 중…" : "지금 맞추기") { model.syncBucket() }.disabled(model.bucketSyncing || model.bucketLink == nil)
         }
       }
       Section("업데이트") {
@@ -150,6 +213,21 @@ struct DataPane: View {
       }
     }
     .formStyle(.grouped)
+    .onAppear { if bucketName.isEmpty { bucketName = model.bucketLink?.name ?? "" } }
+    .sheet(isPresented: $changingRepo) {
+      VStack(alignment: .leading, spacing: 8) {
+        Text("리포 바꾸기").font(.headline)
+        Text("새 리포를 연결하고 그 클론을 데이터 폴더로 엽니다. 이전 리포와 그 폴더는 그대로 남습니다.")
+          .font(.callout).foregroundStyle(.secondary)
+        RepoConnectForm(suggestedPath: DataFolder.defaultURL.path, followsRepoName: true) { changingRepo = false }
+        HStack {
+          Spacer()
+          Button("닫기") { changingRepo = false }.keyboardShortcut(.cancelAction)
+        }
+      }
+      .padding(18)
+      .frame(width: 600)
+    }
   }
 
   private var updateText: String {
@@ -161,19 +239,14 @@ struct DataPane: View {
     }
   }
 
+  private func repoText(_ repo: DataRepo.Outcome) -> String {
+    let at = repo.at.prefix(16).replacingOccurrences(of: "T", with: " ")
+    let head = repo.head.map { "커밋 \($0.prefix(7))" } ?? "커밋 없음"
+    return "\(at) · \(head) · \(repo.pushed ? "올림" : "올리지 못함")"
+  }
+
   private var updateDisabled: Bool {
     if case .idle = model.update.state { return false }
     return true
-  }
-
-  private func change() {
-    let panel = NSOpenPanel()
-    panel.canChooseFiles = false
-    panel.canChooseDirectories = true
-    panel.canCreateDirectories = true
-    panel.prompt = "이 폴더 쓰기"
-    panel.message = "비어 있는 폴더나 이미 있는 Jindesk 데이터 폴더(되살린 백업 포함)를 고르세요."
-    guard panel.runModal() == .OK, let url = panel.url else { return }
-    Task { await model.useFolder(url) }
   }
 }

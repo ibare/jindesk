@@ -133,6 +133,68 @@ import Testing
     #expect(map.layout(.syllabus).places.count == 3)
   }
 
+  @Test func 앞뒤_개념은_바로_앞과_바로_다음만이고_너머의_수를_센다() {
+    let all = physics + math
+    let a = ConceptMap.neighborhood(of: physics[1], all: all)
+    #expect(a.before.map(\.node.id) == ["physics/a.1/displacement"])
+    #expect(a.before.map(\.beyond) == [0])
+    #expect(a.after.map(\.node.id) == ["physics/a.1/suvat", "physics/a.2/second-law"])
+    // 등가속도 다음에는 투사체가 더 이어진다
+    #expect(a.after.map(\.beyond) == [1, 0])
+    // 아직 없는 개념은 누를 수 없는 노드이고 너머가 없다
+    let p = ConceptMap.neighborhood(of: physics[3], all: all)
+    #expect(p.before.map(\.node.kind) == [.concept, .missing])
+    #expect(p.before.map(\.node.title) == ["SUVAT", "Trigonometric ratios"])
+    #expect(p.before.map(\.beyond) == [1, 0])
+    #expect(p.after.isEmpty)
+  }
+
+  @Test func 앞뒤_개념에는_다른_과목도_앞뒤_모두_들고_이_과목_개념이_먼저다() {
+    let components = concept("math/ahl-3.10/components", pre: ["math/ahl-3.10/vectors"])
+    let all = physics + math + [components]
+    let f = ConceptMap.neighborhood(of: physics[4], all: all)
+    #expect(f.before.map(\.node.kind) == [.other(subject: "math")])
+    #expect(f.before.map(\.node.title) == ["Vectors"])
+    // 벡터에서 보면 물리의 힘이 다음 개념이다. 수학 개념이 앞에 선다
+    let v = ConceptMap.neighborhood(of: ConceptMapTestsSupport.vectors, all: all)
+    #expect(v.before.isEmpty)
+    #expect(v.after.map(\.node.id) == ["math/ahl-3.10/components", "physics/a.2/forces"])
+    #expect(v.after.map(\.node.kind) == [.concept, .other(subject: "physics")])
+    #expect(v.after.map(\.beyond) == [0, 1])
+  }
+
+  @Test func 앞뒤_개념에서_겹친_선수_개념과_자기_자신은_한_번도_세지_않는다() {
+    let cs = [concept("p/a.1/a"), concept("p/a.1/b", pre: ["p/a.1/a", "p/a.1/a", "p/a.1/b"])]
+    let b = ConceptMap.neighborhood(of: cs[1], all: cs)
+    #expect(b.before.map(\.node.id) == ["p/a.1/a"])
+    #expect(b.after.isEmpty)
+    #expect(ConceptMap.neighborhood(of: cs[0], all: cs).after.map(\.node.id) == ["p/a.1/b"])
+  }
+
+  @Test func 페이지_조합에_앞뒤_개념이_들고_아직_없는_개념은_누를_id_가_없다() {
+    let all = physics + math
+    func page(_ c: Concept) -> JSONValue {
+      PageComposer.json(
+        PageComposer.Input(concept: c, page: nil, layers: nil, glossary: Glossary(), library: SourceLibrary(sources: []), subjectName: "Physics", all: all))
+    }
+    let p = page(physics[3])
+    #expect(p["code"]?.stringValue == "A.1")
+    let before = p["before"]?.arrayValue ?? []
+    #expect(before.map { $0["kind"]?.stringValue } == ["concept", "missing"])
+    #expect(before[0]["id"]?.stringValue == "physics/a.1/suvat")
+    #expect(before[0]["code"]?.stringValue == "A.1")
+    #expect(before[0]["beyond"]?.numberValue == 1)
+    #expect(before[0]["hasPage"]?.boolValue == false)
+    #expect(before[1]["id"] == nil)
+    #expect(before[1]["missing"]?.boolValue == true)
+    #expect(p["after"]?.arrayValue?.isEmpty == true)
+    // 다른 과목 개념은 과목 이름을 단다 (과목 목록에 없으면 과목 id)
+    let f = page(physics[4])
+    #expect(f["before"]?.arrayValue?.first?["kind"]?.stringValue == "other")
+    #expect(f["before"]?.arrayValue?.first?["subject"]?.stringValue == "math")
+    #expect(f["after"]?.arrayValue?.map { $0["id"]?.stringValue } == ["physics/a.2/second-law"])
+  }
+
   @Test func 개념이_없으면_빈_지도다() {
     let map = ConceptMap(subject: "p", concepts: [], all: [])
     let layout = map.layout(.learning)

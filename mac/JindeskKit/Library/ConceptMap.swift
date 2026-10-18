@@ -300,3 +300,43 @@ public struct ConceptMap: Sendable, Equatable {
 }
 
 extension ConceptMap.Layout.Header: Hashable {}
+
+// MARK: - 앞뒤 개념
+
+// 학습 페이지 머리의 작은 지도 (PAGES.md 의 개념 지도 · 학습 페이지 머리, DECISIONS.md 27).
+// 한 개념의 바로 앞(선수 개념)과 바로 다음(이 개념을 선수 개념으로 둔 개념)만 본다. 다른 과목 개념도 앞뒤 모두 든다.
+extension ConceptMap {
+  public struct Neighbor: Sendable, Equatable {
+    public let node: Node
+    // 그 너머로 더 이어지는 개념 수: 앞쪽 개념이면 제 선수 개념, 뒤쪽 개념이면 제 다음 개념
+    public let beyond: Int
+  }
+
+  public struct Neighborhood: Sendable, Equatable {
+    public let before: [Neighbor]
+    public let after: [Neighbor]
+  }
+
+  // all: 모든 과목의 개념. 노드의 종류(이 과목, 다른 과목, 아직 없음)는 concept 의 과목에서 본다.
+  public static func neighborhood(of concept: Concept, all: [Concept]) -> Neighborhood {
+    let byID = Dictionary(all.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    func refs(_ c: Concept) -> [String] {
+      var seen = Set<String>()
+      return c.prerequisites.filter { $0 != c.id && seen.insert($0).inserted }
+    }
+    var next: [String: [String]] = [:]
+    for c in all {
+      for ref in refs(c) { next[ref, default: []].append(c.id) }
+    }
+    func node(_ id: String) -> Node {
+      guard let c = byID[id] else { return Node(id: id, title: missingTitle(id), kind: .missing, item: nil, itemProposed: nil, curatedOn: nil) }
+      return Node(
+        id: c.id, title: c.title, kind: c.subject == concept.subject ? .concept : .other(subject: c.subject), item: c.item, itemProposed: c.itemProposed,
+        curatedOn: day(c.provenance))
+    }
+    let before = refs(concept).map { id in Neighbor(node: node(id), beyond: byID[id].map { refs($0).count } ?? 0) }
+    // 이 과목의 개념을 먼저, 다른 과목의 개념은 뒤에 둔다
+    let after = (next[concept.id] ?? []).map { id in Neighbor(node: node(id), beyond: next[id]?.count ?? 0) }
+    return Neighborhood(before: before, after: after.filter { $0.node.kind == .concept } + after.filter { $0.node.kind != .concept })
+  }
+}

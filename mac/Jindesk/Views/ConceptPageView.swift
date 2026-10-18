@@ -19,6 +19,12 @@ struct ConceptPageView: View {
       }
       if message["type"]?.stringValue == "openConcept", let id = message["id"]?.stringValue, model.concept(id) != nil {
         model.selection = .concept(id)
+        model.revealInList = id
+      }
+      // 앞뒤 개념 지도의 "개념 지도에서 보기": 과목 지도를 이 개념을 고른 채 연다
+      if message["type"]?.stringValue == "openMap", let id = message["concept"]?.stringValue, let cid = ConceptID(id) {
+        model.mapFocus = id
+        model.selection = .map(cid.subject)
       }
       if message["type"]?.stringValue == "comment", let unit = message["unit"]?.stringValue, let text = message["text"]?.stringValue,
         let kind = message["kind"]?.stringValue.flatMap(CommentKind.init(rawValue:))

@@ -20,25 +20,36 @@ struct SubjectsView: View {
       // 목록 칸. 고른 개념·자료는 내용 칸(SelectionDetail)에 보인다.
       VStack(spacing: 0) {
         if !model.waitingWork.isEmpty { PendingBanner() }
-        List(selection: $model.selection) {
-          ForEach(library.subjects) { subject in
-            Section {
-              ConceptRows(subject: subject.id)
-              DisclosureGroup("자료 \(subject.sources.count)개") {
-                ForEach(subject.sources) { SourceRow(source: $0).tag(SubjectSelection.source($0.id)) }
+        ScrollViewReader { proxy in
+          List(selection: $model.selection) {
+            ForEach(library.subjects) { subject in
+              Section {
+                ConceptRows(subject: subject.id)
+                DisclosureGroup("자료 \(subject.sources.count)개") {
+                  ForEach(subject.sources) { SourceRow(source: $0).tag(SubjectSelection.source($0.id)) }
+                }
+              } header: {
+                SubjectHeader(subject: subject)
               }
-            } header: {
-              SubjectHeader(subject: subject)
+            }
+            if !library.unlabeled.isEmpty {
+              Section("과목 꼬리표가 없는 자료") {
+                ForEach(library.unlabeled) { SourceRow(source: $0).tag(SubjectSelection.source($0.id)) }
+              }
             }
           }
-          if !library.unlabeled.isEmpty {
-            Section("과목 꼬리표가 없는 자료") {
-              ForEach(library.unlabeled) { SourceRow(source: $0).tag(SubjectSelection.source($0.id)) }
-            }
-          }
+          // 학습 페이지의 앞뒤 개념이나 개념 지도에서 옮겨 가면 그 개념의 줄이 보이게 내린다
+          .onChange(of: model.revealInList) { reveal(proxy) }
+          .onAppear { reveal(proxy) }
         }
       }
     }
+  }
+
+  private func reveal(_ proxy: ScrollViewProxy) {
+    guard let id = model.revealInList else { return }
+    withAnimation { proxy.scrollTo(id, anchor: .center) }
+    model.revealInList = nil
   }
 }
 
@@ -60,13 +71,13 @@ struct ConceptRows: View {
       ForEach(syllabus.flat, id: \.item.code) { entry in
         let inItem = concepts.filter { $0.item.map(ItemPath.dir) == ItemPath.dir(entry.item.code) }
         SyllabusItemRow(item: entry.item, depth: entry.depth, hasConcepts: !inItem.isEmpty)
-        ForEach(inItem) { c in ConceptRow(concept: c).tag(SubjectSelection.concept(c.id)).padding(.leading, CGFloat(entry.depth) * 10) }
+        ForEach(inItem) { c in ConceptRow(concept: c).tag(SubjectSelection.concept(c.id)).id(c.id).padding(.leading, CGFloat(entry.depth) * 10) }
       }
     }
     let unplaced = concepts.filter { $0.item == nil }
     ForEach(Self.groups(unplaced, prefix: syllabus == nil ? nil : "목차 밖 · "), id: \.name) { group in
       Text(group.name).font(.caption.weight(.medium)).foregroundStyle(.secondary).padding(.top, 4)
-      ForEach(group.concepts) { c in ConceptRow(concept: c).tag(SubjectSelection.concept(c.id)) }
+      ForEach(group.concepts) { c in ConceptRow(concept: c).tag(SubjectSelection.concept(c.id)).id(c.id) }
     }
   }
 

@@ -143,13 +143,15 @@ public enum PageComposer {
       "chips": .array(chips.map(JSONValue.string)), "units": .array(units), "sources": .array(sources), "terms": .array(terms),
     ]
     if let ko = input.page?.titleKo { page["titleKo"] = .string(ko) }
-    // 먼저 알아야 할 것과 과목 사이 연결 (이 개념을 가리키는 다른 과목의 연결도 함께)
+    if let code = input.syllabusItem?.code ?? c.item?.uppercased() ?? c.itemProposed { page["code"] = .string(code) }
+    // 앞뒤 개념: 머리의 작은 지도와 아래의 "이어서 배울 것" (DECISIONS.md 27)
+    let around = ConceptMap.neighborhood(of: c, all: input.all)
+    let subjects = Set((around.before + around.after).compactMap { $0.node.item == nil ? nil : ConceptID($0.node.id)?.subject })
+    let syllabi = Dictionary(uniqueKeysWithValues: subjects.compactMap { s in input.data.flatMap { Syllabus.load($0, subject: s) }.map { (s, $0) } })
+    page["before"] = .array(around.before.map { neighbor($0, input, syllabi: syllabi) })
+    page["after"] = .array(around.after.map { neighbor($0, input, syllabi: syllabi) })
+    // 과목 사이 연결 (이 개념을 가리키는 다른 과목의 연결도 함께)
     let byID = Dictionary(input.all.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-    page["before"] = .array(
-      c.prerequisites.map { ref in
-        if ref.hasPrefix("missing:") { return .object(["title": .string(String(ref.dropFirst(8))), "missing": .bool(true)]) }
-        return .object(["id": .string(ref), "title": .string(byID[ref]?.title ?? ref), "missing": .bool(byID[ref] == nil)])
-      })
     var links: [JSONValue] = c.links.map { l in
       .object(["id": .string(l.concept), "title": .string(byID[l.concept]?.title ?? l.concept), "subject": .string(byID[l.concept]?.subject ?? ""), "note": .string(l.note)])
     }
@@ -172,9 +174,32 @@ public enum PageComposer {
     }
     page["references"] = .array(
       input.references.map { .object(["url": .string($0.url), "title": .string($0.title), "kind": .string($0.kind), "why": .string($0.why)]) })
-    page["after"] = .array(
-      input.all.filter { $0.prerequisites.contains(c.id) }.map { .object(["id": .string($0.id), "title": .string($0.title)]) })
     return .object(page)
+  }
+
+  // 앞뒤 개념의 노드: 과목 지도의 노드와 같은 것(목차 코드, 한국어 이름, 학습 페이지가 있는지)과 너머로 더 이어지는 수.
+  // 아직 없는 개념은 id 없이 이름만 (누를 수 없다)
+  static func neighbor(_ n: ConceptMap.Neighbor, _ input: Input, syllabi: [String: Syllabus]) -> JSONValue {
+    var o: [String: JSONValue] = ["title": .string(n.node.title), "beyond": .number(Double(n.beyond))]
+    switch n.node.kind {
+    case .missing:
+      o["kind"] = .string("missing")
+      o["missing"] = .bool(true)
+      return .object(o)
+    case .concept:
+      o["kind"] = .string("concept")
+    case .other(let s):
+      o["kind"] = .string("other")
+      o["subject"] = .string(input.library.subjects.first { $0.id == s }?.name ?? s)
+    }
+    o["id"] = .string(n.node.id)
+    let cid = ConceptID(n.node.id)
+    let syllabus = cid.flatMap { syllabi[$0.subject] }
+    if let code = n.node.item.map({ syllabus?.item($0)?.code ?? $0.uppercased() }) ?? n.node.itemProposed { o["code"] = .string(code) }
+    let page = input.data.flatMap { data in cid.flatMap { Page.load(ConceptFolder($0, in: data)) } }
+    o["hasPage"] = .bool(page != nil)
+    if let ko = page?.titleKo { o["titleKo"] = .string(ko) }
+    return .object(o)
   }
 
   // 단위에서 고를 수 있는 다시 만들기 방식 (REGENERATION.md)

@@ -99,6 +99,10 @@ final class AppModel {
   private(set) var pendingWork: [PendingWork] = []
   // 과목 화면에서 고른 것 (개념이나 자료)
   var selection: SubjectSelection?
+  // 개념 지도를 열 때 골라 둘 개념 (학습 페이지의 "개념 지도에서 보기")
+  var mapFocus: String?
+  // 목록 칸이 따라가 보여 줄 개념 (학습 페이지의 앞뒤 개념이나 개념 지도에서 옮겨 갔을 때)
+  var revealInList: String?
   // 출처 칩으로 연 원래 자료의 쪽
   var peek: SourcePeek?
   // 찾기 (영어 원문과 한국어 곁 층)

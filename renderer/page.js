@@ -1,6 +1,8 @@
 // 학습 페이지 렌더러. Swift 가 조합한 페이지(JSON)를 받아 그린다 (docs/PAGES.md 의 렌더러).
 // 받는 것: window.jindesk.render(page). 보내는 것: webkit.messageHandlers.jindesk.postMessage({ type, … }).
 //   openSource { source, page }   출처 칩을 눌렀다
+//   openConcept { id }            앞뒤 개념 지도의 이웃이나 개념 카드를 눌렀다
+//   openMap { concept }           앞뒤 개념 지도의 "개념 지도에서 보기"를 눌렀다
 //   ready                         그릴 준비가 됐다
 (function () {
   "use strict";
@@ -470,6 +472,188 @@
     art.appendChild(s);
   }
 
+  // 앞뒤 개념 지도 (PAGES.md 의 개념 지도 · 학습 페이지 머리): 이 개념의 바로 앞(선수 개념)과 바로 다음 개념만 그린다.
+  // 이웃을 누르면 그 개념의 페이지로 가고, 새 페이지에서는 누른 노드가 있던 자리에서 가운데로 옮겨 온다.
+  var FOLD = 5, SVG = "http://www.w3.org/2000/svg", travel = null, edgeWatch = null;
+
+  function nodeTip(n, side) {
+    var tips = [];
+    if (n.kind === "missing") tips.push("아직 정리되지 않은 개념이에요");
+    else if (!n.hasPage) tips.push("학습 페이지를 만드는 중이에요");
+    if (n.beyond) tips.push((side === "before" ? "먼저 알아야 할 것이 " : "이어지는 개념이 ") + n.beyond + "개 더 있어요");
+    return tips.join("\n");
+  }
+
+  function mapNode(n, side) {
+    var center = side === "center", go = !center && n.kind !== "missing" && n.id;
+    var b = el(go ? "button" : "div", "nm " + (center ? "center" : n.kind));
+    if (go) b.type = "button";
+    if (n.id) b.setAttribute("data-id", n.id);
+    if (n.beyond) b.setAttribute("data-beyond", String(n.beyond));
+    var top = "";
+    if (n.kind === "other" && n.subject) top += '<b class="nm-subj">' + esc(n.subject) + "</b>";
+    if (n.code) top += '<span class="nm-code">' + esc(n.code) + "</span>";
+    top += center ? "지금 보는 개념" : n.kind === "missing" ? "아직 없는 개념" : esc(n.titleKo || "");
+    b.appendChild(el("span", "nm-top", top));
+    b.appendChild(el("span", "nm-title", esc(n.title)));
+    if (!center && n.kind !== "missing") b.appendChild(el("i", "nm-dot" + (n.hasPage ? " on" : "")));
+    if (!center) b.title = nodeTip(n, side);
+    if (go) {
+      b.addEventListener("click", function () { goTo(n.id, b); });
+      ["mouseenter", "focus"].forEach(function (e) { b.addEventListener(e, function () { hot(b, true); }); });
+      ["mouseleave", "blur"].forEach(function (e) { b.addEventListener(e, function () { hot(b, false); }); });
+    }
+    return b;
+  }
+
+  // 한쪽에 다섯이 넘으면 넷만 보인다. 떠나온 개념은 접지 않는다 (돌아갈 길)
+  function mapColumn(side, caption, list, empty) {
+    var col = el("div", "nbr-col " + side);
+    col.appendChild(el("div", "nbr-cap", caption));
+    var stack = el("div", "nbr-stack");
+    if (!list.length) stack.appendChild(el("div", "nbr-none", empty));
+    var limit = list.length > FOLD ? FOLD - 1 : list.length, folded = 0;
+    list.forEach(function (n, i) {
+      var node = mapNode(n, side);
+      if (i >= limit && !(travel && n.id === travel.from)) { node.hidden = true; folded++; }
+      stack.appendChild(node);
+    });
+    if (folded) {
+      var more = el("button", "nbr-more", folded + "개 더 보기");
+      more.type = "button";
+      more.addEventListener("click", function () {
+        Array.prototype.forEach.call(stack.querySelectorAll(".nm[hidden]"), function (x) { x.hidden = false; });
+        more.remove();
+      });
+      stack.appendChild(more);
+    }
+    col.appendChild(stack);
+    return col;
+  }
+
+  function neighborMap(page) {
+    var before = page.before || [], after = page.after || [];
+    if (!before.length && !after.length) return null;
+    var s = el("section", "nbr");
+    s.setAttribute("aria-label", "앞뒤 개념");
+    var head = el("div", "nbr-head");
+    head.appendChild(el("h2", null, "앞뒤 개념"));
+    var all = el("button", "nbr-all", "개념 지도에서 보기");
+    all.type = "button";
+    all.addEventListener("click", function () { post({ type: "openMap", concept: page.concept }); });
+    head.appendChild(all);
+    s.appendChild(head);
+    var grid = el("div", "nbr-grid");
+    var svg = document.createElementNS(SVG, "svg");
+    svg.setAttribute("class", "nbr-edges");
+    svg.setAttribute("aria-hidden", "true");
+    grid.appendChild(svg);
+    grid.appendChild(mapColumn("before", "먼저 알아야 할 것", before, "먼저 알아야 할 개념이 없어요"));
+    var mid = el("div", "nbr-col mid");
+    mid.appendChild(el("div", "nbr-cap", ""));
+    var stack = el("div", "nbr-stack");
+    stack.appendChild(mapNode({ id: page.concept, title: page.title, code: page.code, kind: "concept" }, "center"));
+    mid.appendChild(stack);
+    grid.appendChild(mid);
+    grid.appendChild(mapColumn("after", "이어서 배울 것", after, "아직 이어지는 개념이 없어요"));
+    s.appendChild(grid);
+    return s;
+  }
+
+  // 화살표: 선수 개념 → 이 개념 → 다음 개념. 옮겨 오는 동안의 transform 에 흔들리지 않게 레이아웃 자리(offset)로 잰다.
+  // 더 이어지는 개념이 있으면 노드 바깥으로 짧은 점선을 단다. 폭이 좁아 위아래로 쌓으면 화살표를 그리지 않는다.
+  function drawEdges(grid) {
+    var svg = grid.querySelector(".nbr-edges"), center = grid.querySelector(".nm.center");
+    if (!svg || !center) return;
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    if (getComputedStyle(svg).display === "none") return;
+    svg.setAttribute("viewBox", "0 0 " + grid.clientWidth + " " + grid.clientHeight);
+    function box(n) { return { l: n.offsetLeft, r: n.offsetLeft + n.offsetWidth, y: n.offsetTop + n.offsetHeight / 2 }; }
+    function line(d, cls, id) {
+      var p = document.createElementNS(SVG, "path");
+      p.setAttribute("d", d);
+      p.setAttribute("class", cls);
+      if (id) p.setAttribute("data-for", id);
+      svg.appendChild(p);
+    }
+    function curve(x1, y1, x2, y2) {
+      var k = (x2 - x1) / 2;
+      return "M" + x1 + " " + y1 + " C" + (x1 + k) + " " + y1 + " " + (x2 - k) + " " + y2 + " " + x2 + " " + y2 +
+        " M" + (x2 - 6) + " " + (y2 - 4) + " L" + x2 + " " + y2 + " L" + (x2 - 6) + " " + (y2 + 4);
+    }
+    function stubs(x, y, count, dir) {
+      var d = "", k = Math.min(count, 3);
+      for (var i = 0; i < k; i++) d += "M" + x + " " + y + " L" + (x + dir * 13) + " " + (y + (i - (k - 1) / 2) * 7) + " ";
+      return d;
+    }
+    var c = box(center);
+    Array.prototype.forEach.call(grid.querySelectorAll(".before .nm:not([hidden])"), function (n) {
+      var b = box(n), id = n.getAttribute("data-id");
+      line(curve(b.r + 1, b.y, c.l - 2, c.y), "e before", id);
+      if (n.hasAttribute("data-beyond")) line(stubs(b.l - 1, b.y, +n.getAttribute("data-beyond"), -1), "stub", id);
+    });
+    Array.prototype.forEach.call(grid.querySelectorAll(".after .nm:not([hidden])"), function (n) {
+      var b = box(n), id = n.getAttribute("data-id");
+      line(curve(c.r + 1, c.y, b.l - 2, b.y), "e after", id);
+      if (n.hasAttribute("data-beyond")) line(stubs(b.r + 1, b.y, +n.getAttribute("data-beyond"), 1), "stub", id);
+    });
+  }
+
+  function watchEdges(section) {
+    if (edgeWatch) edgeWatch.disconnect();
+    edgeWatch = null;
+    if (!section) return;
+    var grid = section.querySelector(".nbr-grid");
+    edgeWatch = new ResizeObserver(function () { drawEdges(grid); });
+    edgeWatch.observe(grid);
+  }
+
+  // 노드에 올리면 그 노드의 화살표만 짙게
+  function hot(node, on) {
+    var grid = node.closest(".nbr-grid");
+    if (!grid) return;
+    grid.classList.toggle("hovering", on);
+    var id = node.getAttribute("data-id");
+    Array.prototype.forEach.call(grid.querySelectorAll(".nbr-edges [data-for]"), function (p) {
+      if (p.getAttribute("data-for") === id) p.classList.toggle("hot", on);
+    });
+  }
+
+  function goTo(id, node) {
+    var center = document.querySelector(".nbr .nm.center");
+    travel = { id: id, rect: node.getBoundingClientRect(), from: current && current.concept, fromRect: center && center.getBoundingClientRect(), at: Date.now() };
+    node.classList.add("going");
+    post({ type: "openConcept", id: id });
+  }
+
+  // 누른 노드는 있던 자리에서 가운데로, 떠나온 개념은 가운데에서 제자리로 옮겨 온다. 나머지 노드와 화살표는 뒤따라 나타난다.
+  function arrive(section) {
+    var t = travel;
+    travel = null;
+    if (!t || !section || !current || current.concept !== t.id || Date.now() - t.at > 3000) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    var moves = [[section.querySelector(".nm.center"), t.rect]];
+    if (t.from && t.fromRect) moves.push([section.querySelector('.nm[data-id="' + CSS.escape(t.from) + '"]:not([hidden])'), t.fromRect]);
+    moves = moves.filter(function (m) { return m[0]; });
+    section.classList.add("arriving");
+    moves.forEach(function (m) {
+      var n = m[0], from = m[1], to = n.getBoundingClientRect();
+      n.classList.add("moving");
+      n.style.transform = "translate(" + (from.left + from.width / 2 - to.left - to.width / 2) + "px, " + (from.top + from.height / 2 - to.top - to.height / 2) + "px)";
+    });
+    section.getBoundingClientRect();
+    requestAnimationFrame(function () {
+      section.classList.remove("arriving");
+      section.classList.add("settling");
+      moves.forEach(function (m) { m[0].style.transform = ""; });
+      // page.css 의 .settling 전환(가장 늦게 끝나는 것 0.65초)이 끝난 뒤에 거둔다. 먼저 거두면 단추 노드의 이동이 끊긴다
+      setTimeout(function () {
+        section.classList.remove("settling");
+        moves.forEach(function (m) { m[0].classList.remove("moving"); });
+      }, 800);
+    });
+  }
+
   function render(page) {
     var same = current && current.concept === page.concept;
     var keepY = window.scrollY;
@@ -492,6 +676,8 @@
     count.hidden = true;
     meta.appendChild(count);
     art.appendChild(meta);
+    var around = neighborMap(page);
+    if (around) art.appendChild(around);
     var units = el("div", "units");
     if (!page.units || !page.units.length) units.appendChild(el("div", "empty", "아직 페이지가 없어요. 개념 정리가 끝나면 만들어집니다."));
     var list = page.units || [];
@@ -506,7 +692,7 @@
       }
     }
     art.appendChild(units);
-    linkSection(art, "먼저 알아야 할 것", page.before, false);
+    // 먼저 알아야 할 것은 머리의 앞뒤 개념 지도에 있다. 다 읽고 이어 갈 곳만 아래에 다시 둔다.
     linkSection(art, "이어서 배울 것", page.after, false);
     linkSection(art, "과목 사이 연결", page.links, true);
     if (page.references && page.references.length) {
@@ -547,8 +733,19 @@
     }
     // 같은 개념을 다시 그릴 때(코멘트를 단 뒤 등)는 읽던 자리를 지킨다
     window.scrollTo(0, same ? keepY : 0);
+    watchEdges(around);
+    arrive(around);
     // 화면 찍기: 코멘트 스레드와 새 판 비교를 펼치고 그 자리로 내려 연다
     if (page.debug) {
+      // 앞뒤 개념 지도: 좁은 폭으로 그리거나, 한 개념에서 이웃을 눌러 옮겨 간다
+      if (page.debug.narrow) art.style.maxWidth = page.debug.narrow + "px";
+      if (page.debug.openMap) setTimeout(function () { var a = document.querySelector(".nbr-all"); if (a) a.click(); }, 300);
+      if (page.debug.walk && page.debug.walk[0] === page.concept) {
+        setTimeout(function () {
+          var n = document.querySelector('.nbr .nm[data-id="' + CSS.escape(page.debug.walk[1]) + '"]');
+          if (n) n.click();
+        }, 300);
+      }
       if (page.debug.openThreads) Array.prototype.forEach.call(document.querySelectorAll(".g-cm.has"), function (b) { b.click(); });
       if (page.debug.openCompare) Array.prototype.forEach.call(document.querySelectorAll(".dir-open"), function (b) { b.click(); });
       if (page.debug.openEasy) Array.prototype.forEach.call(document.querySelectorAll(".g-side"), function (b) { b.click(); });

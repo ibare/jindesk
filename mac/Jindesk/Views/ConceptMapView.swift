@@ -180,11 +180,12 @@ struct ConceptMapPane: View {
     }
     .onChange(of: arrangement) { if let selected { scrollTarget = selected } }
     .onAppear {
-      // 화면 찍기: 골라 둘 개념
-      if let id = model.snapshotDebug?["mapSelect"]?.stringValue, map.node(id) != nil {
+      // 학습 페이지의 "개념 지도에서 보기"로 왔으면 그 개념을 골라 그 자리로 옮긴다
+      if let id = model.mapFocus, map.node(id) != nil {
         selected = id
         scrollTarget = id
       }
+      model.mapFocus = nil
     }
   }
 
@@ -251,6 +252,7 @@ struct ConceptMapPane: View {
   private func open(_ id: String) {
     guard facts[id].hasPage, model.concept(id) != nil else { return }
     model.selection = .concept(id)
+    model.revealInList = id
   }
 }
 
@@ -608,14 +610,17 @@ struct MapDetail: View {
           .padding(.vertical, 1)
           .foregroundStyle(stateColor(node))
           .background(stateColor(node).opacity(0.12), in: Capsule())
+          .fixedSize()
         if fact.isNew {
           Text("새로").font(.caption.weight(.semibold)).padding(.horizontal, 6).padding(.vertical, 1).foregroundStyle(.white)
             .background(Color.accentColor, in: Capsule())
+            .fixedSize()
         }
-        if let note = fact.note { Text(note).font(.caption).foregroundStyle(.orange) }
       }
       Text(node.title).font(.title3.weight(.semibold)).lineLimit(2)
       if let ko = fact.titleKo { Text(ko).font(.callout).foregroundStyle(.secondary) }
+      // 한국어가 덜 된 곳 (배지 줄에 두면 좁은 폭에서 배지가 잘린다)
+      if let note = fact.note { Text(note).font(.caption).foregroundStyle(.orange) }
       Text(node.id).font(.caption2.monospaced()).foregroundStyle(.tertiary).textSelection(.enabled).lineLimit(2)
     }
   }

@@ -64,7 +64,7 @@
           m.phase = .ready
           m.section = .subjects
           UserDefaults.standard.set(ConceptMap.Arrangement.learning.rawValue, forKey: "conceptMapArrangement")
-          m.snapshotDebug = .object(["mapSelect": .string(UserDefaults.standard.string(forKey: "snapshotConcept") ?? "")])
+          m.mapFocus = UserDefaults.standard.string(forKey: "snapshotConcept")
           m.selection = mapSubject(m).map { .map($0) }
         },
         Scenario(name: "concept-map-syllabus", dark: true) { m in
@@ -72,6 +72,37 @@
           m.section = .subjects
           UserDefaults.standard.set(ConceptMap.Arrangement.syllabus.rawValue, forKey: "conceptMapArrangement")
           m.selection = mapSubject(m).map { .map($0) }
+        },
+        // 학습 페이지 머리의 앞뒤 개념 지도 (-snapshotConcept 의 페이지)
+        Scenario(name: "page-neighbors") { m in
+          m.phase = .ready
+          m.section = .subjects
+          m.selection = snapshotConcept(m).map { .concept($0) }
+        },
+        // 앞뒤 개념 지도에서 이웃을 눌러 옮겨 간 뒤 (-snapshotWalk <개념 id>, 없으면 첫 다음 개념)
+        Scenario(name: "page-neighbors-walk", dark: true) { m in
+          m.phase = .ready
+          m.section = .subjects
+          guard let from = snapshotConcept(m), let concept = m.concept(from) else { return }
+          let to = UserDefaults.standard.string(forKey: "snapshotWalk") ?? ConceptMap.neighborhood(of: concept, all: m.allConcepts).after.first?.node.id ?? from
+          m.snapshotDebug = .object(["walk": .array([.string(from), .string(to)])])
+          m.selection = .concept(from)
+        },
+        // 앞뒤 개념 지도의 "개념 지도에서 보기": 과목 지도가 이 개념을 고른 채 열린다
+        Scenario(name: "page-neighbors-map") { m in
+          m.phase = .ready
+          m.section = .subjects
+          UserDefaults.standard.set(ConceptMap.Arrangement.learning.rawValue, forKey: "conceptMapArrangement")
+          m.snapshotDebug = .object(["openMap": .bool(true)])
+          m.selection = snapshotConcept(m).map { .concept($0) }
+          try? await Task.sleep(for: .milliseconds(800))
+        },
+        // 폭이 좁으면 위아래로 쌓는다
+        Scenario(name: "page-neighbors-narrow") { m in
+          m.phase = .ready
+          m.section = .subjects
+          m.snapshotDebug = .object(["narrow": .number(470)])
+          m.selection = snapshotConcept(m).map { .concept($0) }
         },
         // 학습 페이지의 그림 블록 (-snapshotConcept <개념 id> 로 개념을 고른다)
         Scenario(name: "figure") { m in

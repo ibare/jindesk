@@ -75,6 +75,37 @@ public struct Occurrence: Sendable, Equatable {
     guard let e = yaml["entry"]?.string, let s = yaml["source"]?.string else { return nil }
     self.init(entry: e, source: s, pages: (yaml["pages"]?.array ?? []).compactMap(\.int))
   }
+
+  // 목록에 보일 쪽 ("12–24쪽", "7쪽"). source 를 주면 그 자료의 쪽만, 주지 않았는데 자료가 여럿이면 "자료 2개"
+  public static func pagesLabel(_ occurrences: [Occurrence], source: String? = nil) -> String? {
+    let mine = occurrences.filter { source == nil || $0.source == source }
+    if source == nil, Set(mine.map(\.source)).count > 1 { return "자료 \(Set(mine.map(\.source)).count)개" }
+    let pages = Set(mine.flatMap(\.pages)).sorted()
+    guard let first = pages.first, let last = pages.last else { return nil }
+    return first == last ? "\(first)쪽" : "\(first)–\(last)쪽"
+  }
+}
+
+// 목록에 보일 이름: 콜론 앞(머리)과 뒤(나머지). "Measures of spread: range and IQR" → "Measures of spread", "range and IQR"
+public struct TitleParts: Sendable, Equatable {
+  public let head: String
+  public let tail: String?
+
+  public init(_ title: String) {
+    let t = title.trimmingCharacters(in: .whitespaces)
+    if let r = t.range(of: #"\s*[:：]\s*"#, options: .regularExpression), r.lowerBound > t.startIndex, r.upperBound < t.endIndex {
+      head = String(t[..<r.lowerBound])
+      tail = String(t[r.upperBound...])
+    } else {
+      head = t
+      tail = nil
+    }
+  }
+
+  init(head: String, tail: String?) {
+    self.head = head
+    self.tail = tail
+  }
 }
 
 // 과목 사이 연결: 다른 과목의 개념과 그 관계 한 문장 (영어)

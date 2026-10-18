@@ -36,6 +36,30 @@
           m.phase = .ready
           m.section = .today
         },
+        Scenario(name: "today-dark", dark: true) { m in
+          m.phase = .ready
+          m.section = .today
+          m.selection = nil
+        },
+        // 모아 보기의 확인 문제
+        Scenario(name: "collections") { m in
+          m.phase = .ready
+          m.section = .collections
+          m.collectionsTab = .checks
+          m.selection = nil
+        },
+        Scenario(name: "collections-dark", dark: true) { m in
+          m.phase = .ready
+          m.section = .collections
+          m.collectionsTab = .checks
+        },
+        // 과목 목록: 배우는 순서의 둘째 개념을 고른다 (고른 줄이 펼쳐진다)
+        Scenario(name: "subjects-list-dark", dark: true) { m in
+          m.phase = .ready
+          m.section = .subjects
+          let subject = m.concepts.keys.sorted().first
+          m.selection = subject.flatMap { m.conceptMap($0, showOthers: false).learningOrder().dropFirst().first }.map { .concept($0) }
+        },
         Scenario(name: "jobs") { m in
           m.phase = .ready
           fakeUsage(m)

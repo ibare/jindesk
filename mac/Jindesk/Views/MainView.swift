@@ -24,6 +24,8 @@ struct MainView: View {
         }
       }
       .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 460)
+      // 목록 칸 위에는 고른 화면의 이름을 둔다 (DECISIONS.md 32)
+      .navigationTitle(model.searchText.trimmingCharacters(in: .whitespaces).isEmpty ? model.section.label : "찾기")
       // 툴바 항목은 열마다 따로 건다. 목록 칸에 항목이 하나라도 있어야 SwiftUI 가 목록|내용 경계에서 툴바 칸을 나눠,
       // 내용 칸 가운데의 진행 표시가 열 경계선 위에 걸치지 않는다 (Assayer 와 같다).
       .toolbar { ToolbarSpacer(.flexible) }

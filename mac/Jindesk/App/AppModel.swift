@@ -41,6 +41,22 @@ struct RegenTarget: Identifiable, Equatable {
 }
 
 // 과목 화면에서 고른 것
+// 모아 보기의 탭 (DECISIONS.md 32)
+enum CollectionsTab: String, CaseIterable, Identifiable {
+  case links, sources, checks, memos
+
+  var id: String { rawValue }
+
+  var label: String {
+    switch self {
+    case .links: "연결"
+    case .sources: "자료"
+    case .checks: "문제"
+    case .memos: "메모"
+    }
+  }
+}
+
 enum SubjectSelection: Hashable {
   case concept(String)
   case source(String)
@@ -105,6 +121,8 @@ final class AppModel {
   var revealInList: String?
   // 출처 칩으로 연 원래 자료의 쪽
   var peek: SourcePeek?
+  // 모아 보기에서 고른 탭
+  var collectionsTab = CollectionsTab.links
   // 찾기 (영어 원문과 한국어 곁 층)
   var searchText = "" {
     didSet { if searchText != oldValue { runSearch() } }
@@ -386,15 +404,45 @@ final class AppModel {
     var titleKo: String?
     var note: String?
     var hasPage = false
+    // 7일 안에 페이지를 만들었다 (페이지의 작업 id 날짜로 본다)
+    var isNew = false
+    // 페이지를 만든 시각 (HH:mm)
+    var madeAt: String?
+    var checks = 0
   }
 
-  // 개념 줄에 보일 페이지 상태: 한국어 제목, 페이지가 없거나 한국어가 덜 된 것
+  // 개념 줄에 보일 페이지 상태: 한국어 제목, 페이지가 없거나 한국어가 덜 된 것, 새로 만든 것, 확인 문제 수
   func pageState(_ concept: Concept) -> PageState {
     guard let data else { return PageState() }
     let folder = ConceptFolder(concept.cid, in: data)
     guard let page = Page.load(folder) else { return PageState(note: "페이지 만드는 중") }
     let missing = Translation.targets(page, layers: Layers.load(folder)).count
-    return PageState(titleKo: page.titleKo, note: missing > 0 ? "한국어 \(missing)곳 남음" : nil, hasPage: true)
+    let job = page.provenance["job"]?.string ?? ""
+    return PageState(
+      titleKo: page.titleKo, note: missing > 0 ? "한국어 \(missing)곳 남음" : nil, hasPage: true,
+      isNew: job.prefix(8) >= JobID.stamp(Date().addingTimeInterval(-7 * 86400)).prefix(8), madeAt: Self.jobTime(job),
+      checks: page.units.filter { $0.kind == .check }.count)
+  }
+
+  // 작업 id 의 시각 ("20261018-2301-page-…" → "23:01")
+  static func jobTime(_ job: String) -> String? {
+    let parts = job.split(separator: "-")
+    guard parts.count > 1, parts[1].count == 4, parts[1].allSatisfy(\.isNumber) else { return nil }
+    return "\(parts[1].prefix(2)):\(parts[1].suffix(2))"
+  }
+
+  // 과목 개념의 배우는 순서 (DECISIONS.md 32)
+  func learningRank(_ subject: String) -> [String: Int] {
+    Dictionary(conceptMap(subject, showOthers: false).learningOrder().enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
+  }
+
+  // 배우는 순서로 놓는다. 과목이 섞이면 과목끼리 모은다.
+  func inLearningOrder(_ list: [Concept]) -> [Concept] {
+    var ranks: [String: [String: Int]] = [:]
+    for s in Set(list.map(\.subject)) { ranks[s] = learningRank(s) }
+    return list.sorted { a, b in
+      a.subject != b.subject ? a.subject < b.subject : (ranks[a.subject]?[a.id] ?? .max, a.id) < (ranks[b.subject]?[b.id] ?? .max, b.id)
+    }
   }
 
   // 과목의 개념 지도 (PAGES.md 의 개념 지도). 저장하지 않고 지금 읽어 둔 개념 목록에서 계산한다.
@@ -433,24 +481,31 @@ final class AppModel {
 
   var allConcepts: [Concept] { concepts.values.flatMap { $0 }.sorted { $0.id < $1.id } }
 
-  // 최근 며칠 사이에 페이지가 만들어진 개념 (페이지의 작업 id 날짜로 본다)
-  func recentConcepts(days: Int) -> [Concept] {
-    guard let data else { return [] }
-    let since = JobID.stamp(Date().addingTimeInterval(-Double(days) * 86400)).prefix(8)
-    _ = commentsVersion
-    return allConcepts.compactMap { c -> (Concept, String)? in
-      guard let page = Page.load(ConceptFolder(c.cid, in: data)), let job = page.provenance["job"]?.string, job.prefix(8) >= since else { return nil }
-      return (c, job)
-    }.sorted { $0.1 > $1.1 }.map(\.0)
+  // 최근 며칠 사이에 넣은 자료 (오늘), 새것부터
+  func recentSources(days: Int) -> [SourceSummary] {
+    let since = Clock.isoLocal(Date().addingTimeInterval(-Double(days) * 86400))
+    return library.sources.filter { $0.meta.received >= since }.sorted { $0.meta.received > $1.meta.received }
   }
 
-  func recentAnswers(days: Int) -> [(question: Comment, answer: Comment)] {
-    guard let data else { return [] }
+  // 자료에서 정리된 개념 (개념의 출처에 그 자료가 있다), 배우는 순서로
+  func concepts(from source: String) -> [Concept] {
+    inLearningOrder(allConcepts.filter { c in c.occurrences.contains { $0.source == source } })
+  }
+
+  // 자료가 붙은 과목의 이름
+  func subjectName(_ source: SourceSummary) -> String? {
+    library.subjects.first { s in s.sources.contains { $0.id == source.id } }?.name
+  }
+
+  // 개념마다 남은 코멘트 수 (답글은 빼고)
+  func commentCounts() -> [String: Int] {
+    guard let data else { return [:] }
     _ = commentsVersion
-    let all = CommentStore.load(data)
-    let byID = Dictionary(all.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-    let since = Clock.isoLocal(Date().addingTimeInterval(-Double(days) * 86400))
-    return all.filter { $0.kind == .answer && $0.at >= since }.compactMap { a in a.replyTo.flatMap { byID[$0] }.map { ($0, a) } }.reversed()
+    var out: [String: Int] = [:]
+    for c in CommentStore.load(data) where c.kind != .answer {
+      if let id = c.anchor?.concept { out[id, default: 0] += 1 }
+    }
+    return out
   }
 
   func candidates() -> [Directive] {
@@ -472,16 +527,20 @@ final class AppModel {
   }
 
   struct PageCheck {
-    let concept: String
-    let title: String
+    let concept: Concept
+    let unit: String
     let question: String
-    var id: String { "\(concept)#\(question.prefix(40))" }
+    let answer: String?
+    var id: String { "\(concept.id)#\(unit)" }
   }
 
+  // 모든 학습 페이지의 확인 문제. 과목끼리, 배우는 순서로
   func allChecks() -> [PageCheck] {
     guard let data else { return [] }
-    return allConcepts.flatMap { c in
-      (Page.load(ConceptFolder(c.cid, in: data))?.units ?? []).filter { $0.kind == .check }.map { PageCheck(concept: c.id, title: c.title, question: $0.text ?? "") }
+    return inLearningOrder(allConcepts).flatMap { c in
+      (Page.load(ConceptFolder(c.cid, in: data))?.units ?? []).filter { $0.kind == .check }.map {
+        PageCheck(concept: c, unit: $0.id, question: $0.text ?? "", answer: $0.block?["answer"]?.string)
+      }
     }
   }
 
@@ -738,7 +797,8 @@ final class AppModel {
 
   // 로컬에 없는 원본을 받고, 다 올리지 않은 자료를 올린다. 한 번에 하나만 돈다. 도는 동안 부르면 끝난 뒤 한 번 더 한다.
   func syncBucket() {
-    guard phase == .ready, let client = bucketClient() else { return }
+    // 화면 찍기 모드는 실제 버킷을 건드리지 않는다
+    guard phase == .ready, !isSnapshot, let client = bucketClient() else { return }
     guard !bucketSyncing else {
       bucketAgain = true
       return

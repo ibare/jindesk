@@ -216,6 +216,15 @@ public struct ConceptMap: Sendable, Equatable {
     return layer
   }
 
+  // 이 과목 개념의 배우는 순서 (목록의 차례, DECISIONS.md 32): 배우는 순서 배치의 칸, 같은 칸에서는 위에서 아래로
+  public func learningOrder() -> [String] {
+    let places = learningLayout().places
+    return nodes.enumerated().filter { $0.element.kind == .concept }.sorted { a, b in
+      let pa = places[a.element.id], pb = places[b.element.id]
+      return (pa?.column ?? 0, pa?.row ?? 0, a.offset) < (pb?.column ?? 0, pb?.row ?? 0, b.offset)
+    }.map(\.element.id)
+  }
+
   // 한 칸 안에서 원하는 높이 차례로 놓되 1 행씩은 떨어지게. 밀려 내려간 만큼 칸 전체를 조금 올린다.
   static func pack(_ wants: [Double]) -> [Double] {
     var out: [Double] = []

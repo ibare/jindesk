@@ -117,6 +117,23 @@ public enum TexText {
     return t.trimmingCharacters(in: .whitespaces)
   }
 
+  // 목록에 보일 글 (DECISIONS.md 32): plain 에 더해 숫자 아래첨자와 위첨자를 글자로 바꾼다 (Q_1 → Q₁, x^2 → x², 10^-3 → 10⁻³).
+  // 찾기 색인은 plain 을 쓴다 (Q1 이나 x^2 로 찾을 수 있게).
+  public static func display(_ s: String) -> String {
+    var out = plain(s)
+    for (mark, map) in [("_", "₀₁₂₃₄₅₆₇₈₉"), ("^", "⁰¹²³⁴⁵⁶⁷⁸⁹")] {
+      let minus: Character = mark == "_" ? "₋" : "⁻"
+      let regex = try! NSRegularExpression(pattern: NSRegularExpression.escapedPattern(for: mark) + #"(-?\d+)"#)
+      for m in regex.matches(in: out, range: NSRange(out.startIndex..., in: out)).reversed() {
+        guard let whole = Range(m.range, in: out), let digits = Range(m.range(at: 1), in: out) else { continue }
+        let glyphs = Array(map)
+        let converted = String(out[digits].map { $0 == "-" ? minus : glyphs[Int(String($0))!] })
+        out.replaceSubrange(whole, with: converted)
+      }
+    }
+    return out
+  }
+
   // 수식 밖의 숫자 (번역 대조용). 1,000 과 1000 은 같게 본다.
   public static func numbers(_ s: String) -> [String] {
     let plain = strip(s)

@@ -59,6 +59,20 @@
           m.section = .subjects
           m.selection = m.library.sources.last.map { .source($0.id) }
         },
+        // 개념 지도. -snapshotConcept 로 준 개념을 골라 둔다
+        Scenario(name: "concept-map") { m in
+          m.phase = .ready
+          m.section = .subjects
+          UserDefaults.standard.set(ConceptMap.Arrangement.learning.rawValue, forKey: "conceptMapArrangement")
+          m.snapshotDebug = .object(["mapSelect": .string(UserDefaults.standard.string(forKey: "snapshotConcept") ?? "")])
+          m.selection = mapSubject(m).map { .map($0) }
+        },
+        Scenario(name: "concept-map-syllabus", dark: true) { m in
+          m.phase = .ready
+          m.section = .subjects
+          UserDefaults.standard.set(ConceptMap.Arrangement.syllabus.rawValue, forKey: "conceptMapArrangement")
+          m.selection = mapSubject(m).map { .map($0) }
+        },
         // 학습 페이지의 그림 블록 (-snapshotConcept <개념 id> 로 개념을 고른다)
         Scenario(name: "figure") { m in
           m.phase = .ready
@@ -156,6 +170,7 @@
     static func run(_ model: AppModel, to directory: URL) async {
       try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
       let only = Set((UserDefaults.standard.string(forKey: "snapshotOnly") ?? "").split(separator: ",").map(String.init))
+      let savedArrangement = UserDefaults.standard.object(forKey: "conceptMapArrangement")
       var log: [String] = []
       for scenario in scenarios() where only.isEmpty || only.contains(scenario.name) {
         NSApp.appearance = NSAppearance(named: scenario.dark ? .darkAqua : .aqua)
@@ -194,12 +209,20 @@
         for _ in 0..<50 where jobs.isBusy { try? await Task.sleep(for: .milliseconds(100)) }
       }
       try? log.joined(separator: "\n").write(to: directory.appending(path: "snapshots.txt"), atomically: true, encoding: .utf8)
+      // 개념 지도 장면이 바꾼 배치를 되돌린다
+      UserDefaults.standard.set(savedArrangement, forKey: "conceptMapArrangement")
       // 화면 밖에 둔 창 위치가 실제 앱의 창 위치로 기억되지 않게 지운다
       for key in UserDefaults.standard.dictionaryRepresentation().keys where key.hasPrefix("NSWindow Frame") || key.hasPrefix("NSSplitView") {
         UserDefaults.standard.removeObject(forKey: key)
       }
       for window in NSApp.windows { window.isRestorable = false }
       NSApp.terminate(nil)
+    }
+
+    // 개념 지도를 찍을 과목: -snapshotConcept 로 준 개념의 과목, 없으면 개념이 가장 많은 과목
+    static func mapSubject(_ m: AppModel) -> String? {
+      if let id = UserDefaults.standard.string(forKey: "snapshotConcept"), let cid = ConceptID(id) { return cid.subject }
+      return m.concepts.max { ($0.value.count, $1.key) < ($1.value.count, $0.key) }?.key
     }
 
     // 찍을 개념: -snapshotConcept 로 준 것, 없으면 그림이 있는 첫 개념

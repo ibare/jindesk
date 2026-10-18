@@ -87,7 +87,9 @@ Assayer 의 실행 구조를 그대로 따른다. 다른 점만 적는다.
                                                                               이 페이지의 코멘트
 ```
 
-자세한 것은 `PAGES.md`, 화면 시안은 `prototype/index.html`.
+과목마다 목록 맨 위에 "개념 지도"가 있다. 고르면 내용 칸에 그 과목의 개념을 선수 관계로 이은 지도가 열린다.
+
+자세한 것은 `PAGES.md`, 화면 시안은 `prototype/index.html`과 `prototype/concept-map.html`.
 
 ## Assayer 에서 가져오는 것
 

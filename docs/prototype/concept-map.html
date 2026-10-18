@@ -1,0 +1,931 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>[hidden]{display:none!important} body{margin:0} img{max-width:100%}</style>
+<title>개념 지도 시안</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Noto+Serif+KR:wght@700&display=swap">
+<style>
+/* 구성: 시안 머리 · Mac 창(사이드바 · 목록 · 내용 칸의 개념 지도와 고른 개념) · 정할 것. 기존 시안의 차가운 공책 종이와 잉크 파랑을 잇는다. */
+:root {
+  --bg: #eceff3; --paper: #ffffff; --paper-2: #f5f7f9; --chrome: #e3e7ec;
+  --ink: #16202a; --ink-2: #46525e; --ink-3: #727d89; --line: #d5dbe2; --line-2: #e7ebef;
+  --accent: #1b5fae; --accent-soft: #e2ecf8; --accent-ink: #ffffff;
+  --after: #6250d6; --after-soft: #ecE9fb;
+  --warn: #b4570f; --warn-soft: #fbeee2;
+  --subj-math: #2a78d6;
+  --edge: #a3adb8; --edge-dim: #dfe3e8; --grid: #e2e6eb;
+  --tl-r: #ff5f57; --tl-y: #febc2e; --tl-g: #28c840;
+  --shadow: 0 1px 2px rgba(16, 24, 32, .05), 0 14px 36px rgba(16, 24, 32, .10);
+  --node-shadow: 0 1px 2px rgba(16, 24, 32, .06);
+  --f-display: "Noto Serif KR", "AppleMyungjo", serif;
+  --f-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1318; --paper: #151c23; --paper-2: #1a222a; --chrome: #1c242c;
+    --ink: #e5eaef; --ink-2: #a8b2bc; --ink-3: #7c8792; --line: #2a343e; --line-2: #212a33;
+    --accent: #6ea8ec; --accent-soft: #1b2c41; --accent-ink: #0e1318;
+    --after: #9d93ee; --after-soft: #26213f;
+    --warn: #e3914f; --warn-soft: #36251a;
+    --subj-math: #5a9be8;
+    --edge: #4f5b67; --edge-dim: #252e37; --grid: #1d252d;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 14px 36px rgba(0, 0, 0, .35);
+    --node-shadow: 0 1px 2px rgba(0, 0, 0, .3);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1318; --paper: #151c23; --paper-2: #1a222a; --chrome: #1c242c;
+  --ink: #e5eaef; --ink-2: #a8b2bc; --ink-3: #7c8792; --line: #2a343e; --line-2: #212a33;
+  --accent: #6ea8ec; --accent-soft: #1b2c41; --accent-ink: #0e1318;
+  --after: #9d93ee; --after-soft: #26213f;
+  --warn: #e3914f; --warn-soft: #36251a;
+  --subj-math: #5a9be8;
+  --edge: #4f5b67; --edge-dim: #252e37; --grid: #1d252d;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 14px 36px rgba(0, 0, 0, .35);
+  --node-shadow: 0 1px 2px rgba(0, 0, 0, .3);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 14px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 56px;
+}
+.page { max-width: 1320px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+h1, h2, h3, h4 { text-wrap: balance; margin: 0; }
+p { margin: 0; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+
+/* 머리 */
+.masthead { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 32px; }
+.masthead h1 { font-family: var(--f-display); font-size: 30px; font-weight: 700; letter-spacing: -.01em; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.masthead h1 small { font-family: var(--f-body); font-size: 13px; font-weight: 500; color: var(--ink-3); }
+.masthead .lede { color: var(--ink-2); max-width: 62ch; margin-top: 6px; }
+.demo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: var(--chrome); border-radius: 8px; padding: 6px 6px 6px 12px; }
+.demo-label { font-size: 12px; color: var(--ink-3); letter-spacing: .02em; }
+
+.btn { border: 1px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 6px; padding: 4px 12px; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.btn:hover { border-color: var(--ink-3); }
+.btn:disabled { opacity: .55; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn svg { width: 14px; height: 14px; flex: none; }
+
+/* 창 */
+.win { background: var(--paper); border: 1px solid var(--line); border-radius: 11px; box-shadow: var(--shadow); overflow: hidden; }
+.titlebar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 14px; padding: 9px 14px; background: var(--chrome); border-bottom: 1px solid var(--line); min-height: 46px; }
+.tb-left { display: flex; align-items: center; gap: 16px; }
+.tb-right { display: flex; justify-content: flex-end; }
+.lights { display: flex; gap: 8px; flex: none; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+.lights i:nth-child(1) { background: var(--tl-r); } .lights i:nth-child(2) { background: var(--tl-y); } .lights i:nth-child(3) { background: var(--tl-g); }
+.tb-icon { width: 16px; height: 16px; color: var(--ink-3); }
+.activity { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-2); white-space: nowrap; min-width: 0; }
+.activity .idle { color: var(--ink-3); opacity: .8; }
+.activity .job { font-weight: 600; color: var(--ink); }
+.bars { display: inline-flex; gap: 3px; }
+.bars i { width: 16px; height: 4px; border-radius: 2px; background: var(--accent); display: block; }
+.bars i.now { animation: blink 1s ease-in-out infinite; }
+.bars i.later { background: var(--line); }
+@keyframes blink { 50% { opacity: .3; } }
+
+.panes { display: grid; grid-template-columns: 180px 280px minmax(0, 1fr); height: 700px; }
+.sidebar { background: var(--chrome); border-right: 1px solid var(--line); padding: 12px 10px; display: flex; flex-direction: column; gap: 2px; overflow: auto; }
+.sb-search { display: flex; align-items: center; gap: 6px; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; color: var(--ink-3); font-size: 12px; margin-bottom: 10px; white-space: nowrap; overflow: hidden; }
+.sb-search svg { width: 13px; height: 13px; flex: none; }
+.sb-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; color: var(--ink-2); font-size: 13px; }
+.sb-item svg { width: 15px; height: 15px; flex: none; color: var(--accent); }
+.sb-item.is-selected { background: var(--line); color: var(--ink); font-weight: 500; }
+
+/* 목록 칸 */
+.list { border-right: 1px solid var(--line); overflow: auto; padding: 10px 8px 24px; display: flex; flex-direction: column; gap: 1px; }
+.subj-head { display: flex; align-items: baseline; gap: 8px; padding: 10px 8px 4px; }
+.subj-head .sname { font-weight: 600; font-size: 14px; }
+.subj-head .smeta { font-size: 12px; color: var(--ink-3); }
+.subj-head .ell { margin-left: auto; color: var(--ink-3); font-size: 13px; }
+.row { display: flex; align-items: flex-start; gap: 8px; width: 100%; text-align: left; border: 0; background: transparent; border-radius: 6px; padding: 4px 8px; color: var(--ink); }
+.row:hover { background: var(--paper-2); }
+.row .rt { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; font-size: 13px; }
+.row small { font-size: 11.5px; color: var(--ink-3); }
+.row em { font-style: normal; color: var(--warn); }
+.row svg { width: 15px; height: 15px; flex: none; margin-top: 2px; color: var(--accent); }
+.row.map-row.is-selected { background: var(--accent); color: var(--accent-ink); }
+.row.map-row.is-selected svg, .row.map-row.is-selected small { color: var(--accent-ink); opacity: .9; }
+.row.concept { padding-left: 18px; }
+.row.concept.is-focus { background: var(--accent-soft); }
+.row.concept.is-new .rt > span::after { content: "새로"; margin-left: 6px; font-size: 10px; font-weight: 600; padding: 0 5px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); vertical-align: 1px; }
+.item { display: flex; align-items: baseline; gap: 6px; padding: 5px 8px 1px; font-size: 11.5px; color: var(--ink-3); font-weight: 500; }
+.item.d0 { padding-top: 10px; }
+.item.d1 { padding-left: 18px; }
+.item .dot { font-size: 9px; }
+.item .dot.on { color: var(--accent); }
+.item .code { font-family: var(--f-mono); }
+.item .lv { font-size: 10.5px; opacity: .8; }
+.disc { padding: 6px 8px; font-size: 12px; color: var(--ink-3); }
+
+/* 내용 칸 */
+.content { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
+.mapbar { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 10px; border-bottom: 1px solid var(--line-2); }
+.mapbar-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.mapbar h2 { font-size: 15px; font-weight: 600; }
+.mapbar .sum { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.seg { display: inline-flex; background: var(--chrome); border-radius: 7px; padding: 2px; gap: 2px; }
+.seg button { border: 0; background: transparent; padding: 3px 10px; border-radius: 5px; font-size: 12px; color: var(--ink-2); font-weight: 500; }
+.seg button[aria-pressed="true"] { background: var(--paper); color: var(--ink); box-shadow: 0 1px 2px rgba(16, 24, 32, .12); }
+.switch { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); cursor: pointer; }
+.switch input { accent-color: var(--accent); margin: 0; }
+.zoom { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.zoom button { border: 0; background: var(--paper); padding: 2px 9px; font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.zoom button + button { border-left: 1px solid var(--line); }
+.zoom #z-fit { min-width: 52px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11.5px; color: var(--ink-3); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 18px; height: 11px; border-radius: 3px; border: 1px solid var(--line); background: var(--paper); position: relative; display: inline-block; }
+.sw.page::after, .sw.pending::after { content: ""; position: absolute; right: 2px; top: 2px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.sw.pending::after { background: transparent; border: 1.2px solid var(--warn); width: 3.6px; height: 3.6px; }
+.sw.missing { border-style: dashed; border-color: var(--ink-3); background: var(--paper-2); }
+.sw.other { border-color: var(--subj-math); }
+.ln { width: 18px; height: 2px; border-radius: 1px; display: inline-block; }
+.ln.anc { background: var(--accent); }
+.ln.desc { background: var(--after); }
+
+.canvas { flex: 1; min-height: 0; overflow: auto; position: relative; cursor: grab;
+  background-color: var(--paper); background-image: radial-gradient(var(--grid) 1px, transparent 1.2px); background-size: 20px 20px; background-attachment: local; }
+.canvas.dragging { cursor: grabbing; user-select: none; }
+.sizer { position: relative; }
+.stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.edges path { fill: none; stroke: var(--edge); stroke-width: 1.4; }
+.edges path.miss { stroke-dasharray: 4 3; }
+.edges path.anc { stroke: var(--accent); stroke-width: 2; }
+.edges path.desc { stroke: var(--after); stroke-width: 2; }
+.edges path.dim { stroke: var(--edge-dim); }
+.mk-n { fill: var(--edge); } .mk-anc { fill: var(--accent); } .mk-desc { fill: var(--after); } .mk-dim { fill: var(--edge-dim); }
+.labels { position: absolute; inset: 0; pointer-events: none; }
+.lab { position: absolute; font-size: 11.5px; color: var(--ink-3); white-space: nowrap; letter-spacing: .02em; }
+.lab.end { text-align: right; }
+.lab.col { white-space: normal; line-height: 1.3; font-weight: 500; }
+.lab.col b { font-family: var(--f-mono); font-weight: 500; color: var(--ink-2); }
+.axis { position: absolute; height: 1px; background: var(--line); }
+.axis::after { content: ""; position: absolute; right: -1px; top: -4px; border: 4.5px solid transparent; border-left: 7px solid var(--line); border-right: 0; }
+
+.node { position: absolute; left: 0; top: 0; width: 176px; height: 58px; padding: 6px 10px 7px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--paper); box-shadow: var(--node-shadow); text-align: left; display: flex; flex-direction: column; gap: 2px; color: var(--ink);
+  transition: opacity .2s, border-color .2s, background-color .2s, box-shadow .2s; will-change: transform; cursor: pointer; }
+.node:hover { border-color: var(--ink-3); }
+.node .meta { display: flex; align-items: center; gap: 6px; font-size: 10.5px; line-height: 14px; color: var(--ink-3); white-space: nowrap; overflow: hidden; }
+.node .code { font-family: var(--f-mono); flex: none; }
+.node .subj { font-weight: 600; color: var(--subj-math); flex: none; }
+.node .ko { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.node .st { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--accent); }
+.node.pending .st { background: transparent; border: 1.5px solid var(--warn); }
+.node .t { font-size: 12.5px; font-weight: 500; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.node.missing { border-style: dashed; border-color: var(--ink-3); background: var(--paper-2); box-shadow: none; }
+.node.missing .t { color: var(--ink-2); }
+.node.other { border-color: var(--subj-math); }
+.node.anc { border-color: var(--accent); background: var(--accent-soft); }
+.node.desc { border-color: var(--after); background: var(--after-soft); }
+.node.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.node.dim { opacity: .4; }
+.node .new { position: absolute; top: -8px; right: 8px; font-size: 10px; line-height: 16px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+
+/* 고른 개념 */
+.detail { border-top: 1px solid var(--line); background: var(--paper-2); padding: 14px 18px 16px; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr) auto; gap: 14px 22px; align-items: start; min-height: 132px; }
+.d-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11.5px; color: var(--ink-3); }
+.d-meta .code { font-family: var(--f-mono); }
+.pill { font-size: 11px; line-height: 18px; padding: 0 7px; border-radius: 999px; font-weight: 500; background: var(--accent-soft); color: var(--accent); }
+.pill.pending { background: var(--warn-soft); color: var(--warn); }
+.pill.missing { background: transparent; border: 1px dashed var(--ink-3); color: var(--ink-2); line-height: 16px; }
+.pill.other { background: transparent; border: 1px solid var(--subj-math); color: var(--subj-math); line-height: 16px; }
+.pill.new { background: var(--accent); color: var(--accent-ink); }
+.d-head h3 { font-size: 17px; font-weight: 600; line-height: 1.3; margin-top: 4px; }
+.d-ko { font-size: 13px; color: var(--ink-2); }
+.d-id { font-size: 11px; color: var(--ink-3); margin-top: 4px; overflow-wrap: anywhere; }
+.d-col h4 { font-size: 11.5px; font-weight: 600; letter-spacing: .03em; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+.d-col.anc h4 { color: var(--accent); }
+.d-col.desc h4 { color: var(--after); }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip { border: 1px solid var(--line); background: var(--paper); border-radius: 6px; padding: 1px 8px; font-size: 12px; line-height: 1.5; text-align: left; max-width: 100%; }
+.d-col.anc .chip { border-color: var(--accent); }
+.d-col.desc .chip { border-color: var(--after); }
+.chip.missing { border-style: dashed; color: var(--ink-2); }
+.d-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.d-act { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.d-empty { grid-column: 1 / -1; color: var(--ink-2); font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.d-empty .d-hint { font-size: 12px; color: var(--ink-3); }
+
+.toast { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); background: var(--ink); color: var(--paper); font-size: 12.5px; padding: 7px 14px; border-radius: 8px; box-shadow: var(--shadow); max-width: min(520px, calc(100% - 32px)); text-align: center; z-index: 5; }
+
+/* 정할 것 */
+.notes { display: flex; flex-direction: column; gap: 12px; }
+.notes h2 { font-size: 16px; font-weight: 600; }
+.notes dl { margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 28px; }
+.notes dt { font-weight: 600; font-size: 13px; }
+.notes dd { margin: 2px 0 0; color: var(--ink-2); font-size: 13px; max-width: 62ch; }
+.notes code { font-family: var(--f-mono); font-size: 12px; background: var(--chrome); padding: 0 4px; border-radius: 4px; }
+.notes .later dt { color: var(--warn); }
+
+@media (max-width: 1080px) {
+  .panes { grid-template-columns: 260px minmax(0, 1fr); }
+  .sidebar { display: none; }
+  .notes dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .panes { grid-template-columns: minmax(0, 1fr); height: auto; }
+  .list { display: none; }
+  .canvas { flex: none; height: 440px; }
+  .titlebar { grid-template-columns: auto 1fr; }
+  .tb-right { display: none; }
+  .activity { justify-content: flex-end; overflow: hidden; }
+  .detail { grid-template-columns: minmax(0, 1fr); }
+  .d-act { align-items: flex-start; }
+  .toast { bottom: 24px; }
+  .notes dl { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bars i.now { animation: none; }
+  .node { transition: none; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <div>
+      <h1>개념 지도 <small>시안 · 지어낸 예시</small></h1>
+      <p class="lede">과목의 개념을 선수 관계로 이어 그린 지도다. 왼쪽에 먼저 배울 개념이, 오른쪽에 그다음 개념이 놓인다. 개념과 목차 코드는 모두 예시다.</p>
+    </div>
+    <div class="demo" role="group" aria-label="시안 조작">
+      <span class="demo-label">시안 조작</span>
+      <button type="button" class="btn" id="demo-add">A.4 개념 4개가 정리된 뒤</button>
+      <button type="button" class="btn" id="demo-reset" hidden>처음 상태로</button>
+    </div>
+  </header>
+
+  <div class="win">
+    <div class="titlebar">
+      <div class="tb-left">
+        <div class="lights" aria-hidden="true"><i></i><i></i><i></i></div>
+        <svg class="tb-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2"></rect><path d="M6 2.5v11"></path></svg>
+      </div>
+      <div class="activity" id="activity" aria-live="polite"></div>
+      <div class="tb-right">
+        <button type="button" class="btn" id="intake"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M8 2v7M5 6l3 3 3-3"></path><path d="M2 9.5v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3"></path></svg>자료 넣기</button>
+      </div>
+    </div>
+    <div class="panes">
+      <nav class="sidebar" aria-label="사이드바">
+        <div class="sb-search"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5 14 14"></path></svg>개념 찾기 (영어·한국어)</div>
+        <div class="sb-item"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="8" cy="8" r="3"></circle><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M3.4 12.6l1.3-1.3M11.3 4.7l1.3-1.3"></path></svg>오늘</div>
+        <div class="sb-item is-selected"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><rect x="2" y="2.5" width="3.5" height="11" rx=".8"></rect><rect x="6.5" y="2.5" width="3.5" height="11" rx=".8"></rect><path d="m11.2 3.4 2.6-.7 2 10.2-2.6.6z" transform="translate(-1.2 0)"></path></svg>과목</div>
+        <div class="sb-item"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><rect x="2.5" y="5" width="11" height="8.5" rx="1.5"></rect><path d="M4 3h8M5.5 1.5h5"></path></svg>모아 보기</div>
+        <div class="sb-item"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M5.5 4h8M5.5 8h8M5.5 12h8"></path><circle cx="2.8" cy="4" r=".9"></circle><circle cx="2.8" cy="8" r=".9"></circle><circle cx="2.8" cy="12" r=".9"></circle></svg>작업</div>
+      </nav>
+
+      <aside class="list" id="list" aria-label="과목 목록"></aside>
+
+      <main class="content">
+        <div class="mapbar">
+          <div class="mapbar-top">
+            <div>
+              <h2>Physics 개념 지도</h2>
+              <p class="sum" id="sum"></p>
+            </div>
+            <div class="controls">
+              <div class="seg" role="group" aria-label="배치">
+                <button type="button" id="lay-learn" aria-pressed="true">배우는 순서</button>
+                <button type="button" id="lay-syl" aria-pressed="false">목차대로</button>
+              </div>
+              <label class="switch" for="show-others"><input type="checkbox" id="show-others" checked>다른 과목 개념</label>
+              <div class="zoom" role="group" aria-label="크기">
+                <button type="button" id="z-out" aria-label="작게">−</button>
+                <button type="button" id="z-fit" title="한눈에 보이게 맞춥니다">100%</button>
+                <button type="button" id="z-in" aria-label="크게">+</button>
+              </div>
+            </div>
+          </div>
+          <div class="legend" aria-label="범례">
+            <span><i class="sw page"></i>학습 페이지 있음</span>
+            <span><i class="sw pending"></i>페이지 만드는 중</span>
+            <span><i class="sw missing"></i>아직 없는 개념</span>
+            <span><i class="sw other"></i>다른 과목</span>
+            <span><i class="ln anc"></i>먼저 알아야 할 것</span>
+            <span><i class="ln desc"></i>다음 개념</span>
+          </div>
+        </div>
+        <div class="canvas" id="canvas" tabindex="-1">
+          <div class="sizer" id="sizer">
+            <div class="stage" id="stage">
+              <div class="labels" id="labels"></div>
+              <svg class="edges" id="edges" aria-hidden="true">
+                <defs>
+                  <marker id="mk-n" viewBox="0 0 8 8" refX="7.5" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path class="mk-n" d="M0,.6 L8,4 L0,7.4 z"></path></marker>
+                  <marker id="mk-anc" viewBox="0 0 8 8" refX="7.5" refY="4" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path class="mk-anc" d="M0,.6 L8,4 L0,7.4 z"></path></marker>
+                  <marker id="mk-desc" viewBox="0 0 8 8" refX="7.5" refY="4" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path class="mk-desc" d="M0,.6 L8,4 L0,7.4 z"></path></marker>
+                  <marker id="mk-dim" viewBox="0 0 8 8" refX="7.5" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path class="mk-dim" d="M0,.6 L8,4 L0,7.4 z"></path></marker>
+                </defs>
+                <g id="edges-g"></g>
+              </svg>
+              <div id="nodes"></div>
+            </div>
+          </div>
+        </div>
+        <section class="detail" id="detail" aria-live="polite" aria-label="고른 개념"></section>
+        <div class="toast" id="toast" role="status" hidden></div>
+      </main>
+    </div>
+  </div>
+
+  <section class="notes">
+    <h2>정한 것</h2>
+    <dl>
+      <div><dt>자리</dt><dd>목록 칸의 과목마다 맨 위에 "개념 지도" 줄을 둔다. 고르면 내용 칸에 지도가 열린다. 목록의 개념을 고르면 지금처럼 학습 페이지가 열린다.</dd></div>
+      <div><dt>배치</dt><dd>둘 다 둔다. "배우는 순서"는 선수 개념이 몇 겹 쌓였는지로 칸을 나누고, "목차대로"는 강의 계획 항목마다 한 칸이다.</dd></div>
+      <div><dt>그리는 것</dt><dd>이 과목의 개념, 아직 없는 개념(점선), 켜면 다른 과목의 선수 개념. 과목 사이 연결(<code>links</code>)은 배우는 순서가 아니라서 그리지 않고, 모아 보기의 과목 사이 연결 화면에 둔다.</dd></div>
+      <div><dt>고르기</dt><dd>노드를 고르면 거슬러 올라가는 선수 개념 전체(파랑)와 이어지는 개념 전체(보라)가 밝아진다. 학습 페이지는 아래 단추로 열거나 노드를 두 번 눌러 연다.</dd></div>
+      <div><dt>갱신</dt><dd>작업이 끝날 때마다 다시 읽는 개념 목록에서 지도를 그때그때 계산한다. 따로 저장하는 파일은 없다. 오늘 정리된 개념(<code>provenance.job</code> 날짜가 오늘)에는 "새로"가 붙는다.</dd></div>
+      <div class="later"><dt>아직 아닌 것</dt><dd>아직 없는 개념이 나중에 생겨도 지도에서 저절로 이어지지 않는다. 지도 다음에 개념 정리 쪽에서 고친다. 그 전까지는 같은 제목의 점선 노드와 실제 노드가 함께 보일 수 있다.</dd></div>
+    </dl>
+  </section>
+</div>
+
+<script>
+'use strict';
+// 노드 크기와 칸 간격 (px)
+const W = 176, H = 58, ROWG = 74, PADX = 24, TOP = 54, PADB = 28;
+const COLW = { learn: 220, syl: 250 };
+
+// 예시 개념 (concept.yaml 의 id, item, title, prerequisites 와 같은 모양). 한국어 이름은 학습 페이지가 있을 때만 있다.
+const p = s => 'physics/' + s;
+const DISP = p('a.1/displacement-velocity-and-speed'), ACC = p('a.1/acceleration'), GRAPHS = p('a.1/motion-graphs'),
+  SUVAT = p('a.1/uniformly-accelerated-motion'), PROJ = p('a.1/projectile-motion');
+const FBD = p('a.2/forces-and-free-body-diagrams'), N1 = p('a.2/newtons-first-law'), N2 = p('a.2/newtons-second-law'),
+  N3 = p('a.2/newtons-third-law'), MOM = p('a.2/momentum-and-impulse'), CMOM = p('a.2/conservation-of-momentum'),
+  CIRC = p('a.2/circular-motion'), FLUID = p('a.2/fluid-resistance-and-terminal-speed');
+const WORK = p('a.3/work-done-by-a-force'), KEPE = p('a.3/kinetic-and-potential-energy'), CEN = p('a.3/conservation-of-energy'),
+  POWER = p('a.3/power-and-efficiency');
+const TORQUE = p('a.4/torque'), REQ = p('a.4/rotational-equilibrium'), MOI = p('a.4/moment-of-inertia'), ANG = p('a.4/angular-momentum');
+const GRAD = 'math-aa/sl-2.1/gradient-of-a-straight-line', VEC = 'math-aa/ahl-3.10/vectors-and-components';
+
+const c = (id, item, title, ko, pre, extra = {}) => ({ id, item, title, ko, pre, page: true, ...extra });
+const BASE = [
+  c(DISP, 'A.1', 'Displacement, velocity and speed', '변위, 속도, 속력', []),
+  c(ACC, 'A.1', 'Acceleration', '가속도', [DISP]),
+  c(GRAPHS, 'A.1', 'Motion graphs', '운동 그래프', [DISP, GRAD]),
+  c(SUVAT, 'A.1', 'Equations of uniformly accelerated motion', '등가속도 운동 방정식', [ACC, GRAPHS]),
+  c(PROJ, 'A.1', 'Projectile motion', '포물선 운동', [SUVAT, 'missing:Trigonometric ratios'], { note: '한국어 2곳 남음' }),
+  c(FBD, 'A.2', 'Forces and free-body diagrams', '힘과 자유 물체 도형', [VEC]),
+  c(N1, 'A.2', "Newton's first law and equilibrium", '뉴턴 제1법칙과 평형', [FBD]),
+  c(N2, 'A.2', "Newton's second law", '뉴턴 제2법칙', [ACC, FBD]),
+  c(N3, 'A.2', "Newton's third law", '뉴턴 제3법칙', [FBD]),
+  c(MOM, 'A.2', 'Momentum and impulse', '운동량과 충격량', [N2]),
+  c(CMOM, 'A.2', 'Conservation of momentum', '운동량 보존', [MOM, N3]),
+  c(CIRC, 'A.2', 'Circular motion', '원운동', [N2, 'missing:Radian measure']),
+  c(FLUID, 'A.2', 'Fluid resistance and terminal speed', null, [N2], { page: false }),
+  c(WORK, 'A.3', 'Work done by a force', '힘이 한 일', [FBD, DISP]),
+  c(KEPE, 'A.3', 'Kinetic and potential energy', '운동 에너지와 위치 에너지', [WORK]),
+  c(CEN, 'A.3', 'Conservation of energy', '에너지 보존', [KEPE]),
+  c(POWER, 'A.3', 'Power and efficiency', null, [WORK], { page: false }),
+];
+// "A.4 개념 4개가 정리된 뒤"에 더해지는 개념. 개념 정리가 막 끝나 학습 페이지는 아직이다.
+const ADDED = [
+  c(TORQUE, 'A.4', 'Torque', null, [N1], { page: false }),
+  c(REQ, 'A.4', 'Rotational equilibrium', null, [TORQUE], { page: false }),
+  c(MOI, 'A.4', 'Moment of inertia', null, [TORQUE, KEPE], { page: false }),
+  c(ANG, 'A.4', 'Angular momentum', null, [MOI, CMOM], { page: false }),
+];
+const OTHERS = [
+  { id: GRAD, subject: 'Math AA', item: 'SL 2.1', title: 'Gradient of a straight line', ko: '직선의 기울기', page: true },
+  { id: VEC, subject: 'Math AA', item: 'AHL 3.10', title: 'Vectors and components', ko: '벡터와 성분', page: true },
+];
+const SYLLABUS = [
+  { code: 'A', title: 'Space, time and motion', depth: 0 },
+  { code: 'A.1', title: 'Kinematics', level: 'SL+HL', depth: 1 },
+  { code: 'A.2', title: 'Forces and momentum', level: 'SL+HL', depth: 1 },
+  { code: 'A.3', title: 'Work, energy and power', level: 'SL+HL', depth: 1 },
+  { code: 'A.4', title: 'Rigid body mechanics', level: 'HL', depth: 1 },
+  { code: 'A.5', title: 'Galilean and special relativity', level: 'HL', depth: 1 },
+  { code: 'B', title: 'The particulate nature of matter', depth: 0 },
+  { code: 'B.1', title: 'Thermal energy transfers', level: 'SL+HL', depth: 1 },
+  { code: 'B.2', title: 'Greenhouse effect', level: 'SL+HL', depth: 1 },
+];
+
+const state = { added: false, others: true, layout: 'learn', sel: N2, zoom: 1 };
+
+// 그래프: 개념의 prerequisites 가 간선이고, 다음 개념은 거꾸로 찾는다
+function build() {
+  const list = state.added ? BASE.concat(ADDED) : BASE;
+  const nodes = new Map();
+  list.forEach((x, i) => nodes.set(x.id, { ...x, kind: 'concept', order: i, isNew: state.added && ADDED.includes(x) }));
+  const edges = [];
+  let hidden = 0;
+  for (const x of list) for (const ref of x.pre) {
+    if (!nodes.has(ref)) {
+      const o = OTHERS.find(y => y.id === ref);
+      if (o) {
+        if (!state.others) { hidden++; continue; }
+        nodes.set(ref, { ...o, kind: 'other', order: 100 + nodes.size });
+      } else {
+        nodes.set(ref, { id: ref, kind: 'missing', title: ref.startsWith('missing:') ? ref.slice(8) : ref, order: 100 + nodes.size });
+      }
+    }
+    edges.push({ from: ref, to: x.id, miss: nodes.get(ref).kind === 'missing' });
+  }
+  const preds = new Map(), succs = new Map();
+  for (const id of nodes.keys()) { preds.set(id, []); succs.set(id, []); }
+  for (const e of edges) { preds.get(e.to).push(e.from); succs.get(e.from).push(e.to); }
+  return { nodes, edges, preds, succs, hidden, list };
+}
+
+const avg = a => a.reduce((s, v) => s + v, 0) / a.length;
+
+// 칸 나누기: 이 과목 개념은 선수 개념이 몇 겹인지로, 다른 과목·아직 없는 개념은 가장 이른 다음 개념 바로 앞에
+function layers(g) {
+  const L = new Map(), seen = new Set();
+  const isC = id => g.nodes.get(id).kind === 'concept';
+  const depth = id => {
+    if (L.has(id)) return L.get(id);
+    if (seen.has(id)) return 0; // 순환은 끊는다
+    seen.add(id);
+    const ps = g.preds.get(id).filter(isC);
+    const v = ps.length ? Math.max(...ps.map(depth)) + 1 : 0;
+    L.set(id, v);
+    return v;
+  };
+  for (const [id, n] of g.nodes) if (n.kind === 'concept') depth(id);
+  for (const [id, n] of g.nodes) {
+    if (n.kind !== 'concept' || g.preds.get(id).some(isC)) continue;
+    const ss = g.succs.get(id).map(s => L.get(s));
+    if (ss.length) L.set(id, Math.max(L.get(id), Math.min(...ss) - 1));
+  }
+  for (const [id, n] of g.nodes) if (n.kind !== 'concept') L.set(id, Math.min(...g.succs.get(id).map(s => L.get(s))) - 1);
+  const min = Math.min(...L.values());
+  if (min < 0) for (const k of L.keys()) L.set(k, L.get(k) - min);
+  return L;
+}
+
+// 한 칸 안에서 원하는 높이 차례로 놓되 겹치지 않게
+function pack(items) {
+  const out = [];
+  items.forEach((it, k) => out.push(k ? Math.max(it.want, out[k - 1] + ROWG) : it.want));
+  const shift = avg(items.map((it, k) => it.want - out[k]));
+  return out.map(v => v + shift);
+}
+
+function layoutLearn(g) {
+  const L = layers(g);
+  const max = Math.max(...L.values());
+  const cols = Array.from({ length: max + 1 }, () => []);
+  for (const [id, n] of g.nodes) cols[L.get(id)].push(n);
+  cols.forEach(col => col.sort((a, b) => a.order - b.order));
+  let prev = null, y = null;
+  for (let pass = 0; pass < 3; pass++) {
+    y = new Map();
+    for (const col of cols) {
+      const items = col.map((n, i) => {
+        const ps = g.preds.get(n.id).filter(q => y.has(q));
+        let want;
+        if (ps.length) want = avg(ps.map(q => y.get(q)));
+        else if (prev) {
+          const ss = g.succs.get(n.id).filter(s => prev.has(s));
+          want = ss.length ? avg(ss.map(s => prev.get(s))) : prev.get(n.id);
+        } else want = i * ROWG;
+        return { n, want, i };
+      });
+      items.sort((a, b) => a.want - b.want || a.i - b.i);
+      pack(items).forEach((v, k) => y.set(items[k].n.id, v));
+    }
+    prev = y;
+  }
+  const minY = Math.min(...y.values()), maxY = Math.max(...y.values());
+  const pos = new Map();
+  for (const id of g.nodes.keys()) pos.set(id, { x: PADX + L.get(id) * COLW.learn, y: TOP + y.get(id) - minY });
+  return { kind: 'learn', pos, L, w: PADX * 2 + max * COLW.learn + W, h: TOP + (maxY - minY) + H + PADB };
+}
+
+function layoutSyllabus(g) {
+  const L = layers(g);
+  const byKey = new Map();
+  const keyOf = n => n.kind === 'concept' ? (n.item || '목차 밖') : '__ext';
+  for (const n of g.nodes.values()) {
+    const k = keyOf(n);
+    if (!byKey.has(k)) byKey.set(k, []);
+    byKey.get(k).push(n);
+  }
+  const order = [];
+  if (byKey.has('__ext')) order.push('__ext');
+  for (const s of SYLLABUS) if (byKey.has(s.code)) order.push(s.code);
+  if (byKey.has('목차 밖')) order.push('목차 밖');
+  const pos = new Map();
+  let rows = 0;
+  order.forEach((k, ci) => {
+    const col = byKey.get(k).sort((a, b) => L.get(a.id) - L.get(b.id) || a.order - b.order);
+    col.forEach((n, i) => pos.set(n.id, { x: PADX + ci * COLW.syl, y: TOP + i * ROWG }));
+    rows = Math.max(rows, col.length);
+  });
+  const labels = order.map((k, ci) => ({
+    x: PADX + ci * COLW.syl,
+    code: k === '__ext' || k === '목차 밖' ? '' : k,
+    title: k === '__ext' ? '다른 과목 · 아직 없음' : k === '목차 밖' ? '목차 밖' : (SYLLABUS.find(s => s.code === k) || {}).title || '',
+  }));
+  return { kind: 'syl', pos, L, labels, w: PADX * 2 + (order.length - 1) * COLW.syl + W, h: TOP + (rows - 1) * ROWG + H + PADB };
+}
+
+// 선수 개념 → 개념. 같은 칸이면 오른쪽으로 돌아 들어간다
+function edgePath(a, b) {
+  const x1 = a.x + W, y1 = a.y + H / 2, x2 = b.x, y2 = b.y + H / 2;
+  if (x2 > x1 + 8) {
+    const dx = Math.max(24, (x2 - x1) / 2);
+    return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2 - 1},${y2}`;
+  }
+  const tx = b.x + W, bulge = 22 + Math.min(16, Math.abs(y2 - y1) * 0.05);
+  return `M${x1},${y1} C${x1 + bulge},${y1} ${tx + bulge},${y2} ${tx + 1},${y2}`;
+}
+
+function reach(start, next) {
+  const out = new Set(), st = [...next.get(start)];
+  while (st.length) {
+    const id = st.pop();
+    if (out.has(id)) continue;
+    out.add(id);
+    st.push(...next.get(id));
+  }
+  out.delete(start);
+  return out;
+}
+
+// 가장 먼 선수 개념까지 몇 단계인지
+function chainDepth(g, id, memo = new Map(), seen = new Set()) {
+  if (memo.has(id)) return memo.get(id);
+  if (seen.has(id)) return 0;
+  seen.add(id);
+  const ps = g.preds.get(id);
+  const v = ps.length ? 1 + Math.max(...ps.map(q => chainDepth(g, q, memo, seen))) : 0;
+  memo.set(id, v);
+  return v;
+}
+</script>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const canvas = $('#canvas'), sizer = $('#sizer'), stage = $('#stage'), nodesEl = $('#nodes'), edgesSvg = $('#edges'), edgesG = $('#edges-g');
+
+let G = null, layout = null, hl = { A: new Set(), D: new Set() };
+const cur = new Map(), els = new Map();
+let raf = 0;
+
+function computeHL() {
+  hl = state.sel ? { A: reach(state.sel, G.preds), D: reach(state.sel, G.succs) } : { A: new Set(), D: new Set() };
+}
+
+function nodeClass(n) {
+  const k = ['node', n.kind];
+  if (n.kind !== 'missing' && !n.page) k.push('pending');
+  if (state.sel) {
+    if (n.id === state.sel) k.push('sel');
+    else if (hl.A.has(n.id)) k.push('anc');
+    else if (hl.D.has(n.id)) k.push('desc');
+    else k.push('dim');
+  }
+  return k.join(' ');
+}
+
+function nodeHTML(n) {
+  let meta;
+  if (n.kind === 'concept') meta = `<span class="code">${esc(n.item)}</span>${n.ko ? `<span class="ko">${esc(n.ko)}</span>` : ''}<span class="st" aria-hidden="true"></span>`;
+  else if (n.kind === 'other') meta = `<span class="subj">${esc(n.subject)}</span><span class="ko">${esc(n.ko)}</span>`;
+  else meta = `<span class="ko">아직 없는 개념</span>`;
+  return `<span class="meta">${meta}</span><span class="t">${esc(n.title)}</span>${n.isNew ? '<span class="new">새로</span>' : ''}`;
+}
+
+function stateText(n) {
+  if (n.kind === 'missing') return '아직 없는 개념';
+  if (n.kind === 'other') return `${n.subject} 개념`;
+  return n.page ? '학습 페이지 있음' : '페이지 만드는 중';
+}
+
+function syncNodes() {
+  for (const [id, n] of G.nodes) {
+    let el = els.get(id);
+    if (!el) {
+      el = document.createElement('button');
+      el.type = 'button';
+      el.dataset.id = id;
+      nodesEl.appendChild(el);
+      els.set(id, el);
+      const p0 = layout.pos.get(id);
+      el.style.transform = `translate(${p0.x}px, ${p0.y}px)`;
+      if (!reduce && G.list.length && cur.size) el.animate([{ opacity: 0, translate: '0 6px' }, { opacity: 1, translate: '0 0' }], { duration: 380, delay: 220, easing: 'ease-out', fill: 'backwards' });
+    }
+    el.className = nodeClass(n);
+    el.innerHTML = nodeHTML(n);
+    el.setAttribute('aria-pressed', String(n.id === state.sel));
+    el.setAttribute('aria-label', `${n.title}, ${stateText(n)}`);
+  }
+  for (const [id, el] of els) if (!G.nodes.has(id)) { el.remove(); els.delete(id); cur.delete(id); }
+}
+
+const RANK = { dim: 0, n: 1, desc: 2, anc: 3 };
+function edgeClass(e) {
+  if (!state.sel) return 'n';
+  const inA = id => id === state.sel || hl.A.has(id), inD = id => id === state.sel || hl.D.has(id);
+  if (inA(e.to) && hl.A.has(e.from)) return 'anc';
+  if (hl.D.has(e.to) && inD(e.from)) return 'desc';
+  return 'dim';
+}
+
+function paint() {
+  for (const [id, el] of els) {
+    const q = cur.get(id);
+    if (q) el.style.transform = `translate(${q.x}px, ${q.y}px)`;
+  }
+  const parts = [];
+  for (const e of G.edges) {
+    const a = cur.get(e.from), b = cur.get(e.to);
+    if (!a || !b) continue;
+    parts.push({ c: edgeClass(e), miss: e.miss, d: edgePath(a, b) });
+  }
+  parts.sort((x, y) => RANK[x.c] - RANK[y.c]);
+  edgesG.innerHTML = parts.map(q => `<path class="${q.c}${q.miss ? ' miss' : ''}" d="${q.d}" marker-end="url(#mk-${q.c})"></path>`).join('');
+}
+
+function animateTo(pos, animate) {
+  cancelAnimationFrame(raf);
+  const from = new Map();
+  for (const [id, q] of cur) from.set(id, { ...q });
+  const D = animate && !reduce ? 480 : 0, t0 = performance.now();
+  const step = t => {
+    const k = D ? Math.min(1, (t - t0) / D) : 1;
+    const e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    for (const [id, q] of pos) {
+      const a = from.get(id) || q;
+      cur.set(id, { x: a.x + (q.x - a.x) * e, y: a.y + (q.y - a.y) * e });
+    }
+    for (const id of [...cur.keys()]) if (!pos.has(id)) cur.delete(id);
+    paint();
+    if (k < 1) raf = requestAnimationFrame(step);
+  };
+  if (D) raf = requestAnimationFrame(step); else step(t0);
+}
+
+function renderLabels() {
+  const el = $('#labels');
+  if (layout.kind === 'learn') {
+    el.innerHTML = `<span class="lab" style="left:${PADX}px;top:4px">먼저 배울 것</span>`
+      + `<span class="lab end" style="right:${PADX}px;top:4px">나중에 배울 것</span>`
+      + `<div class="axis" style="left:${PADX}px;width:${layout.w - PADX * 2}px;top:28px"></div>`;
+  } else {
+    el.innerHTML = layout.labels.map(l => `<span class="lab col" style="left:${l.x}px;top:10px;width:${W}px">${l.code ? `<b>${esc(l.code)}</b> ` : ''}${esc(l.title)}</span>`).join('');
+  }
+}
+
+function fitZoom() {
+  return Math.max(0.5, Math.min(1, (canvas.clientWidth - 12) / layout.w, (canvas.clientHeight - 12) / layout.h));
+}
+function applyZoom(keepCenter) {
+  const z = state.zoom ?? fitZoom();
+  const old = parseFloat(stage.dataset.z || z);
+  const cx = (canvas.scrollLeft + canvas.clientWidth / 2) / old, cy = (canvas.scrollTop + canvas.clientHeight / 2) / old;
+  stage.dataset.z = z;
+  stage.style.transform = `scale(${z})`;
+  stage.style.width = layout.w + 'px';
+  stage.style.height = layout.h + 'px';
+  edgesSvg.setAttribute('width', layout.w);
+  edgesSvg.setAttribute('height', layout.h);
+  sizer.style.width = Math.ceil(layout.w * z) + 'px';
+  sizer.style.height = Math.ceil(layout.h * z) + 'px';
+  $('#z-fit').textContent = state.zoom == null ? '맞춤' : Math.round(z * 100) + '%';
+  if (keepCenter) { canvas.scrollLeft = cx * z - canvas.clientWidth / 2; canvas.scrollTop = cy * z - canvas.clientHeight / 2; }
+}
+
+function scrollToNode(id, smooth) {
+  const q = layout.pos.get(id);
+  if (!q) return;
+  const z = parseFloat(stage.dataset.z || 1);
+  const left = (q.x + W / 2) * z - canvas.clientWidth / 2, top = (q.y + H / 2) * z - canvas.clientHeight / 2;
+  canvas.scrollTo({ left, top, behavior: smooth && !reduce ? 'smooth' : 'auto' });
+}
+
+function renderList() {
+  const cs = G.list;
+  const links = G.edges.length + G.hidden;
+  const row = x => {
+    const sub = x.page ? `${esc(x.ko)}${x.note ? ` <em>${esc(x.note)}</em>` : ''}` : '<em>페이지 만드는 중</em>';
+    const cls = ['row', 'concept'];
+    if (state.sel === x.id) cls.push('is-focus');
+    if (state.added && ADDED.includes(x)) cls.push('is-new');
+    return `<button type="button" class="${cls.join(' ')}" data-go="${esc(x.id)}"><span class="rt"><span>${esc(x.title)}</span><small>${sub}</small></span></button>`;
+  };
+  const MAP = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="3.5" cy="4" r="1.8"></circle><circle cx="3.5" cy="12" r="1.8"></circle><circle cx="12.5" cy="8" r="1.8"></circle><path d="M5.2 4.7 10.8 7.3M5.2 11.3 10.8 8.7"></path></svg>';
+  let h = `<div class="subj-head"><span class="sname">Physics</span><span class="smeta">DP 1 · HL</span><span class="ell" aria-hidden="true">···</span></div>`;
+  h += `<button type="button" class="row map-row is-selected" aria-current="true">${MAP}<span class="rt"><span>개념 지도</span><small>개념 ${cs.length} · 선수 연결 ${links}</small></span></button>`;
+  for (const s of SYLLABUS) {
+    const inItem = cs.filter(x => x.item === s.code);
+    const dot = s.depth ? `<span class="dot${inItem.length ? ' on' : ''}">${inItem.length ? '●' : '○'}</span>` : '';
+    h += `<div class="item d${s.depth}">${dot}<span class="code">${esc(s.code)}</span><span>${esc(s.title)}</span>${s.level ? `<span class="lv">${s.level}</span>` : ''}</div>`;
+    for (const x of inItem) h += row(x);
+  }
+  h += `<div class="disc">▸ 자료 ${state.added ? 5 : 4}개</div>`;
+  h += `<div class="subj-head"><span class="sname">Math AA</span><span class="smeta">DP 1 · HL</span><span class="ell" aria-hidden="true">···</span></div>`;
+  h += `<button type="button" class="row map-row" data-other-map>${MAP}<span class="rt"><span>개념 지도</span><small>개념 2 · 선수 연결 0</small></span></button>`;
+  h += `<div class="item d1"><span class="dot on">●</span><span class="code">SL 2.1</span><span>Equations of straight lines</span></div>`;
+  h += `<button type="button" class="row concept" data-go="${GRAD}"><span class="rt"><span>Gradient of a straight line</span><small>직선의 기울기</small></span></button>`;
+  h += `<div class="item d1"><span class="dot on">●</span><span class="code">AHL 3.10</span><span>Vector concepts</span></div>`;
+  h += `<button type="button" class="row concept" data-go="${VEC}"><span class="rt"><span>Vectors and components</span><small>벡터와 성분</small></span></button>`;
+  $('#list').innerHTML = h;
+}
+
+function renderSum() {
+  const missing = [...G.nodes.values()].filter(n => n.kind === 'missing').length;
+  let s = `개념 ${G.list.length} · 선수 연결 ${G.edges.length + G.hidden} · 아직 없는 개념 ${missing}`;
+  if (G.hidden) s += ` · 다른 과목 선수 개념 ${G.hidden}곳 감춤`;
+  $('#sum').textContent = s;
+}
+
+function chips(list, extra = '') {
+  if (!list.length) return '';
+  return `<div class="chips">${list.map(n => `<button type="button" class="chip${n.kind === 'missing' ? ' missing' : ''}${extra}" data-go="${esc(n.id)}">${esc(n.title)}</button>`).join('')}</div>`;
+}
+
+function renderDetail() {
+  const d = $('#detail');
+  const n = state.sel && G.nodes.get(state.sel);
+  if (!n) {
+    d.innerHTML = `<div class="d-empty"><p>개념을 고르면 먼저 알아야 할 것과 다음 개념이 여기에 보여요.</p><p class="d-hint">개념을 두 번 누르면 학습 페이지가 열려요. 빈 곳을 누르면 고른 것이 풀려요.</p></div>`;
+    return;
+  }
+  const pre = G.preds.get(n.id).map(id => G.nodes.get(id));
+  const next = G.succs.get(n.id).map(id => G.nodes.get(id));
+  const pill = n.kind === 'missing' ? 'missing' : n.kind === 'other' ? 'other' : n.page ? '' : 'pending';
+  const code = n.kind === 'missing' ? '' : `<span class="code">${esc(n.item)}</span>`;
+  const head = `<div class="d-head"><div class="d-meta">${code}<span class="pill ${pill}">${stateText(n)}</span>${n.isNew ? '<span class="pill new">새로</span>' : ''}${n.note ? `<span style="color:var(--warn)">${esc(n.note)}</span>` : ''}</div>`
+    + `<h3>${esc(n.title)}</h3>${n.ko ? `<p class="d-ko">${esc(n.ko)}</p>` : ''}`
+    + `<p class="d-id mono">${esc(n.id)}</p></div>`;
+  const depth = chainDepth(G, n.id);
+  const preSub = n.kind === 'missing' ? '아직 없는 개념이라 선수 개념을 알 수 없어요'
+    : pre.length ? `거슬러 올라가면 ${hl.A.size}개 · 가장 먼 것까지 ${depth}단계` : '먼저 알아야 할 개념이 없어요';
+  const nextSub = next.length ? `이어지면 ${hl.D.size}개` : '아직 이 개념 다음에 오는 개념이 없어요';
+  let act;
+  if (n.kind === 'missing') act = `<p class="d-sub" style="max-width:22ch;text-align:right">이 내용의 자료를 넣고 정리하면 생겨요</p>`;
+  else if (!n.page) act = `<button type="button" class="btn" disabled>페이지 만드는 중</button>`;
+  else act = `<button type="button" class="btn primary" data-open="${esc(n.id)}">${n.kind === 'other' ? `${esc(n.subject)} 학습 페이지 열기` : '학습 페이지 열기'}</button>`;
+  d.innerHTML = head
+    + `<div class="d-col anc"><h4>먼저 알아야 할 것</h4>${chips(pre)}<p class="d-sub">${preSub}</p></div>`
+    + `<div class="d-col desc"><h4>다음 개념</h4>${chips(next)}<p class="d-sub">${nextSub}</p></div>`
+    + `<div class="d-act">${act}</div>`;
+}
+
+let toastTimer = 0;
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 3200);
+}
+
+function setActivity(job) {
+  const a = $('#activity');
+  if (!job) { a.innerHTML = '<span class="idle mono">5시간 12% · 주간 31% · 14:20</span>'; return; }
+  const m = Math.floor(job.s / 60), s = String(job.s % 60).padStart(2, '0');
+  a.innerHTML = `<span class="job">개념 정리 · 반영</span><span class="mono">${m}:${s}</span><span class="mono">턴 ${job.turns}</span><span class="bars" aria-hidden="true"><i></i><i></i><i></i><i class="now"></i></span>`;
+}
+
+function refresh(animate) {
+  G = build();
+  if (state.sel && !G.nodes.has(state.sel)) state.sel = null;
+  layout = state.layout === 'learn' ? layoutLearn(G) : layoutSyllabus(G);
+  computeHL();
+  syncNodes();
+  renderLabels();
+  renderList();
+  renderSum();
+  renderDetail();
+  applyZoom(false);
+  animateTo(layout.pos, animate);
+}
+
+function select(id, scroll) {
+  state.sel = id && G.nodes.has(id) ? id : null;
+  computeHL();
+  syncNodes();
+  paint();
+  renderList();
+  renderDetail();
+  if (scroll && state.sel) scrollToNode(state.sel, true);
+}
+
+function openPage(id) {
+  const n = G.nodes.get(id);
+  if (!n || n.kind === 'missing') return;
+  if (!n.page) { toast(`'${n.title}' 학습 페이지는 아직 만드는 중이에요`); return; }
+  toast(`실제 앱에서는 내용 칸에 '${n.title}' 학습 페이지가 열려요`);
+}
+
+// 지도 조작
+nodesEl.addEventListener('click', e => { const b = e.target.closest('.node'); if (b) select(b.dataset.id, false); });
+nodesEl.addEventListener('dblclick', e => { const b = e.target.closest('.node'); if (b) openPage(b.dataset.id); });
+$('#detail').addEventListener('click', e => {
+  const go = e.target.closest('[data-go]');
+  if (go) return select(go.dataset.go, true);
+  const open = e.target.closest('[data-open]');
+  if (open) openPage(open.dataset.open);
+});
+$('#list').addEventListener('click', e => {
+  const go = e.target.closest('[data-go]');
+  if (go) {
+    if (!G.nodes.has(go.dataset.go)) { toast('다른 과목 개념은 "다른 과목 개념"을 켜면 지도에 보여요'); return; }
+    return select(go.dataset.go, true);
+  }
+  if (e.target.closest('[data-other-map]')) toast('시안에는 Physics 지도만 있어요');
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && state.sel) select(null); });
+
+let drag = null;
+canvas.addEventListener('pointerdown', e => {
+  if (e.pointerType !== 'mouse' || e.button !== 0 || e.target.closest('.node')) return;
+  drag = { x: e.clientX, y: e.clientY, sl: canvas.scrollLeft, st: canvas.scrollTop, moved: false };
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (!drag.moved && Math.abs(dx) + Math.abs(dy) > 4) { drag.moved = true; canvas.classList.add('dragging'); }
+  if (drag.moved) { canvas.scrollLeft = drag.sl - dx; canvas.scrollTop = drag.st - dy; }
+});
+const endDrag = () => {
+  if (!drag) return;
+  if (!drag.moved && state.sel) select(null);
+  drag = null;
+  canvas.classList.remove('dragging');
+};
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', () => { drag = null; canvas.classList.remove('dragging'); });
+canvas.addEventListener('click', e => {
+  if (e.pointerType && e.pointerType !== 'mouse' && !e.target.closest('.node') && state.sel) select(null);
+});
+
+const setLayout = kind => {
+  if (state.layout === kind) return;
+  state.layout = kind;
+  $('#lay-learn').setAttribute('aria-pressed', String(kind === 'learn'));
+  $('#lay-syl').setAttribute('aria-pressed', String(kind === 'syl'));
+  refresh(true);
+  if (state.sel) scrollToNode(state.sel, true);
+};
+$('#lay-learn').addEventListener('click', () => setLayout('learn'));
+$('#lay-syl').addEventListener('click', () => setLayout('syl'));
+$('#show-others').addEventListener('change', e => { state.others = e.target.checked; refresh(true); });
+$('#z-in').addEventListener('click', () => { state.zoom = Math.min(1.4, (state.zoom ?? fitZoom()) * 1.15); applyZoom(true); });
+$('#z-out').addEventListener('click', () => { state.zoom = Math.max(0.5, (state.zoom ?? fitZoom()) / 1.15); applyZoom(true); });
+$('#z-fit').addEventListener('click', () => { state.zoom = state.zoom == null ? 1 : null; applyZoom(false); if (state.zoom === 1 && state.sel) scrollToNode(state.sel, false); });
+$('#intake').addEventListener('click', () => toast('자료 넣기 시트는 이 시안에 없어요'));
+window.addEventListener('resize', () => { if (state.zoom == null) applyZoom(false); });
+
+// 시안 조작: 개념 정리가 끝나면 작업 관리자가 개념 목록을 다시 읽고 지도도 다시 그린다
+$('#demo-add').addEventListener('click', () => {
+  const btn = $('#demo-add');
+  if (state.added || btn.disabled) return;
+  btn.disabled = true;
+  const job = { s: 38, turns: 21 };
+  setActivity(job);
+  const iv = setInterval(() => { job.s++; job.turns += job.s % 2; setActivity(job); }, 350);
+  setTimeout(() => {
+    clearInterval(iv);
+    setActivity(null);
+    state.added = true;
+    refresh(true);
+    btn.disabled = false;
+    btn.hidden = true;
+    $('#demo-reset').hidden = false;
+    toast('개념 정리가 끝나 지도를 다시 그렸어요 · 새 개념 4개');
+  }, reduce ? 300 : 1500);
+});
+$('#demo-reset').addEventListener('click', () => {
+  state.added = false;
+  refresh(true);
+  $('#demo-reset').hidden = true;
+  $('#demo-add').hidden = false;
+});
+
+setActivity(null);
+refresh(false);
+scrollToNode(state.sel, false);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => paint());
+</script>
+</body>
+</html>

@@ -18,7 +18,7 @@ mac/
     Config/                 데이터 폴더, 앱 지원 폴더, 키체인
     Engine/                 작업 종류와 대기열, 작업 관리자, 설정, 지침, 사용량, 환경 점검
     Sources/                자료: 꼬리표, 자료 폴더(meta.yaml, labels.yaml), 자료 목록, 바꾸기, 쪽 나누기, 자료 넣기 작업
-    Library/                엔트리, 개념(concept.yaml), 학습 페이지(page.yaml), 곁 층(layers.yaml), 용어 어휘, 목차, 관점·레퍼런스, 옮기기(개념, 과목), 뜻 해시
+    Library/                엔트리, 개념(concept.yaml), 학습 페이지(page.yaml), 곁 층(layers.yaml), 용어 어휘, 목차, 개념 지도(선수 관계 그래프와 배치), 관점·레퍼런스, 옮기기(개념, 과목), 뜻 해시
     Learner/                코멘트(comments.jsonl), 요구(directives.jsonl)
     Index/                  SQLite 색인과 검색
     Checks/                 러너 검사: 한글·한자 섞임, 원래 자료가 있어야 통하는 말, 글 속 TeX, KaTeX 파싱, 풀이 계산(Expr)

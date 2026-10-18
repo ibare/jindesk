@@ -44,6 +44,8 @@ struct RegenTarget: Identifiable, Equatable {
 enum SubjectSelection: Hashable {
   case concept(String)
   case source(String)
+  // 과목의 개념 지도 (과목 id)
+  case map(String)
 }
 
 enum ReadingState: Equatable {
@@ -314,6 +316,7 @@ final class AppModel {
   struct PageState {
     var titleKo: String?
     var note: String?
+    var hasPage = false
   }
 
   // 개념 줄에 보일 페이지 상태: 한국어 제목, 페이지가 없거나 한국어가 덜 된 것
@@ -322,7 +325,12 @@ final class AppModel {
     let folder = ConceptFolder(concept.cid, in: data)
     guard let page = Page.load(folder) else { return PageState(note: "페이지 만드는 중") }
     let missing = Translation.targets(page, layers: Layers.load(folder)).count
-    return PageState(titleKo: page.titleKo, note: missing > 0 ? "한국어 \(missing)곳 남음" : nil)
+    return PageState(titleKo: page.titleKo, note: missing > 0 ? "한국어 \(missing)곳 남음" : nil, hasPage: true)
+  }
+
+  // 과목의 개념 지도 (PAGES.md 의 개념 지도). 저장하지 않고 지금 읽어 둔 개념 목록에서 계산한다.
+  func conceptMap(_ subject: String, showOthers: Bool = true) -> ConceptMap {
+    ConceptMap(subject: subject, concepts: concepts[subject] ?? [], all: allConcepts, showOthers: showOthers)
   }
 
   // MARK: - 코멘트

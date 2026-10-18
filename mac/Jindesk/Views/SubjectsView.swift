@@ -42,7 +42,7 @@ struct SubjectsView: View {
   }
 }
 
-// 과목의 개념: 목차가 있으면 목차 항목 차례로(자료가 있는 항목 ●, 없는 항목 ○), 목차 밖 개념은 단원 제안으로 묶어 맨 아래에 둔다
+// 과목의 개념: 맨 위에 개념 지도, 목차가 있으면 목차 항목 차례로(자료가 있는 항목 ●, 없는 항목 ○), 목차 밖 개념은 단원 제안으로 묶어 맨 아래에 둔다
 struct ConceptRows: View {
   @Environment(AppModel.self) private var model
   let subject: String
@@ -50,6 +50,7 @@ struct ConceptRows: View {
   var body: some View {
     let concepts = model.concepts[subject] ?? []
     let syllabus = model.syllabi[subject]
+    if !concepts.isEmpty { ConceptMapRow(subject: subject).tag(SubjectSelection.map(subject)) }
     if let syllabus, syllabus.confirmed == nil { SyllabusConfirmRow(subject: subject, count: syllabus.items.count) }
     if concepts.isEmpty && syllabus == nil {
       Text(model.library.subjects.first { $0.id == subject }.map { s in s.sources.contains { model.readSources[$0.id] != nil } } == true ? "개념을 정리하는 중이에요" : "자료를 읽으면 개념이 생겨요")
@@ -173,6 +174,25 @@ struct SubjectRenameSheet: View {
     .padding(18)
     .frame(width: 460)
     .onAppear { name = subject.name }
+  }
+}
+
+// 과목의 개념 지도를 여는 줄 (PAGES.md 의 개념 지도)
+struct ConceptMapRow: View {
+  @Environment(AppModel.self) private var model
+  let subject: String
+
+  var body: some View {
+    let map = model.conceptMap(subject)
+    Label {
+      VStack(alignment: .leading, spacing: 1) {
+        Text("개념 지도")
+        Text("개념 \(map.conceptCount) · 선수 연결 \(map.linkCount)").font(.caption).foregroundStyle(.secondary).monospacedDigit()
+      }
+    } icon: {
+      Image(systemName: "point.3.connected.trianglepath.dotted")
+    }
+    .padding(.vertical, 1)
   }
 }
 

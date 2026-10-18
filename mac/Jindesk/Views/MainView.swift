@@ -68,7 +68,7 @@ struct MainView: View {
   }
 }
 
-// 내용 칸: 고른 개념의 학습 페이지나 자료의 쪽 (오늘, 과목, 모아 보기, 찾기가 같이 쓴다)
+// 내용 칸: 고른 개념의 학습 페이지, 자료의 쪽, 과목의 개념 지도 (오늘, 과목, 모아 보기, 찾기가 같이 쓴다)
 struct SelectionDetail: View {
   @Environment(AppModel.self) private var model
 
@@ -86,6 +86,8 @@ struct SelectionDetail: View {
       } else {
         ContentUnavailableView("자료를 찾지 못했어요", systemImage: "questionmark.folder")
       }
+    case .map(let subject)?:
+      ConceptMapView(subject: subject).id(subject)
     case nil:
       ContentUnavailableView("개념이나 자료를 고르세요", systemImage: "doc.text.magnifyingglass")
     }

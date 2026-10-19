@@ -85,7 +85,6 @@ struct SubjectList: View {
       }
       Section { SyncStatusRow() }
     }
-    .navigationTitle("Jindesk")
     .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "개념·용어·기호 찾기")
     #if DEBUG
       // 화면 확인: 찾기 칸에 넣어 둔 채 연다 (-searchText <말>)

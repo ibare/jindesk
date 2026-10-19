@@ -4,6 +4,7 @@
 // 5시간 사용량이 정한 값을 넘으면 새 작업을 시작하지 않고 초기화 시각까지 미룬다 (진행 중인 작업은 그대로 둔다).
 // 업데이트 설치, 백업 만들기처럼 작업을 멈춰야 할 때는 hold 로 새 작업을 시작하지 않는다.
 // 앱과 명령줄이 같은 데이터 폴더에서 동시에 작업을 돌리지 않도록, 작업이 하나라도 도는 동안 meta/.lock 을 쥔다.
+// 대기열에 넣을 때 run.json 을 쓴다. 앱이 끝나 멈춘 작업과 시작하지 못한 대기열은 다음에 켤 때 그 기록으로 다시 넣는다 (leftovers, restore).
 import Foundation
 import Observation
 
@@ -71,7 +72,7 @@ public final class JobManager {
   @ObservationIgnored public var onPhase: ((JobSnapshot) -> Void)?
 
   private struct Pending {
-    let snapshot: JobSnapshot
+    var snapshot: JobSnapshot
     let job: PreparedJob
     let config: RunnerConfig
   }
@@ -85,6 +86,8 @@ public final class JobManager {
   @ObservationIgnored private var cancelRequested: Set<String> = []
   @ObservationIgnored private var stopped = false
   @ObservationIgnored private var seq = 0
+  // 대기열에 넣은 차례
+  @ObservationIgnored private var order = 0
   @ObservationIgnored private var waiters: [String: [CheckedContinuation<JobSnapshot, Never>]] = [:]
   @ObservationIgnored private var finished: [String: JobSnapshot] = [:]
   @ObservationIgnored private let lock: DataLock
@@ -168,10 +171,12 @@ public final class JobManager {
         out.append(waiting.snapshot.id)
         continue
       }
+      order += 1
       let snapshot = JobSnapshot(
         id: job.id, type: job.kind.rawValue, typeLabel: job.kind.label, title: job.title, target: job.target, phase: "queued", phaseLabel: "대기",
-        queuedAt: Clock.isoLocal(), dataFolder: data.url.path)
+        queuedAt: Clock.isoLocal(), dataFolder: data.url.path, recipe: job.recipe, queueOrder: order)
       pending.append(Pending(snapshot: snapshot, job: job, config: config))
+      writeRunRecord(job.id)
       out.append(job.id)
     }
     queue = pending.map(\.snapshot)
@@ -193,6 +198,8 @@ public final class JobManager {
     }
     guard let i = pending.firstIndex(where: { $0.snapshot.id == id }) else { return false }
     pending.remove(at: i)
+    // 시작하지 않은 작업은 남길 것이 없다
+    FileOps.remove(folders.workDir(id))
     queue = pending.map(\.snapshot)
     forced.remove(id)
     pump()
@@ -256,12 +263,16 @@ public final class JobManager {
     return await withCheckedContinuation { waiters[id, default: []].append($0) }
   }
 
-  // 앱이 끝날 때: 대기열을 비우고 진행 중인 작업을 모두 취소한다
+  // 앱이 끝날 때(또는 다른 데이터 폴더를 열 때): 대기열을 비우고 진행 중인 작업을 모두 취소한다.
+  // 기록은 진행 중과 대기로 남겨, 다음에 이 폴더를 열 때 다시 넣는다.
   public func shutdown() {
     stopped = true
     pending.removeAll()
     queue = []
     for s in active {
+      // 비정상 종료와 가린다 (다시 넣은 횟수에 세지 않는다)
+      update(s.id) { $0.quit = true }
+      writeRunRecord(s.id)
       cancelRequested.insert(s.id)
       works[s.id]?.cancel()
     }
@@ -361,10 +372,12 @@ public final class JobManager {
   }
 
   private func finish(_ id: String) {
-    writeRunRecord(id)
     guard let i = active.firstIndex(where: { $0.id == id }) else { return }
+    // 앱이 끝나 멈춘 작업은 기록을 고치지 않는다. 진행 중으로 남아 다음에 켤 때 다시 넣는다.
+    let halted = stopped && active[i].phase == "cancelled"
+    if !halted { writeRunRecord(id) }
     let done = active.remove(at: i)
-    appendRunSummary(done)
+    if !halted { appendRunSummary(done) }
     recent = Array(([done] + recent.filter { $0.id != id }).prefix(Self.recentLimit))
     for key in logsByID.keys where !isActive(key) && !recent.contains(where: { $0.id == key }) { logsByID[key] = nil }
     runners[id] = nil
@@ -483,11 +496,15 @@ public final class JobManager {
   }
 
   private func writeRunRecord(_ id: String) {
-    guard let s = active.first(where: { $0.id == id }) else { return }
+    guard let s = active.first(where: { $0.id == id }) ?? pending.first(where: { $0.snapshot.id == id })?.snapshot else { return }
+    Self.write(RunRecord(snapshot: s, logs: logs(id), owner: .current), folders: folders)
+  }
+
+  static func write(_ record: RunRecord, folders: AppFolders) {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .withoutEscapingSlashes, .sortedKeys]
-    guard let data = try? encoder.encode(RunRecord(snapshot: s, logs: logs(id))) else { return }
-    try? FileOps.write(data, to: folders.workDir(id).appending(path: "run.json"))
+    guard let data = try? encoder.encode(record) else { return }
+    try? FileOps.writeAtomic(data, to: folders.workDir(record.snapshot.id).appending(path: "run.json"))
   }
 
   // 데이터 폴더의 records/runs/<YYYY-MM>.jsonl 에 실행 요약 한 줄을 덧붙인다 (작업 id, 종류, 시작·끝, 결과, 사용량, 모델)
@@ -495,30 +512,80 @@ public final class JobManager {
     try? FileOps.appendLine(JSONText.line(RunSummary.line(s)), to: data.runsLog())
   }
 
-  // 앱이 비정상 종료해 run.json 이 진행 중으로 남은 작업을 중단됨으로 고친다. 앱을 켤 때 부른다.
-  public static func markInterrupted(data: DataFolder, folders: AppFolders) -> [String] {
-    var fixed: [String] = []
-    let lock = DataLock(data)
-    // 다른 프로세스가 작업 중이면 그 작업을 건드리지 않는다
-    guard lock.tryAcquire() else { return [] }
-    defer { lock.release() }
+  // 앱이 끝나 멈춘 작업 (ARCHITECTURE.md 의 비정상 종료): 진행 중으로 남은 작업과 시작하지 못한 대기열.
+  // 그 데이터 폴더의 작업 관리자를 만들기 전에 부른다. 넣은 프로세스가 살아 있는 작업(명령줄)은 건드리지 않는다.
+  // 시작했던 작업이 먼저, 그다음 대기열의 차례다.
+  public static func leftovers(data: DataFolder, folders: AppFolders) -> [RunRecord] {
+    var started: [RunRecord] = []
+    var queued: [RunRecord] = []
     for id in FileOps.list(folders.work) where JobID.isValid(id) {
-      let file = folders.workDir(id).appending(path: "run.json")
-      // 다른 데이터 폴더(명령줄의 --data)의 작업은 건드리지 않는다
-      guard let content = try? Data(contentsOf: file), var record = try? JSONDecoder().decode(RunRecord.self, from: content),
-        record.snapshot.isActive, record.snapshot.dataFolder == data.url.path
+      guard let record = RunHistory.load(folders, id: id), record.snapshot.dataFolder == data.url.path,
+        record.snapshot.isActive || record.snapshot.phase == "queued", !(record.owner.map { $0 != .current && $0.isAlive } ?? false)
       else { continue }
+      if record.snapshot.isActive { started.append(record) } else { queued.append(record) }
+    }
+    started.sort { ($0.snapshot.startedAt ?? "", $0.snapshot.queueOrder ?? 0) < ($1.snapshot.startedAt ?? "", $1.snapshot.queueOrder ?? 0) }
+    queued.sort { ($0.snapshot.queuedAt, $0.snapshot.queueOrder ?? 0) < ($1.snapshot.queuedAt, $1.snapshot.queueOrder ?? 0) }
+    return started + queued
+  }
+
+  // 진행 중에 앱이 비정상 종료해도 다시 넣는 횟수. 넘으면 그 작업이 앱을 끝내는 것으로 보고 더 넣지 않는다.
+  static let crashLimit = 2
+
+  // 멈춘 작업을 같은 차례로 다시 넣고 정리한다. 작업은 처음부터 다시 한다.
+  // 에이전트 설정이 없으면(토큰이 없을 때) 에이전트 작업은 넣지 않는다 (토큰을 넣은 뒤 이어서 하기로 넣는다).
+  // 다시 넣은 작업 수와, 넣지 못한 작업의 까닭을 돌려준다.
+  public func restore(_ records: [RunRecord], agent: RunnerConfig?, runner: RunnerConfig) async -> (count: Int, problems: [String]) {
+    var count = 0
+    var problems: [String] = []
+    for r in records {
+      guard let recipe = r.snapshot.recipe else { continue }
+      let name = "\(r.snapshot.typeLabel) · \(r.snapshot.title)"
+      let crashes = (r.snapshot.crashes ?? 0) + (r.snapshot.isActive && r.snapshot.quit != true ? 1 : 0)
+      guard crashes <= Self.crashLimit else {
+        problems.append("\(name): 다시 할 때마다 앱이 끝나 더 넣지 않았습니다")
+        continue
+      }
+      guard let config = recipe.needsAgent ? agent : (agent ?? runner) else {
+        problems.append("\(name): 토큰이 없어 다시 넣지 않았습니다")
+        continue
+      }
+      do {
+        let id = try await submit(config: config) { try recipe.prepare($0) }
+        if crashes > 0 { setCrashes(id, crashes) }
+        count += 1
+      } catch {
+        problems.append("\(name): \(error.localizedDescription)")
+      }
+    }
+    Self.retire(records, data: data, folders: folders)
+    return (count, problems)
+  }
+
+  private func setCrashes(_ id: String, _ crashes: Int) {
+    if let i = pending.firstIndex(where: { $0.snapshot.id == id }) {
+      pending[i].snapshot.crashes = crashes
+      queue = pending.map(\.snapshot)
+    }
+    update(id) { $0.crashes = crashes }
+    writeRunRecord(id)
+  }
+
+  // 다시 넣은 뒤에 멈춘 작업의 기록을 정리한다 (그 사이에 꺼지면 다음에 다시 찾는다. 같은 일은 대기열에서 하나로 합쳐진다).
+  // 시작했던 작업은 중단됨으로 고쳐 남기고, 시작하지 못한 작업은 작업 폴더를 지운다.
+  static func retire(_ records: [RunRecord], data: DataFolder, folders: AppFolders) {
+    for var record in records {
+      guard record.snapshot.isActive else {
+        FileOps.remove(folders.workDir(record.snapshot.id))
+        continue
+      }
       record.snapshot.phase = "interrupted"
       record.snapshot.phaseLabel = "중단됨"
       record.snapshot.error = record.snapshot.error ?? "앱이 끝나 작업이 중단되었습니다"
       record.snapshot.endedAt = record.snapshot.endedAt ?? Clock.isoLocal()
-      let encoder = JSONEncoder()
-      encoder.outputFormatting = [.prettyPrinted, .withoutEscapingSlashes, .sortedKeys]
-      if let out = try? encoder.encode(record) { try? FileOps.write(out, to: file) }
+      write(record, folders: folders)
       try? FileOps.appendLine(JSONText.line(RunSummary.line(record.snapshot)), to: data.runsLog())
-      fixed.append(id)
     }
-    return fixed
   }
 }
 
@@ -581,7 +648,8 @@ public enum RunHistory {
     let logged = loggedIDs(data)
     var out: [RunRecord] = []
     for id in FileOps.list(folders.work).filter(JobID.isValid).sorted(by: >) {
-      guard out.count < limit, let r = load(folders, id: id) else { continue }
+      // 시작하지 않은 작업은 대기열에 보인다
+      guard out.count < limit, let r = load(folders, id: id), r.snapshot.phase != "queued" else { continue }
       // 데이터 폴더를 적기 전의 기록은 이 폴더의 실행 요약에 있는지로 가린다
       if r.snapshot.dataFolder.map({ $0 == path }) ?? logged.contains(id) { out.append(r) }
     }

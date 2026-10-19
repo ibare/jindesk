@@ -41,6 +41,11 @@ enum CommandLineMode {
     setvbuf(stdout, nil, _IOLBF, 0)
     // 그림 검사기가 화면 밖 창을 쓴다. Dock 에는 나타나지 않게 한다.
     NSApplication.shared.setActivationPolicy(.prohibited)
+    // 띄운 프로세스 그룹을 기록하고, 앱이나 명령줄이 비정상 종료해 남은 그룹(claude 등)을 끝낸다
+    let children = AppFolders.standard().children
+    ProcessGroups.shared.keepRecords(in: children)
+    let reaped = ProcessGroups.reapOrphans(in: children)
+    if reaped > 0 { FileHandle.standardError.write(Data("! 지난번에 끝나지 않은 하위 프로세스 \(reaped)개를 끝냈습니다\n".utf8)) }
     Task { @MainActor in
       do {
         var command = try JindeskCommand.parseAsRoot(arguments)

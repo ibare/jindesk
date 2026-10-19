@@ -12,7 +12,7 @@ public enum SyllabusBuild {
 
   public static func prepare(subject: String, _ ctx: PrepareContext) throws -> PreparedJob {
     let id = try JobID.make(date: ctx.now, slugSource: "syllabus \(subject)", exists: ctx.taken)
-    return PreparedJob(id: id, kind: .syllabusBuild, title: subject, target: subject, coalesceKey: "syllabus-build:\(subject)") { c in
+    return PreparedJob(id: id, kind: .syllabusBuild, title: subject, target: subject, coalesceKey: "syllabus-build:\(subject)", recipe: .syllabusBuild(subject: subject)) { c in
       try await run(subject: subject, c)
     }
   }

@@ -86,7 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       let running = model.jobs?.active.count ?? 0
       let alert = NSAlert()
       alert.messageText = model.backupStatus != nil ? "백업을 만드는 중입니다" : running > 0 ? "작업이 진행 중입니다" : "대기 중인 작업이 있습니다"
-      alert.informativeText = "끝내면 진행 중인 일이 중단되고 대기열이 비워집니다. 다음에 켜면 이어서 할 수 있습니다."
+      alert.informativeText = "끝내면 진행 중인 일이 멈춥니다. 다음에 켜면 멈춘 일과 대기열을 처음부터 다시 합니다."
       alert.addButton(withTitle: "취소")
       alert.addButton(withTitle: "끝내기")
       alert.alertStyle = .warning

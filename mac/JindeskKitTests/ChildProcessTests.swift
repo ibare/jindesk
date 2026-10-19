@@ -119,6 +119,31 @@ extension ChildSpec {
     #expect(ChildEnvironment.base(from: ["LC_ALL": "ko_KR.UTF-8"], toolDirectories: [])["LANG"] == nil)
   }
 
+  @Test func 띄운_프로세스가_끝나_남은_그룹만_끝낸다() async throws {
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appending(path: "jindesk-children-\(UUID().uuidString)")
+    try FileOps.makeDirectory(dir)
+    defer { FileOps.remove(dir) }
+    let orphan = try ChildProcess.spawn(sh("sleep 30"))
+    let mine = try ChildProcess.spawn(sh("sleep 30"))
+    let reused = try ChildProcess.spawn(sh("sleep 30"))
+    defer { for c in [orphan, mine, reused] { c.signalGroup(SIGKILL) } }
+    func write(_ child: ChildProcess, leader: ProcessStamp, owner: ProcessStamp) throws {
+      try JSONEncoder().encode(ProcessGroups.Record(leader: leader, owner: owner, command: "sh")).write(to: dir.appending(path: "\(child.pid).json"))
+    }
+    let gone = ProcessStamp(pid: getpid(), started: 1)
+    // 띄운 프로세스가 끝났다
+    try write(orphan, leader: try #require(ProcessStamp.of(orphan.pid)), owner: gone)
+    // 띄운 프로세스가 살아 있다 (이 프로세스)
+    try write(mine, leader: try #require(ProcessStamp.of(mine.pid)), owner: .current)
+    // 리더의 PID 를 다른 프로세스가 받았다 (시작 시각이 다르다)
+    try write(reused, leader: ProcessStamp(pid: reused.pid, started: 1), owner: gone)
+
+    #expect(ProcessGroups.reapOrphans(in: dir) == 1)
+    #expect(await orphan.wait().termination == .signaled(SIGKILL))
+    #expect(kill(mine.pid, 0) == 0 && kill(reused.pid, 0) == 0)
+    #expect(FileOps.list(dir) == ["\(mine.pid).json"])
+  }
+
   @Test func 에이전트_환경에는_모델_토큰과_설정_폴더만_더한다() {
     let agent = ChildEnvironment.agent(base: ["HOME": "/h", "CLAUDE_X": "1"], token: "tok", configDirectory: "/c")
     #expect(agent == ["HOME": "/h", "CLAUDE_CODE_OAUTH_TOKEN": "tok", "CLAUDE_CONFIG_DIR": "/c", "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"])

@@ -1,15 +1,18 @@
 // 자료 넣기 (source-intake, JOBS.md). 에이전트 없이 러너만 한다.
 // 그날 받은 파일들을 묶음으로 넣는다 (DECISIONS.md 35). 꼬리표(학년, 과목, 수준)는 한 번에 넣는 파일 모두에 붙고, 메모는 묶음에 붙는다.
 // 강의 계획 항목과 단원은 고르지 않고, 묶음의 이름도 받지 않는다(묶음 읽기가 짓는다).
-// 자료 하나는 데이터 폴더의 sources/.incoming-<자료 id>/ 에서 다 만든 뒤 sources/<자료 id>/ 로 한 번에 옮긴다.
+// 자료 하나는 데이터 폴더의 sources/.incoming-<자료 id>/ 에서 다 만든 뒤 sources/<자료 id>/ 로 한 번에 옮기고, 바로 제 묶음에 적는다.
+// 넣다가 앱이 끝나면 다음에 켤 때 같은 요청(새 묶음의 id 까지)으로 다시 시작한다. 꺼지기 전에 넣은 자료는 넣은 것으로 친다.
 import Foundation
 
 // 묶음 하나로 넣을 파일들
-public struct IntakeGroup: Sendable, Equatable {
+public struct IntakeGroup: Sendable, Equatable, Codable {
   public var files: [URL]
   public var memo: String?
   // 더할 묶음 id. nil 이면 새 묶음을 만든다
   public var bundle: String?
+  // 새로 만들 묶음의 id. 준비할 때 정해 두어, 다시 시작해도 같은 묶음에 넣는다
+  public var newBundle: String?
   // 목차의 근거 (과목 가이드, 과정·단원 안내). 파일마다 묶음 하나로 넣는다
   public var syllabusBasis: Bool
 
@@ -19,11 +22,16 @@ public struct IntakeGroup: Sendable, Equatable {
     self.bundle = bundle
     self.syllabusBasis = syllabusBasis
   }
+
+  // 넣을 묶음
+  var target: String? { bundle ?? newBundle }
 }
 
-public struct IntakeRequest: Sendable, Equatable {
+public struct IntakeRequest: Sendable, Equatable, Codable {
   public var labels: SourceLabels
   public var groups: [IntakeGroup]
+  // 처음 준비한 때. 있으면 앱이 끝나 멈췄다가 다시 준비한 넣기다
+  public var requested: String?
 
   public init(labels: SourceLabels, groups: [IntakeGroup]) {
     self.labels = labels
@@ -104,23 +112,36 @@ public enum SourceIntake {
   public static func prepare(_ request: IntakeRequest, _ ctx: PrepareContext) throws -> PreparedJob {
     guard !request.files.isEmpty else { throw RequestError("넣을 파일이 없습니다") }
     for g in request.groups { if let b = g.bundle, BundleStore.bundle(ctx.data, id: b) == nil { throw RequestError("더할 묶음을 찾지 못했습니다: \(b)") } }
-    for url in request.files where !FileOps.exists(url) { throw RequestError("파일이 없습니다: \(url.path)") }
+    // 다시 준비한 넣기는 그사이 없어진 파일만 넣을 때 까닭을 남기고 뺀다
+    let resumed = request.requested != nil
+    if !resumed { for url in request.files where !FileOps.exists(url) { throw RequestError("파일이 없습니다: \(url.path)") } }
+    var request = request
+    request.requested = request.requested ?? Clock.isoLocal(ctx.now)
+    var reserved: Set<String> = []
+    for i in request.groups.indices where request.groups[i].target == nil {
+      var bundle = BundleID.make(created: ctx.now)
+      while reserved.contains(bundle) || FileOps.exists(BundleStore.file(ctx.data, id: bundle)) { bundle = BundleID.make(created: ctx.now) }
+      reserved.insert(bundle)
+      request.groups[i].newBundle = bundle
+    }
     let first = request.files[0].deletingPathExtension().lastPathComponent
     let id = try JobID.make(date: ctx.now, slugSource: "intake \(first)", exists: ctx.taken)
     let title = request.files.count == 1 ? request.files[0].lastPathComponent : "\(request.files[0].lastPathComponent) 외 \(request.files.count - 1)개"
-    return PreparedJob(id: id, kind: .sourceIntake, title: title) { context in
-      try await run(request, context)
+    let fixed = request
+    return PreparedJob(id: id, kind: .sourceIntake, title: title, recipe: .sourceIntake(fixed)) { context in
+      try await run(fixed, resumed: resumed, context)
     }
   }
 
   // 시작할 때 다시 고른다. 요청한 뒤 다른 작업이 같은 파일을 넣었으면 뺀다.
-  static func run(_ request: IntakeRequest, _ context: JobContext) async throws {
+  static func run(_ request: IntakeRequest, resumed: Bool = false, _ context: JobContext) async throws {
     await context.setPhase("preparing")
     let library = SourceLibrary.load(context.data)
     let labels = LabelMatch.canonical(request.labels) { library.usedValues($0) }
     let candidates = plan(request.files, library: library)
+    let earlier = resumed ? placedEarlier(request, candidates: candidates, library: library, data: context.data) : [:]
     var warnings: [String] = []
-    for c in candidates where !c.status.accepted {
+    for c in candidates where !c.status.accepted && earlier[c.url] == nil {
       warnings.append("\(c.name): \(c.status.reason ?? "")")
       await context.log(.warn, "뺌: \(c.name) — \(c.status.reason ?? "")")
     }
@@ -131,14 +152,26 @@ public enum SourceIntake {
     // 넣은 자료가 든 묶음 (자료 읽기를 넣을 대상)
     var touched: [String] = []
     for group in request.groups {
-      var ids: [String] = []
+      guard let bundle = group.target else { continue }
+      var count = 0
       for url in group.files {
+        if let id = earlier[url] {
+          // 묶음에 적기 전에 꺼졌으면 지금 적는다
+          try BundleStore.put(context.data, sources: [id], in: bundle, memo: group.memo)
+          added.append(id)
+          count += 1
+          await context.log(.info, "꺼지기 전에 넣었습니다: \(url.lastPathComponent) → \(id)")
+          continue
+        }
         guard let c = accepted[url] else { continue }
         try context.checkCancellation()
         await context.log(.info, "넣는 중: \(c.name)")
         do {
           let id = try await ingest(c, labels: labels, memo: nil, syllabusBasis: group.syllabusBasis, context: context)
-          ids.append(id)
+          // 넣자마자 묶음에 적는다. 다음 파일을 넣다가 꺼져도 넣은 자료는 제 묶음과 메모에 든다.
+          try BundleStore.put(context.data, sources: [id], in: bundle, memo: group.memo)
+          added.append(id)
+          count += 1
           await context.log(.info, "넣었습니다: \(c.name) → \(id)")
         } catch is CancellationError {
           throw CancellationError()
@@ -148,17 +181,9 @@ public enum SourceIntake {
           await context.log(.error, "넣지 못했습니다: \(c.name) — \(error.localizedDescription)")
         }
       }
-      guard !ids.isEmpty else { continue }
-      added += ids
-      if let existing = group.bundle {
-        try BundleStore.add(context.data, sources: ids, to: existing, memo: group.memo)
-        touched.append(existing)
-        await context.log(.info, "묶음 \(existing) 에 자료 \(ids.count)개를 더했습니다")
-      } else {
-        let bundle = try BundleStore.create(context.data, sources: ids, memo: group.memo)
-        touched.append(bundle.id)
-        await context.log(.info, "묶음 \(bundle.id) 를 만들었습니다 (자료 \(ids.count)개)")
-      }
+      guard count > 0 else { continue }
+      touched.append(bundle)
+      await context.log(.info, group.bundle == nil ? "묶음 \(bundle) 에 자료 \(count)개를 넣었습니다" : "묶음 \(bundle) 에 자료 \(count)개를 더했습니다")
     }
     await context.report(
       counts: [JobCount(key: "added", label: "넣음", count: added.count), JobCount(key: "skipped", label: "뺌", count: candidates.count - added.count)],
@@ -184,6 +209,24 @@ public enum SourceIntake {
     {
       await context.log(.info, "목차 만들기를 대기열에 넣었습니다")
     }
+  }
+
+  // 다시 시작한 넣기: 꺼지기 전에 이 넣기가 넣은 자료 (파일 → 자료 id).
+  // 제 묶음에 들었거나, 묶음에 적기 전에 꺼져 혼자인 묶음으로 남은 자료(이 넣기를 처음 준비한 뒤에 받았다)다.
+  static func placedEarlier(_ request: IntakeRequest, candidates: [IntakeCandidate], library: SourceLibrary, data: DataFolder) -> [URL: String] {
+    guard let requested = request.requested.flatMap(Clock.parse) else { return [:] }
+    let bundles = BundleStore.all(data, library: library)
+    let membership = BundleStore.membership(bundles)
+    let lone = Set(bundles.filter(\.implicit).map(\.id))
+    var targets: [URL: String] = [:]
+    for g in request.groups { for url in g.files where targets[url] == nil { targets[url] = g.target } }
+    var out: [URL: String] = [:]
+    for c in candidates {
+      guard case .existing(let id) = c.status, let target = targets[c.url] else { continue }
+      let received = library.source(id).flatMap { Clock.parse($0.meta.received) }
+      if membership[id] == target || (lone.contains(id) && received.map { $0 >= requested } == true) { out[c.url] = id }
+    }
+    return out
   }
 
   // 자료 하나를 만든다. 돌려주는 값은 자료 id.

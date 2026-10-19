@@ -2,8 +2,8 @@
 // 꼬리표는 열린 이름-값이다. grade(학년), subject(과목), level(수준)은 처음 제안하는 이름일 뿐이다.
 import Foundation
 
-public struct SourceLabels: Sendable, Equatable {
-  public struct Label: Sendable, Equatable {
+public struct SourceLabels: Sendable, Equatable, Codable {
+  public struct Label: Sendable, Equatable, Codable {
     public let name: String
     public var value: String
 

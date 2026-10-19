@@ -24,7 +24,7 @@ public enum SourceReading {
     let id = try JobID.make(date: ctx.now, slugSource: "read \(stem)", exists: ctx.taken)
     let title = bundle.title ?? (members.count == 1 ? first.meta.original.name : "\(first.meta.original.name) 외 \(members.count - 1)개")
     let key = "source-reading:\(bundleID)" + (only.map { ":" + $0.sorted().joined(separator: ",") } ?? "")
-    return PreparedJob(id: id, kind: .sourceReading, title: title, target: bundleID, coalesceKey: key) { c in
+    return PreparedJob(id: id, kind: .sourceReading, title: title, target: bundleID, coalesceKey: key, recipe: .sourceReading(bundle: bundleID, sources: only)) { c in
       try await run(bundle: bundleID, only: only, c)
     }
   }

@@ -9,6 +9,20 @@ public struct PendingWork: Sendable, Equatable, Identifiable {
   public let label: String
 
   public var id: String { "\(kind.rawValue):\(target)" }
+
+  // 이 일을 할 작업
+  public var recipe: JobRecipe {
+    switch kind {
+    case .sourceReading: .sourceReading(bundle: target, sources: nil)
+    case .conceptCuration: .conceptCuration(bundle: target)
+    case .pageBuild: .pageBuild(subject: target)
+    case .syllabusBuild: .syllabusBuild(subject: target)
+    case .ask: .ask(comment: target)
+    case .regen: .regen(directive: target)
+    case .facets: .facets(subject: target)
+    default: .translation(subject: target)
+    }
+  }
 }
 
 public enum Pipeline {
@@ -62,16 +76,7 @@ public enum Pipeline {
   }
 
   public static func prepare(_ work: PendingWork) -> @Sendable (PrepareContext) async throws -> PreparedJob {
-    let target = work.target
-    switch work.kind {
-    case .sourceReading: return { try SourceReading.prepare(bundle: target, $0) }
-    case .conceptCuration: return { try ConceptCuration.prepare(bundle: target, $0) }
-    case .pageBuild: return { try PageBuild.prepare(subject: target, $0) }
-    case .syllabusBuild: return { try SyllabusBuild.prepare(subject: target, $0) }
-    case .ask: return { try Ask.prepare(commentID: target, $0) }
-    case .regen: return { try Regen.prepare(directiveID: target, $0) }
-    case .facets: return { try Facets.prepare(subject: target, $0) }
-    default: return { try Translation.prepare(subject: target, $0) }
-    }
+    let recipe = work.recipe
+    return { try recipe.prepare($0) }
   }
 }

@@ -55,6 +55,14 @@ public struct JobSnapshot: Sendable, Codable, Equatable, Identifiable {
   public var companions: [String]?
   // 작업을 넣은 데이터 폴더 (실제 경로). 작업 화면과 중단 정리는 지금 폴더의 작업만 본다.
   public var dataFolder: String?
+  // 다시 준비하는 입력. 앱이 끝나 멈춘 작업은 다음에 켤 때 이것으로 다시 넣는다.
+  public var recipe: JobRecipe?
+  // 대기열에 넣은 차례. 같은 시각에 넣은 작업을 다시 넣을 때 차례를 지킨다.
+  public var queueOrder: Int?
+  // 진행 중에 앱이 비정상 종료해 다시 넣은 횟수. 정한 수를 넘으면 더 넣지 않는다 (그 작업이 앱을 끝내는 경우).
+  public var crashes: Int?
+  // 앱을 끝내거나 다른 데이터 폴더를 열어 멈췄다 (비정상 종료가 아니다)
+  public var quit: Bool?
 
   public struct PhaseMark: Sendable, Codable, Equatable {
     public let phase: String
@@ -74,27 +82,33 @@ public struct JobSnapshot: Sendable, Codable, Equatable, Identifiable {
   public var kind: JobKind? { JobKind(rawValue: type) }
 }
 
-// run.json: 상태와 마지막 기록
+// run.json: 상태와 마지막 기록. 대기열에 넣을 때 처음 쓰고, 시작할 때와 끝날 때 고쳐 쓴다.
 public struct RunRecord: Codable, Sendable {
   public var snapshot: JobSnapshot
   public var logs: [LogEntry]
+  // 이 작업을 넣은 프로세스 (앱이나 명령줄). 살아 있으면 그 프로세스의 작업이라 건드리지 않는다.
+  public var owner: ProcessStamp?
 
-  public init(snapshot: JobSnapshot, logs: [LogEntry]) {
+  public init(snapshot: JobSnapshot, logs: [LogEntry], owner: ProcessStamp? = nil) {
     self.snapshot = snapshot
     self.logs = logs
+    self.owner = owner
   }
 
-  enum CodingKeys: String, CodingKey { case logs }
+  enum CodingKeys: String, CodingKey { case logs, owner }
 
   public init(from decoder: Decoder) throws {
     snapshot = try JobSnapshot(from: decoder)
-    logs = try decoder.container(keyedBy: CodingKeys.self).decodeIfPresent([LogEntry].self, forKey: .logs) ?? []
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    logs = try c.decodeIfPresent([LogEntry].self, forKey: .logs) ?? []
+    owner = try c.decodeIfPresent(ProcessStamp.self, forKey: .owner)
   }
 
   public func encode(to encoder: Encoder) throws {
     try snapshot.encode(to: encoder)
     var c = encoder.container(keyedBy: CodingKeys.self)
     try c.encode(logs, forKey: .logs)
+    try c.encodeIfPresent(owner, forKey: .owner)
   }
 }
 
@@ -193,11 +207,13 @@ public struct PreparedJob: Sendable {
   public let target: String?
   // 같은 값의 작업이 아직 시작하지 않고 대기열에 있으면 새로 넣지 않는다 (뒤따르는 작업이 겹칠 때). 시작할 때 할 일을 다시 고르므로 하나면 된다.
   public let coalesceKey: String?
+  // 다시 준비하는 입력. 없으면 앱이 끝나 멈췄을 때 다시 넣지 않는다.
+  public let recipe: JobRecipe?
   // 끝까지 가면 완료, 오류를 던지면 실패. 취소되면 취소로 본다.
   public let run: @Sendable (JobContext) async throws -> Void
 
   public init(
-    id: String, kind: JobKind, title: String, serialKey: String? = nil, target: String? = nil, coalesceKey: String? = nil,
+    id: String, kind: JobKind, title: String, serialKey: String? = nil, target: String? = nil, coalesceKey: String? = nil, recipe: JobRecipe? = nil,
     run: @escaping @Sendable (JobContext) async throws -> Void
   ) {
     self.id = id
@@ -206,6 +222,7 @@ public struct PreparedJob: Sendable {
     self.serialKey = serialKey
     self.target = target
     self.coalesceKey = coalesceKey
+    self.recipe = recipe
     self.run = run
   }
 }

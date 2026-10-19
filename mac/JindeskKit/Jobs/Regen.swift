@@ -26,7 +26,7 @@ public enum Regen {
     let id = try JobID.make(date: ctx.now, slugSource: "regen \(d.op.rawValue) \(cid.slug)", exists: ctx.taken)
     return PreparedJob(
       id: id, kind: .regen, title: "\(d.op.label) · \(cid.slug) \(d.target.unit)", serialKey: d.target.concept, target: d.target.concept,
-      coalesceKey: "regen:\(directiveID)"
+      coalesceKey: "regen:\(directiveID)", recipe: .regen(directive: directiveID)
     ) { c in
       try await run(directiveID: directiveID, c)
     }

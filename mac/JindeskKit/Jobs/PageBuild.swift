@@ -12,7 +12,7 @@ public enum PageBuild {
 
   public static func prepare(subject: String, _ ctx: PrepareContext) throws -> PreparedJob {
     let id = try JobID.make(date: ctx.now, slugSource: "page \(subject)", exists: ctx.taken)
-    return PreparedJob(id: id, kind: .pageBuild, title: subject, target: subject, coalesceKey: "page-build:\(subject)") { c in
+    return PreparedJob(id: id, kind: .pageBuild, title: subject, target: subject, coalesceKey: "page-build:\(subject)", recipe: .pageBuild(subject: subject)) { c in
       try await run(subject: subject, c)
     }
   }

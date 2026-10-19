@@ -290,31 +290,107 @@ final class Gates: @unchecked Sendable {
     #expect(await m.waitForEnd("20261016-1600-c").phase == "done")
   }
 
-  @Test func 앱이_끝나_진행_중으로_남은_작업을_중단됨으로_고친다() throws {
+  @Test func 대기열에_넣을_때_기록을_남기고_앱이_끝나면_진행_중과_대기로_남긴다() async throws {
+    let gates = Gates()
+    let t = TempPlace()
+    let m = try manager(t)
+    func job(_ id: String, _ subject: String) -> (PrepareContext) async throws -> PreparedJob {
+      { _ in PreparedJob(id: id, kind: .pageBuild, title: id, recipe: .pageBuild(subject: subject)) { _ in try await gates.wait(id) } }
+    }
+    func phase(_ id: String) -> String? { RunHistory.load(t.folders, id: id)?.snapshot.phase }
+    try await m.submitAll(config: testConfig, [job("20261019-1000-a", "physics"), job("20261019-1000-b", "math"), job("20261019-1000-c", "chem")])
+    await tick()
+    #expect(gates.started == ["20261019-1000-a"])
+    // 시작하지 않은 작업도 run.json 이 있고, 다시 준비할 입력과 넣은 프로세스가 적혀 있다
+    let queued = try #require(RunHistory.load(t.folders, id: "20261019-1000-b"))
+    #expect(queued.snapshot.phase == "queued" && queued.snapshot.recipe == .pageBuild(subject: "math") && queued.owner == .current)
+    // 대기열에서 뺀 작업은 남길 것이 없다
+    #expect(m.cancel("20261019-1000-c"))
+    #expect(!FileOps.exists(t.folders.workDir("20261019-1000-c")))
+    // 작업 화면의 최근 작업에 대기 중인 작업은 보이지 않는다
+    #expect(RunHistory.load(t.folders, data: t.data).map(\.snapshot.id) == ["20261019-1000-a"])
+
+    m.shutdown()
+    try await Task.sleep(for: .milliseconds(200))
+    // 앱이 끝나 멈춘 작업은 취소로 적지 않는다
+    #expect(phase("20261019-1000-a").map { $0 != "cancelled" && $0 != "queued" } == true)
+    #expect(phase("20261019-1000-b") == "queued")
+    #expect(RunHistory.load(t.folders, id: "20261019-1000-a")?.snapshot.quit == true)
+    #expect(!FileOps.exists(t.data.runsLog()))
+    #expect(JobManager.leftovers(data: t.data, folders: t.folders).map(\.snapshot.id) == ["20261019-1000-a", "20261019-1000-b"])
+  }
+
+  @Test func 멈춘_작업을_시작했던_것부터_같은_차례로_다시_넣고_정리한다() async throws {
     let t = TempPlace()
     try t.data.initialize(app: testApp)
-    func run(_ id: String, _ phase: String, data: String?) throws {
-      let folder = data.map { #","dataFolder":"\#($0)""# } ?? ""
-      try FileOps.write(
-        #"{"id":"\#(id)","type":"source-reading","typeLabel":"자료 읽기","title":"x","phase":"\#(phase)","phaseLabel":"실행","queuedAt":"q","logs":[]\#(folder)}"#,
-        to: t.folders.workDir(id).appending(path: "run.json"))
+    func record(_ id: String, _ phase: String, queued: String, order: Int, started: String? = nil, data: String? = nil, owner: ProcessStamp? = nil)
+      -> RunRecord
+    {
+      var s = JobSnapshot(
+        id: id, type: "page-build", typeLabel: "학습 페이지 만들기", title: id, phase: phase, phaseLabel: phase, queuedAt: queued,
+        dataFolder: data ?? t.data.url.path, recipe: .pageBuild(subject: id), queueOrder: order)
+      s.startedAt = started
+      return RunRecord(snapshot: s, logs: [], owner: owner)
     }
-    try run("20261016-1000-h", "running", data: t.data.url.path)
-    try run("20261016-1000-i", "done", data: t.data.url.path)
-    // 다른 데이터 폴더(명령줄의 --data)에서 돌다 멈춘 작업과 그 폴더의 끝난 작업
-    try run("20261016-1000-j", "running", data: "/somewhere/else")
-    try run("20261016-1000-k", "done", data: "/somewhere/else")
-    #expect(JobManager.markInterrupted(data: t.data, folders: t.folders) == ["20261016-1000-h"])
-    #expect(RunHistory.load(t.folders, id: "20261016-1000-h")?.snapshot.phase == "interrupted")
-    #expect(RunHistory.load(t.folders, id: "20261016-1000-j")?.snapshot.phase == "running")
-    #expect(try JSONLines.read(t.data.runsLog()).values.first?["result"] == .string("interrupted"))
-    // 작업 화면의 최근 작업은 이 데이터 폴더의 것만
-    #expect(RunHistory.load(t.folders, data: t.data).map(\.snapshot.id) == ["20261016-1000-i", "20261016-1000-h"])
-    // 데이터 폴더를 적기 전의 기록은 이 폴더의 실행 요약에 있을 때만
-    try run("20261016-0900-old", "done", data: nil)
-    #expect(!RunHistory.load(t.folders, data: t.data).contains { $0.snapshot.id == "20261016-0900-old" })
-    try FileOps.appendLine(#"{"v":1,"id":"20261016-0900-old","result":"done"}"#, to: t.data.runsLog())
-    #expect(RunHistory.load(t.folders, data: t.data).contains { $0.snapshot.id == "20261016-0900-old" })
+    // 끝난 앱(주인이 없다)이 남긴 기록: 돌던 것 둘, 대기 둘(같은 시각에 넣은 것은 넣은 차례로)
+    let dead = ProcessStamp(pid: getpid(), started: 1)
+    for r in [
+      record("20261019-1100-q2", "queued", queued: "2026-10-19T11:00:05+09:00", order: 4, owner: dead),
+      record("20261019-1100-q1", "queued", queued: "2026-10-19T11:00:05+09:00", order: 3, owner: dead),
+      record("20261019-1100-r2", "running", queued: "2026-10-19T11:00:00+09:00", order: 2, started: "2026-10-19T11:00:03+09:00", owner: dead),
+      record("20261019-1100-r1", "checking", queued: "2026-10-19T11:00:00+09:00", order: 1, started: "2026-10-19T11:00:01+09:00"),
+      // 끝난 작업, 다른 데이터 폴더의 작업, 살아 있는 다른 프로세스(명령줄)의 작업은 건드리지 않는다
+      record("20261019-1100-done", "done", queued: "2026-10-19T10:00:00+09:00", order: 1),
+      record("20261019-1100-else", "running", queued: "2026-10-19T10:00:00+09:00", order: 1, data: "/somewhere/else"),
+      record("20261019-1100-live", "running", queued: "2026-10-19T10:00:00+09:00", order: 1, owner: ProcessStamp.of(getppid())),
+    ] {
+      JobManager.write(r, folders: t.folders)
+    }
+    let halted = JobManager.leftovers(data: t.data, folders: t.folders)
+    #expect(halted.map(\.snapshot.id) == ["20261019-1100-r1", "20261019-1100-r2", "20261019-1100-q1", "20261019-1100-q2"])
+
+    // 다시 넣는다. 토큰이 없으면 에이전트 작업은 넣지 않는다.
+    let m = JobManager(data: t.data, folders: t.folders)
+    let none = await m.restore(halted, agent: nil, runner: testConfig)
+    #expect(none.count == 0 && none.problems.count == 4 && none.problems[0].contains("토큰이 없어"))
+    #expect(m.queue.isEmpty && m.active.isEmpty)
+    // 시작했던 작업은 중단됨으로 남고 실행 요약에 적힌다. 시작하지 않은 작업은 작업 폴더를 지운다.
+    #expect(RunHistory.load(t.folders, id: "20261019-1100-r1")?.snapshot.phase == "interrupted")
+    #expect(!FileOps.exists(t.folders.workDir("20261019-1100-q1")))
+    #expect(try JSONLines.read(t.data.runsLog()).values.map { $0["result"] } == [.string("interrupted"), .string("interrupted")])
+    #expect(RunHistory.load(t.folders, id: "20261019-1100-else")?.snapshot.phase == "running")
+    #expect(RunHistory.load(t.folders, id: "20261019-1100-live")?.snapshot.phase == "running")
+    #expect(JobManager.leftovers(data: t.data, folders: t.folders).isEmpty)
+
+    // 같은 차례로 다시 넣는다 (페이지 대기열은 하나씩 돈다)
+    m.hold(.backup)
+    for r in halted { JobManager.write(r, folders: t.folders) }
+    let again = await m.restore(halted, agent: testConfig, runner: testConfig)
+    #expect(again.count == 4 && again.problems.isEmpty)
+    #expect(m.queue.map(\.target) == ["20261019-1100-r1", "20261019-1100-r2", "20261019-1100-q1", "20261019-1100-q2"])
+    #expect(m.queue.allSatisfy { !halted.map(\.snapshot.id).contains($0.id) })
+    // 진행 중에 비정상 종료한 작업만 횟수를 센다
+    #expect(m.queue.map { $0.crashes ?? 0 } == [1, 1, 0, 0])
+    #expect(RunHistory.load(t.folders, id: m.queue[0].id)?.snapshot.crashes == 1)
+  }
+
+  @Test func 다시_할_때마다_앱이_끝나는_작업은_더_넣지_않는다() async throws {
+    let t = TempPlace()
+    try t.data.initialize(app: testApp)
+    func record(_ id: String, crashes: Int, quit: Bool? = nil) -> RunRecord {
+      var s = JobSnapshot(
+        id: id, type: "page-build", typeLabel: "학습 페이지 만들기", title: id, phase: "running", phaseLabel: "실행", queuedAt: Clock.isoLocal(),
+        dataFolder: t.data.url.path, recipe: .pageBuild(subject: id), crashes: crashes, quit: quit)
+      s.startedAt = Clock.isoLocal()
+      return RunRecord(snapshot: s, logs: [])
+    }
+    let m = JobManager(data: t.data, folders: t.folders)
+    m.hold(.backup)
+    // 두 번 다시 넣었는데 또 끝났다. 앱을 끝내 멈춘 것은 세지 않는다.
+    let r = await m.restore(
+      [record("20261019-1300-poison", crashes: 2), record("20261019-1300-quit", crashes: 2, quit: true)], agent: testConfig, runner: testConfig)
+    #expect(r.count == 1 && r.problems == ["학습 페이지 만들기 · 20261019-1300-poison: 다시 할 때마다 앱이 끝나 더 넣지 않았습니다"])
+    #expect(m.queue.map(\.target) == ["20261019-1300-quit"] && m.queue.first?.crashes == 2)
   }
 }
 

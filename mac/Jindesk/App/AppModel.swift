@@ -210,6 +210,8 @@ final class AppModel {
 
   @ObservationIgnored var updater: UpdateController?
   @ObservationIgnored private let sleepGuard = SleepGuard()
+  // 켤 때 끝낸, 지난번에 남은 프로세스 그룹 수 (처음 연 폴더의 알림에 보인다)
+  @ObservationIgnored private var reapedGroups = 0
 
   init(folders: AppFolders = .standard()) {
     self.folders = folders
@@ -237,6 +239,9 @@ final class AppModel {
       phase = .unusable("앱 지원 폴더를 만들지 못했습니다: \(error.localizedDescription)")
       return
     }
+    // 무엇이든 띄우기 전에: 띄운 프로세스 그룹을 기록하고, 앱이 비정상 종료해 남은 그룹(claude 등)을 끝낸다
+    ProcessGroups.shared.keepRecords(in: folders.children)
+    reapedGroups = ProcessGroups.reapOrphans(in: folders.children)
     #if DEBUG
       if let snapshot = SnapshotDriver.dataFolder {
         await open(snapshot, creating: true)
@@ -330,6 +335,8 @@ final class AppModel {
     var opened = "켤 때 남은 변경"
     do {
       notes = try migrator.recoverInterrupted()
+      if reapedGroups > 0 { notes.append("지난번에 끝나지 않은 하위 프로세스 \(reapedGroups)개를 끝냈습니다") }
+      reapedGroups = 0
       notes += migrator.removePreviousCopies()
       switch migrator.state() {
       case .uninitialized:
@@ -366,8 +373,7 @@ final class AppModel {
 
     if !isSnapshot { DataFolderStore.save(data.url) }
     self.data = data
-    let fixed = JobManager.markInterrupted(data: data, folders: folders)
-    if !fixed.isEmpty { notes.append("앱이 끝나 중단된 작업 \(fixed.count)개를 중단됨으로 고쳤습니다") }
+    let halted = JobManager.leftovers(data: data, folders: folders)
     let leftovers = SourceIntake.removeLeftovers(data)
     if !leftovers.isEmpty { notes.append("넣다가 멈춘 자료 \(leftovers.count)개를 치웠습니다") }
     self.data = data
@@ -387,6 +393,17 @@ final class AppModel {
     scheduleSync(opened)
     syncBucket()
     Task { await runDoctor() }
+    if !halted.isEmpty { Task { await restore(halted, into: manager) } }
+  }
+
+  // 앱이 끝나 멈춘 작업과 대기열을 같은 차례로 다시 넣는다. 작업은 처음부터 다시 한다.
+  private func restore(_ halted: [RunRecord], into manager: JobManager) async {
+    let agent = try? await agentConfig()
+    let runner = await ConfigLoader.loadForRunner(settings: runSettings, guardHelper: AppPaths.guardHelper, instructions: AppPaths.instructions)
+    let (count, problems) = await manager.restore(halted, agent: agent, runner: runner)
+    if count > 0 { notes.append("앱이 끝나 멈춘 작업 \(count)개를 대기열에 다시 넣었습니다") }
+    notes += problems.map { "다시 넣지 못했습니다: \($0)" }
+    history = RunHistory.load(folders, data: manager.data)
   }
 
   func retryMigration() async {

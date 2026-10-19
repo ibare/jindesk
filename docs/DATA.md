@@ -8,7 +8,7 @@
 |---|---|---|---|
 | 데이터 폴더 | `~/Jindesk/` (처음 켤 때 리포를 연결하며 정한다) | 원본 자료, 글자층, 기록, 정리층, 학생의 코멘트와 요구 | 통째로 |
 | 캐시 | `~/Library/Caches/com.mintae.Jindesk/` | SQLite 색인, 쪽 이미지(에이전트가 읽는 PNG, 맥과 폰이 보는 HEIC), 렌더러에 넘길 조합 결과 | 하지 않는다. 지워도 다시 만들거나 자료 버킷에서 받는다 |
-| 앱 지원 폴더 | `~/Library/Application Support/com.mintae.Jindesk/` | `work/` 작업 공간, `backups/` 마이그레이션 전 자동 백업, `state.json` 화면 상태, `usage.json` 마지막으로 받은 계정 사용량 | 하지 않는다 |
+| 앱 지원 폴더 | `~/Library/Application Support/com.mintae.Jindesk/` | `work/` 작업 공간과 실행 기록(`run.json`, 다시 넣을 입력), `backups/` 마이그레이션 전 자동 백업, `children/` 띄운 프로세스 그룹, `state.json` 화면 상태, `usage.json` 마지막으로 받은 계정 사용량 | 하지 않는다 |
 | 키체인 | 로그인 키체인, 서비스 `com.mintae.Jindesk` | Claude 토큰, 데이터 리포 쓰기 토큰, 자료 버킷 쓰기 키(HMAC) | — |
 | 데이터 리포 | 비공개 GitHub 리포. 관리자가 만들고 앱 설정에서 연결한다 | 맥 앱이 커밋해 올린 데이터 폴더의 판들 (원본 자료와 쪽 이미지는 빼고) | 리포 이력이 맥 바깥의 백업이다 |
 | 자료 버킷 | GCS 버킷. 관리자가 개발용과 실제를 따로 만들고 앱 설정에서 연결한다 | 원본 자료, 맥과 폰이 보는 쪽 이미지(HEIC) | 버킷이 맥 바깥의 사본이다 |

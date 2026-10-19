@@ -28,6 +28,49 @@ import Testing
 
   let labels = SourceLabels(grade: "MYP 5", subject: "Extended Math", level: "Extended")
 
+  @Test func 넣다가_앱이_끝나면_다음에_켤_때_같은_묶음과_메모로_이어_넣는다() async throws {
+    let t = try place()
+    let a = pdf(t, "a", "Vectors lesson slides")
+    let b = pdf(t, "b", "Vectors worksheet")
+    let c = pdf(t, "c", "Forces lesson slides")
+    // 넣기를 준비하면 새 묶음의 id 가 정해진다
+    let ctx = PrepareContext(now: Date(), data: t.data, folders: t.folders, config: testConfig) { _ in false }
+    let job = try SourceIntake.prepare(IntakeRequest(labels: labels, groups: [IntakeGroup(files: [a, b], memo: "벡터"), IntakeGroup(files: [c], memo: "힘")]), ctx)
+    guard case .sourceIntake(let fixed) = try #require(job.recipe) else { throw ToolError("자료 넣기가 아닙니다") }
+    let (x, y) = (try #require(fixed.groups[0].newBundle), try #require(fixed.groups[1].newBundle))
+    #expect(fixed.requested != nil && x != y)
+
+    // 꺼지기 전: a 와 c 를 넣었다. c 는 묶음에 적기 전에 꺼졌다.
+    var partial = fixed
+    partial.groups[0].files = [a]
+    _ = try await intake(t, partial)
+    FileOps.remove(BundleStore.file(t.data, id: y))
+    #expect(BundleStore.all(t.data).filter(\.implicit).count == 1)
+    var crashed = JobSnapshot(
+      id: "20261019-1200-intake-a", type: "source-intake", typeLabel: "자료 넣기", title: "a.pdf 외 2개", phase: "running", phaseLabel: "넣기",
+      queuedAt: Clock.isoLocal(), dataFolder: t.data.url.path, recipe: job.recipe)
+    crashed.startedAt = Clock.isoLocal()
+    JobManager.write(RunRecord(snapshot: crashed, logs: []), folders: t.folders)
+
+    // 다음에 켤 때: 같은 요청으로 다시 넣는다
+    var runner = testConfig
+    runner.claudeToken = ""
+    let m = JobManager(data: t.data, folders: t.folders)
+    let restored = await m.restore(JobManager.leftovers(data: t.data, folders: t.folders), agent: nil, runner: runner)
+    #expect(restored.count == 1 && restored.problems.isEmpty)
+    await m.waitUntilIdle()
+    let end = try #require(m.recent.first)
+    #expect(end.phase == "done" && end.counts?.map(\.count) == [3, 0] && end.warnings == nil, "\(end.warnings ?? [])")
+    let library = SourceLibrary.load(t.data)
+    let bundles = BundleStore.all(t.data, library: library)
+    let names = { (id: String) in bundles.first { $0.id == id }?.sources.compactMap { library.source($0)?.meta.original.name } }
+    #expect(bundles.count == 2 && bundles.allSatisfy { !$0.implicit })
+    #expect(names(x) == ["a.pdf", "b.pdf"] && names(y) == ["c.pdf"])
+    // 메모는 한 번만 적힌다
+    #expect(bundles.first { $0.id == x }?.memo == "벡터" && bundles.first { $0.id == y }?.memo == "힘")
+    #expect(RunHistory.load(t.folders, id: crashed.id)?.snapshot.phase == "interrupted")
+  }
+
   @Test func 묶음으로_넣고_있는_묶음에_더한다() async throws {
     let t = try place()
     let slides = pdf(t, "1._Measures_slides", "Measures of central tendency slides")

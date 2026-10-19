@@ -13,7 +13,7 @@ public enum ConceptCuration {
     let found = BundleStore.bundle(ctx.data, id: bundle, library: library)
     let name = found?.title ?? found?.sources.first.flatMap { library.source($0)?.meta.original.name } ?? bundle
     let id = try JobID.make(date: ctx.now, slugSource: "curate \(found?.title ?? bundle)", exists: ctx.taken)
-    return PreparedJob(id: id, kind: .conceptCuration, title: name, target: bundle, coalesceKey: "concept-curation:\(bundle)") { c in
+    return PreparedJob(id: id, kind: .conceptCuration, title: name, target: bundle, coalesceKey: "concept-curation:\(bundle)", recipe: .conceptCuration(bundle: bundle)) { c in
       try await run(bundle: bundle, c)
     }
   }

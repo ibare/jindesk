@@ -12,7 +12,7 @@ public enum Ask {
     guard let cid = ConceptID(anchor.concept), ConceptStore.load(ctx.data, id: cid) != nil else { throw RequestError("개념을 찾지 못했습니다: \(anchor.concept)") }
     let id = try JobID.make(date: ctx.now, slugSource: "ask \(cid.slug)", exists: ctx.taken)
     let title = FileOps.prefix(comment.text ?? "", 40)
-    return PreparedJob(id: id, kind: .ask, title: title, serialKey: anchor.concept, target: anchor.concept, coalesceKey: "ask:\(commentID)") { c in
+    return PreparedJob(id: id, kind: .ask, title: title, serialKey: anchor.concept, target: anchor.concept, coalesceKey: "ask:\(commentID)", recipe: .ask(comment: commentID)) { c in
       try await run(comment: comment, cid: cid, c)
     }
   }

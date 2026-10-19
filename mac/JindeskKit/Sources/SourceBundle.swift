@@ -108,6 +108,20 @@ public enum BundleStore {
     }
   }
 
+  // 자료 넣기: 자료를 그 묶음에 더한다. 그 id 의 묶음이 아직 없으면 만든다 (넣기를 준비할 때 정해 둔 새 묶음).
+  // 메모는 묶음에 아직 없을 때만 이어 적는다. 다시 시작한 넣기가 같은 메모를 또 적지 않는다.
+  public static func put(_ data: DataFolder, sources: [String], in id: String, memo: String?, now: Date = Date()) throws {
+    try lock.withLock {
+      var b = bundle(data, id: id) ?? SourceBundle(id: id, created: Clock.isoLocal(now), sources: [])
+      b.sources += sources.filter { !b.sources.contains($0) }
+      if let memo = memo?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty, !"\n\(b.memo ?? "")\n".contains("\n\(memo)\n") {
+        b.memo = [b.memo, memo].compactMap { $0 }.joined(separator: "\n")
+      }
+      b.implicit = false
+      try write(b, data: data)
+    }
+  }
+
   // 그 묶음을 읽어 고쳐 쓴다. 혼자인 묶음이면 파일을 만든다.
   static func update(_ data: DataFolder, id: String, _ change: (inout SourceBundle) -> Void) throws -> SourceBundle {
     try lock.withLock {

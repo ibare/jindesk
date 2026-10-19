@@ -1,7 +1,7 @@
 import Foundation
 
 // 데이터 폴더 밖의 두 곳 (DATA.md 의 "네 곳").
-// - 앱 지원 폴더: work/ 작업 공간, backups/ 마이그레이션 전 자동 백업, state.json 화면 상태, usage.json 계정 사용량. 백업하지 않는다.
+// - 앱 지원 폴더: work/ 작업 공간, backups/ 마이그레이션 전 자동 백업, children/ 띄운 프로세스 그룹, state.json 화면 상태, usage.json 계정 사용량. 백업하지 않는다.
 // - 캐시: SQLite 색인, 쪽 이미지, 렌더러에 넘길 조합 결과. 지워도 다시 만든다.
 public struct AppFolders: Sendable, Equatable {
   public static let bundleID = "com.mintae.Jindesk"
@@ -24,6 +24,8 @@ public struct AppFolders: Sendable, Equatable {
 
   public var work: URL { support.appending(path: "work") }
   public var backups: URL { support.appending(path: "backups") }
+  // 띄운 프로세스 그룹의 기록. 앱이 비정상 종료해 남은 그룹을 다음에 켤 때 끝낸다 (ProcessGroups).
+  public var children: URL { support.appending(path: "children") }
   public var stateFile: URL { support.appending(path: "state.json") }
   public var usageFile: URL { support.appending(path: "usage.json") }
 

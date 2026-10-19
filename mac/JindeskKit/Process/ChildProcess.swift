@@ -215,7 +215,7 @@ public final class ChildProcess: @unchecked Sendable {
       throw ChildProcessError(executable: spec.executable, code: status)
     }
 
-    ProcessGroups.shared.add(pid)
+    ProcessGroups.shared.add(pid, command: (spec.executable as NSString).lastPathComponent)
     var streamsLines = false
     if case .lines = spec.stdout { streamsLines = true }
     let child = ChildProcess(pid: pid, streamsLines: streamsLines, stderrLimit: spec.stderrLimit)
@@ -370,18 +370,44 @@ private func withCStringArray<R>(_ strings: [String], _ body: (UnsafePointer<Uns
 }
 
 // 띄운 프로세스 그룹의 리더 PID. 앱이 끝날 때 그룹째 정리한다.
+// 기록 폴더를 정하면 그룹마다 <리더 PID>.json 을 남긴다. 앱이 비정상 종료해 정리하지 못한 그룹은 다음에 켤 때 이 기록으로 끝낸다.
 public final class ProcessGroups: @unchecked Sendable {
   public static let shared = ProcessGroups()
 
+  // <리더 PID>.json: 리더와, 그 그룹을 띄운 프로세스(앱이나 명령줄)
+  struct Record: Codable {
+    let leader: ProcessStamp
+    let owner: ProcessStamp
+    let command: String
+  }
+
   private let lock = NSLock()
   private var pids = Set<pid_t>()
+  private var directory: URL?
 
-  func add(_ pid: pid_t) {
-    lock.withLock { _ = pids.insert(pid) }
+  // 기록을 남길 폴더 (앱 지원 폴더의 children/). 앱과 명령줄이 켤 때 정한다. 정하지 않으면(시험) 남기지 않는다.
+  public func keepRecords(in directory: URL) {
+    try? FileOps.makeDirectory(directory)
+    lock.withLock { self.directory = directory }
+  }
+
+  func add(_ pid: pid_t, command: String) {
+    let directory = lock.withLock {
+      pids.insert(pid)
+      return self.directory
+    }
+    guard let directory, let leader = ProcessStamp.of(pid),
+      let data = try? JSONEncoder().encode(Record(leader: leader, owner: .current, command: command))
+    else { return }
+    try? data.write(to: directory.appending(path: "\(pid).json"), options: .atomic)
   }
 
   func remove(_ pid: pid_t) {
-    lock.withLock { _ = pids.remove(pid) }
+    let directory = lock.withLock {
+      pids.remove(pid)
+      return self.directory
+    }
+    if let directory { FileOps.remove(directory.appending(path: "\(pid).json")) }
   }
 
   public var active: Set<pid_t> {
@@ -390,6 +416,27 @@ public final class ProcessGroups: @unchecked Sendable {
 
   // 앱 종료 처리에서 부른다. 동기로만 동작한다.
   public func killAll() {
-    for pid in active { _ = kill(-pid, SIGKILL) }
+    for pid in active {
+      _ = kill(-pid, SIGKILL)
+      remove(pid)
+    }
+  }
+
+  // 켤 때 부른다. 띄운 프로세스가 끝났는데 남은 그룹을 끝내고 기록을 지운다. 끝낸 그룹 수를 돌려준다.
+  // 리더가 그대로 살아 있거나, 리더는 끝났어도 그룹이 남아 있으면 그룹째 끝낸다. 그룹이 남아 있는 동안에는 그 번호를 다른 프로세스가 받지 못한다.
+  // 리더의 PID 를 다른 프로세스가 받았으면(시작 시각이 다르면) 건드리지 않는다.
+  public static func reapOrphans(in directory: URL) -> Int {
+    var killed = 0
+    for name in FileOps.list(directory) where name.hasSuffix(".json") {
+      let file = directory.appending(path: name)
+      guard let data = try? Data(contentsOf: file), let r = try? JSONDecoder().decode(Record.self, from: data) else {
+        FileOps.remove(file)
+        continue
+      }
+      if r.owner.isAlive { continue }
+      if ProcessStamp.of(r.leader.pid).map({ $0 == r.leader }) ?? true, kill(-r.leader.pid, SIGKILL) == 0 { killed += 1 }
+      FileOps.remove(file)
+    }
+    return killed
   }
 }

@@ -9,7 +9,7 @@ public enum Translation {
 
   public static func prepare(subject: String, _ ctx: PrepareContext) throws -> PreparedJob {
     let id = try JobID.make(date: ctx.now, slugSource: "translate \(subject)", exists: ctx.taken)
-    return PreparedJob(id: id, kind: .translation, title: subject, target: subject, coalesceKey: "translation:\(subject)") { c in
+    return PreparedJob(id: id, kind: .translation, title: subject, target: subject, coalesceKey: "translation:\(subject)", recipe: .translation(subject: subject)) { c in
       try await run(subject: subject, c)
     }
   }

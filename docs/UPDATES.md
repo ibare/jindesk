@@ -42,6 +42,13 @@
 
 관리자 맥에서 돈다. 실행 중인 Jindesk 작업과 상관없다(학생 맥이 아니다).
 
+브랜치는 `CLAUDE.md`의 브랜치와 PR 을 따른다.
+
+1. 판 번호(`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`)를 올리는 PR 을 `develop`에 넣는다.
+2. `develop`에서 `release.sh --dry-run`(스키마가 바뀌었으면 `--check-backup`도)을 돌린다. 지난 릴리즈, 빌드 번호, 스키마와 마이그레이션, 시험, 빌드와 서명 확인이 모두 여기서 돈다(git 확인만 건너뛴다). 그래서 실패를 `main`에 넣기 전에 잡는다. 실패한 채 `main`에 넣으면 `main`에 릴리즈되지 않은 커밋이 남는다.
+3. `develop` → `main` PR 을 머지 커밋으로 머지한다.
+4. `main`을 받아 그 커밋에서 스크립트를 돌린다.
+
 ```sh
 mac/scripts/release.sh --notes <릴리즈 노트.md> [--check-backup <학생 백업 폴더나 zip>]
 mac/scripts/release.sh --dry-run    # 빌드와 서명 확인까지만
@@ -57,7 +64,7 @@ mac/scripts/release.sh --dry-run    # 빌드와 서명 확인까지만
    - `MARKETING_VERSION`을 올렸고, 빌드 번호는 지난 릴리즈보다 크다.
    - 스키마를 바꿨으면 `schemas/<새 버전>/`과 마이그레이션이 있다.
    - 학생 백업 사본으로 `jindesk migrate --check`가 통과했다(`MIGRATION.md`). 지난 릴리즈보다 스키마가 바뀌었으면 `--check-backup` 없이는 멈춘다.
-   - 지금 커밋이 GitHub 에 올라가 있다. 릴리즈 태그가 그 커밋을 가리킨다.
+   - `main`에서 낸다. 로컬 `main`이 원격 `main`과 같은 커밋이다. 릴리즈 태그가 그 커밋을 가리킨다.
 2. **빌드.** `xcodegen generate` 후 `xcodebuild archive`와 Developer ID 내보내기를 한다.
 3. **공증.** `ditto -c -k --keepParent --norsrc --noextattr --noqtn --noacl`로 압축하고 `xcrun notarytool submit … --keychain-profile <프로필> --wait`, `xcrun stapler staple Jindesk.app`을 한다. 스테이플한 앱을 같은 방법으로 다시 압축해 `Jindesk-<판>.zip`을 만든다. 그 zip 을 `unzip`으로 풀어 Gatekeeper 를 통과하는지 다시 본다.
    - zip 에 확장 속성(macOS 가 붙이는 `com.apple.provenance` 등)을 담지 않는다. 담으면 번들 안에 `._` 파일로 들어가, 압축 해제 앱이 아닌 도구로 풀 때 그 파일이 번들에 생겨 서명이 깨진다. 그러면 받는 맥이 "Apple could not verify"로 막는다(0.1.0 에서 겪었다).
@@ -68,7 +75,7 @@ mac/scripts/release.sh --dry-run    # 빌드와 서명 확인까지만
    - 내려받기 주소: 그 릴리즈의 zip 첨부 주소 `https://github.com/ibare/jindesk/releases/download/v<판>/Jindesk-<판>.zip`
    - `sparkle:edSignature`, `length`
    - 릴리즈 노트
-6. **릴리즈.** `gh release create v<판> Jindesk-<판>.zip appcast.xml --notes-file <노트>`. 이 단계에서만 관리자 계정의 `gh`를 쓴다.
+6. **릴리즈.** `gh release create v<판> Jindesk-<판>.zip appcast.xml --target <main 커밋> --notes-file <노트>`. 이 단계에서만 관리자 계정의 `gh`를 쓴다.
 
 **릴리즈 노트에 적는 것.** 바뀐 것, 스키마 버전(바뀌었으면 마이그레이션 종류), 바뀐 작업 지침과 그 버전, 필요한 claude 최소 버전. 바뀐 지침 때문에 낡은 것이 되는 단위가 있으면 그것도 적는다. 이것들은 업데이트 뒤 천천히 다시 만들어진다.
 

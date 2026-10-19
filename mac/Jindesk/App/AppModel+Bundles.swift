@@ -92,7 +92,11 @@ extension AppModel {
     }
     let members = members(bundle)
     let unread = members.filter { readSources[$0.id] == nil }.count
-    if let j = job(.sourceReading, bundle.id) {
+    if let s = active.first(where: { $0.kind == .sourceSplit && $0.target == bundle.id }) {
+      p.reading = .active("나누기 \(s.phaseLabel)")
+    } else if queue.contains(where: { $0.kind == .sourceSplit && $0.target == bundle.id }) {
+      p.reading = .waiting("나누기 대기")
+    } else if let j = job(.sourceReading, bundle.id) {
       p.reading = j
     } else if unread == 0 {
       p.reading = .done("자료 \(members.count)")

@@ -1,4 +1,5 @@
 import Foundation
+import PDFKit
 import Testing
 @testable import JindeskKit
 
@@ -595,7 +596,23 @@ extension CurationCheckTests {
         sys.exit(0)
     emit({"type": "system", "subtype": "init", "session_id": "fake"})
     req = read("request.md")
-    if "# 자료 읽기 요청" in req:
+    if "# 자료 나누기 요청" in req:
+        # 쪽 글자에 "Class N of M" 이 있는 쪽에서 수업이 시작한다. 둘 이상이면 나눈다 (첫 수업은 1쪽부터).
+        items = []
+        for d in sorted(glob.glob(cwd + "/input/sources/*")):
+            parts = re.split(r"^## (\d+)쪽$", open(d + "/text.md").read(), flags=re.M)
+            bodies = {int(parts[i]): parts[i + 1] for i in range(1, len(parts) - 1, 2)}
+            starts = [n for n in sorted(bodies) if re.search(r"Class \d+ of", bodies[n])]
+            lessons = []
+            if len(starts) > 1:
+                starts[0] = 1
+                for k, a in enumerate(starts):
+                    b = starts[k + 1] - 1 if k + 1 < len(starts) else max(bodies)
+                    lessons.append({"pages": [a, b], "title": "Class %d" % (k + 1)})
+            items.append({"source": os.path.basename(d), "lessons": lessons})
+        out("split.json", json.dumps({"sources": items}))
+        out("report.md", "# 자료 나누기\n\n차시 표시로 나눴다.\n")
+    elif "# 자료 읽기 요청" in req:
         ids = sorted(os.listdir(cwd + "/input/sources"))
         for p in sorted(glob.glob(cwd + "/input/sources/*/pages/*.png")): tool(p)
         out("bundle.json", json.dumps({"title": "Laws of indices"}))
@@ -689,7 +706,7 @@ extension CurationCheckTests {
     await m.waitUntilIdle()
 
     let runs = try String(contentsOf: t.data.runsLog(), encoding: .utf8).split(separator: "\n").compactMap { try? JSONValue.parse(Data($0.utf8)) }
-    #expect(runs.map { $0["kind"]?.stringValue ?? "" } == ["source-intake", "source-reading", "concept-curation", "page-build", "translation", "facets"])
+    #expect(runs.map { $0["kind"]?.stringValue ?? "" } == ["source-intake", "source-split", "source-reading", "concept-curation", "page-build", "translation", "facets"])
     #expect(runs.allSatisfy { $0["result"]?.stringValue == "done" }, "\(runs.map { $0["error"]?.stringValue ?? "" })")
 
     // 자료 하나가 묶음 하나가 되고, 묶음 읽기가 이름을 짓는다
@@ -797,8 +814,99 @@ extension CurationCheckTests {
     let request = IntakeRequest(files: [pdf], labels: SourceLabels(grade: nil, subject: "Physics", level: nil))
     _ = try await m.submit(config: config) { try SourceIntake.prepare(request, $0) }
     await m.waitUntilIdle()
+    // 한 쪽짜리 자료는 나눌 수 없어 나누기를 보지 않고 바로 읽는다
     let pending = Pipeline.pending(t.data, instructions: repoInstructions)
     #expect(pending.map(\.kind) == [.sourceReading])
+  }
+
+  @Test func 수업_여러_개가_든_파일은_수업마다_자료와_묶음으로_나눈다() async throws {
+    let t = TempPlace()
+    try t.data.initialize(app: testApp)
+    let fake = t.root.appending(path: "bin/claude")
+    try FileManager.default.createDirectory(at: fake.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Self.fakeClaude.write(to: fake, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fake.path)
+    var config = RunnerConfig(
+      claudeToken: "x", timeout: .seconds(60), tools: ToolPaths(claude: fake.path), guardHelper: "/x", instructions: repoInstructions, katex: repoKatex,
+      baseEnvironment: [:])
+    config.model = "test"
+
+    // 단원 표지 뒤에 차시 셋. 1쪽(단원 표지)은 첫 수업에 붙는다.
+    let pdf = t.root.appending(path: "inbox/Forces_unit.pdf")
+    SampleFiles.pdf(
+      pdf,
+      [
+        .text("Forces and Motion unit for grade ten physics students"), .text("Week 1 Class 1 of 3 What is momentum and why it matters"),
+        .text("Momentum is mass times velocity and it is a vector quantity"), .text("Week 1 Class 2 of 3 Impulse and the change in momentum"),
+        .text("Impulse equals force multiplied by the time of contact"), .text("Week 2 Class 3 of 3 Conservation of momentum in collisions"),
+        .text("Total momentum before equals total momentum after a collision"),
+      ])
+    let m = JobManager(data: t.data, folders: t.folders)
+    let request = IntakeRequest(files: [pdf], labels: SourceLabels(grade: "MYP 5", subject: "Physics", level: nil), memo: "역학 단원")
+    let intake = try await m.submit(config: config) { try SourceIntake.prepare(request, $0) }
+    #expect(await m.waitForEnd(intake).phase == "done")
+    let parent = try #require(SourceLibrary.load(t.data).sources.first)
+    // 나누기가 시작하면 뒤따르는 자료 읽기는 대기열에 남겨 둔다
+    m.hold(.backup)
+    let split = try #require(m.active.first { $0.kind == .sourceSplit })
+    let end = await m.waitForEnd(split.id)
+    #expect(end.phase == "done", "\(end.error ?? "")")
+    #expect(end.counts?.map(\.count) == [1, 1, 3])
+
+    // 원래 자료는 없어지고, 수업마다 자료가 생긴다. 쪽 번호는 수업 안에서 1부터다.
+    let library = SourceLibrary.load(t.data)
+    #expect(library.source(parent.id) == nil && !FileOps.exists(t.folders.pageImages(parent.id)))
+    let pieces = library.sources.sorted { ($0.meta.splitFrom?.pages.first ?? 0) < ($1.meta.splitFrom?.pages.first ?? 0) }
+    #expect(pieces.map(\.meta.pages) == [3, 2, 2])
+    #expect(pieces.map { $0.meta.splitFrom?.pages ?? [] } == [[1, 3], [4, 5], [6, 7]])
+    #expect(pieces.map(\.meta.original.name) == ["Forces_unit · Class 1.pdf", "Forces_unit · Class 2.pdf", "Forces_unit · Class 3.pdf"])
+    #expect(pieces.allSatisfy { $0.meta.splitFrom?.sha256 == parent.meta.original.sha256 && $0.meta.received == parent.meta.received })
+    #expect(pieces.allSatisfy { $0.labels.labels.summary == "MYP 5 · Physics" })
+    #expect(SourcePages.text(pieces[1].folder, page: 1).contains("Class 2 of 3"))
+    #expect(PDFDocument(url: try #require(pieces[2].folder.original))?.pageCount == 2)
+    #expect(FileOps.exists(t.folders.pageImages(pieces[0].id).appending(path: "0003.png")))
+    #expect(try FileOps.read(pieces[0].folder.index).contains("| 3 |"))
+    // 같은 파일을 다시 넣으면 원래 파일의 해시로 알아본다
+    if case .existing = SourceIntake.plan([pdf], library: library).first?.status {} else { Issue.record("다시 넣은 파일을 알아보지 못했습니다") }
+
+    // 수업마다 묶음 하나. 메모는 묶음마다 붙고, 첫 수업이 맨 위다.
+    let bundles = BundleStore.all(t.data, library: library)
+    #expect(bundles.map(\.id) == pieces.map(\.id))
+    #expect(bundles.allSatisfy { $0.memo == "역학 단원" && !$0.implicit && $0.sources.count == 1 })
+    // 뒤따르는 자료 읽기는 수업마다 하나씩, 수업 차례로
+    #expect(m.queue.filter { $0.kind == .sourceReading }.map(\.target) == pieces.map(\.id))
+    // 나누기를 본 자료와 쪼갠 자료는 다시 나누기를 보지 않는다
+    #expect(SourceSplit.checkedSources(t.data) == [parent.id])
+    #expect(Pipeline.pending(t.data, instructions: repoInstructions).map(\.kind) == [.sourceReading, .sourceReading, .sourceReading])
+    let issues = DataValidation.validate(t.data, schemas: SchemaSet(repoRoot.appending(path: "schemas/\(CurrentSchema.version)")))
+    #expect(issues.isEmpty, "\(issues)")
+    m.shutdown()
+  }
+
+  @Test func 나누기_검사는_빈틈과_겹침과_이어_채운_쪽_가르기를_찾는다() throws {
+    let t = TempPlace()
+    func source(_ pages: Int, buildUps: [[Int]] = []) -> SourceSummary {
+      let meta = SourceMeta(
+        id: "20261019-aaaa0000", original: .init(name: "x.pdf", bytes: 1, sha256: "s"), received: "r", converted: nil, pages: pages,
+        textLayer: .init(by: "pdfkit", pagesWithText: pages, ocrPages: []), buildUps: buildUps)
+      return SourceSummary(
+        folder: SourceFolder(id: meta.id, in: t.data), meta: meta, labels: SourceLabelsFile(source: meta.id, labels: SourceLabels(), memo: nil, syllabusBasis: false))
+    }
+    func check(_ lessons: [[Any]], pages: Int = 10, buildUps: [[Int]] = []) throws -> SourceSplit.Plan {
+      let items = lessons.map { l in #"{"pages": [\#(l[0]), \#(l[1])], "title": "\#(l[2])"}"# }.joined(separator: ",")
+      try FileOps.write(#"{"sources": [{"source": "20261019-aaaa0000", "lessons": [\#(items)]}]}"#, to: t.root.appending(path: "out/split.json"))
+      return SourceSplit.check(out: t.root.appending(path: "out"), targets: [source(pages, buildUps: buildUps)])
+    }
+    #expect(try check([[1, 4, "Class 1"], [5, 10, "Class 2"]]).lessons["20261019-aaaa0000"]?.count == 2)
+    // 수업이 하나뿐이거나 없으면 나누지 않는다
+    #expect(try check([[1, 10, "Class 1"]]).lessons.isEmpty)
+    #expect(try check([]).problems.isEmpty)
+    #expect(try check([[2, 4, "A"], [5, 10, "B"]]).problems.count == 1)
+    #expect(try check([[1, 4, "A"], [4, 10, "B"]]).problems.count == 1)
+    #expect(try check([[1, 4, "A"], [5, 9, "B"]]).problems.count == 1)
+    #expect(try check([[1, 4, "수업 1"], [5, 10, "B"]]).problems.count == 1)
+    #expect(try check([[1, 4, "A"], [5, 10, "B"]], buildUps: [[3, 4, 5]]).problems.count == 1)
+    #expect(try check([[1, 4, "A"], [5, 10, "B"]]).lessons.count == 1)
   }
 
   @Test func 같은_일을_할_작업이_대기열에_있으면_하나로_합친다() async throws {

@@ -4,6 +4,7 @@ import Foundation
 public enum JobKind: String, CaseIterable, Sendable, Codable {
   case syllabusBuild = "syllabus-build"
   case sourceIntake = "source-intake"
+  case sourceSplit = "source-split"
   case sourceReading = "source-reading"
   case conceptCuration = "concept-curation"
   case pageBuild = "page-build"
@@ -18,6 +19,7 @@ public enum JobKind: String, CaseIterable, Sendable, Codable {
     switch self {
     case .syllabusBuild: "목차 만들기"
     case .sourceIntake: "자료 넣기"
+    case .sourceSplit: "자료 나누기"
     case .sourceReading: "자료 읽기"
     case .conceptCuration: "개념 정리"
     case .pageBuild: "학습 페이지 만들기"
@@ -32,7 +34,7 @@ public enum JobKind: String, CaseIterable, Sendable, Codable {
 
   public var lane: JobLane {
     switch self {
-    case .sourceIntake, .sourceReading: .sources
+    case .sourceIntake, .sourceSplit, .sourceReading: .sources
     case .syllabusBuild, .conceptCuration: .curation
     case .pageBuild, .translation, .facets: .pages
     case .ask, .regen, .practice: .conversation
@@ -57,12 +59,12 @@ public enum JobKind: String, CaseIterable, Sendable, Codable {
   }
 
   // 지침이 앱 번들에 있어야 하는 종류. 작업을 만들 때마다 더한다 (자료 넣기는 러너만 하므로 지침이 없다).
-  public static let withInstructions: [JobKind] = [.syllabusBuild, .sourceReading, .conceptCuration, .pageBuild, .translation, .facets, .ask, .regen]
+  public static let withInstructions: [JobKind] = [.syllabusBuild, .sourceSplit, .sourceReading, .conceptCuration, .pageBuild, .translation, .facets, .ask, .regen]
 }
 
 // 대기열 (JOBS.md 의 대기열 표). 대기열마다 함께 도는 수가 있고, 자리가 찬 대기열의 작업은 건너뛰고 뒤의 작업을 먼저 시작한다.
 public enum JobLane: String, CaseIterable, Sendable {
-  // 자료 넣기, 자료 읽기: 자료마다 서로 상관없다
+  // 자료 넣기, 자료 나누기, 자료 읽기: 자료마다 서로 상관없다
   case sources
   // 목차 만들기, 개념 정리: 정리층의 내용을 정하는 일이라 하나씩 차례로
   case curation

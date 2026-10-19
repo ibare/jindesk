@@ -13,6 +13,7 @@ public struct PendingWork: Sendable, Equatable, Identifiable {
   // 이 일을 할 작업
   public var recipe: JobRecipe {
     switch kind {
+    case .sourceSplit: .sourceSplit(bundle: target)
     case .sourceReading: .sourceReading(bundle: target, sources: nil)
     case .conceptCuration: .conceptCuration(bundle: target)
     case .pageBuild: .pageBuild(subject: target)
@@ -26,11 +27,12 @@ public struct PendingWork: Sendable, Equatable, Identifiable {
 }
 
 public enum Pipeline {
-  // 남은 일. 읽기가 남은 묶음은 정리를 넣지 않고, 읽기나 정리가 남은 과목은 페이지 이후 단계를 넣지 않는다 (앞 단계가 끝나면 뒤따라 넣는다).
+  // 남은 일. 나누기가 남은 묶음은 읽기를, 읽기가 남은 묶음은 정리를 넣지 않고, 앞 단계가 남은 과목은 페이지 이후 단계를 넣지 않는다 (앞 단계가 끝나면 뒤따라 넣는다).
   public static func pending(_ data: DataFolder, instructions: InstructionSource) -> [PendingWork] {
     var out: [PendingWork] = []
     let library = SourceLibrary.load(data)
     let read = SourceReading.readSources(data)
+    let checked = SourceSplit.checkedSources(data)
     let bundles = BundleStore.all(data, library: library)
     var busySubjects: Set<String> = []
     var curation: [PendingWork] = []
@@ -39,6 +41,11 @@ public enum Pipeline {
     for b in bundles.reversed() {
       guard let subject = BundleStore.subject(b, library: library) else { continue }
       let label = b.title ?? b.sources.first.flatMap { library.source($0)?.meta.original.name } ?? b.id
+      if !SourceSplit.pending(b, library: library, checked: checked, read: read).isEmpty {
+        out.append(PendingWork(kind: .sourceSplit, target: b.id, label: label))
+        busySubjects.insert(subject)
+        continue
+      }
       if b.sources.contains(where: { read[$0] == nil }) {
         out.append(PendingWork(kind: .sourceReading, target: b.id, label: label))
         busySubjects.insert(subject)

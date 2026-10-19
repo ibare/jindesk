@@ -70,6 +70,17 @@ public struct SourceMeta: Sendable, Equatable {
     public let ocrPages: [Int]
   }
 
+  // 여러 수업이 든 파일을 수업마다 쪼갠 자료의 원래 파일 (자료 나누기, DECISIONS.md 41)
+  public struct SplitFrom: Sendable, Equatable {
+    public let name: String
+    // 원래 파일의 sha256 앞 16자. 같은 파일을 다시 넣으면 이것으로 알아본다
+    public let sha256: String
+    // 원래 파일에서의 첫 쪽과 마지막 쪽
+    public let pages: [Int]
+    // 수업 이름 (자료가 쓴 차시 표시와 제목)
+    public let title: String
+  }
+
   public let id: String
   public let original: Original
   public let received: String
@@ -78,8 +89,11 @@ public struct SourceMeta: Sendable, Equatable {
   public let textLayer: TextLayer
   // 앞 쪽을 이어 채운 쪽 묶음
   public let buildUps: [[Int]]
+  public let splitFrom: SplitFrom?
 
-  public init(id: String, original: Original, received: String, converted: Conversion?, pages: Int, textLayer: TextLayer, buildUps: [[Int]]) {
+  public init(
+    id: String, original: Original, received: String, converted: Conversion?, pages: Int, textLayer: TextLayer, buildUps: [[Int]], splitFrom: SplitFrom? = nil
+  ) {
     self.id = id
     self.original = original
     self.received = received
@@ -87,6 +101,7 @@ public struct SourceMeta: Sendable, Equatable {
     self.pages = pages
     self.textLayer = textLayer
     self.buildUps = buildUps
+    self.splitFrom = splitFrom
   }
 
   public var yaml: YAMLMap {
@@ -109,6 +124,9 @@ public struct SourceMeta: Sendable, Equatable {
     if !textLayer.ocrPages.isEmpty { layer["ocr"] = ["by": "vision", "pages": .array(textLayer.ocrPages.map(YAMLValue.int))] }
     map["text_layer"] = .map(layer)
     map["build_ups"] = .array(buildUps.map { .array($0.map(YAMLValue.int)) })
+    if let s = splitFrom {
+      map["split_from"] = ["name": .string(s.name), "sha256": .string(s.sha256), "pages": .array(s.pages.map(YAMLValue.int)), "title": .string(s.title)]
+    }
     return map
   }
 
@@ -121,13 +139,16 @@ public struct SourceMeta: Sendable, Equatable {
       Conversion(to: c["to"]?.string ?? "", by: c["by"]?.string ?? "", appVersion: c["app_version"]?.string)
     }
     let layer = v["text_layer"]
+    let split = v["split_from"].flatMap { s in
+      s["name"]?.string.map { SplitFrom(name: $0, sha256: s["sha256"]?.string ?? "", pages: (s["pages"]?.array ?? []).compactMap(\.int), title: s["title"]?.string ?? "") }
+    }
     return SourceMeta(
       id: id, original: Original(name: name, bytes: o["bytes"]?.int ?? 0, sha256: o["sha256"]?.string ?? ""),
       received: v["received"]?.string ?? "", converted: converted, pages: v["pages"]?.int ?? 0,
       textLayer: TextLayer(
         by: layer?["by"]?.string ?? "pdfkit", pagesWithText: layer?["pages_with_text"]?.int ?? 0,
         ocrPages: (layer?["ocr"]?["pages"]?.array ?? []).compactMap(\.int)),
-      buildUps: (v["build_ups"]?.array ?? []).map { ($0.array ?? []).compactMap(\.int) })
+      buildUps: (v["build_ups"]?.array ?? []).map { ($0.array ?? []).compactMap(\.int) }, splitFrom: split)
   }
 
   public func write(to folder: SourceFolder) throws {

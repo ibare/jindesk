@@ -4,6 +4,7 @@ import Foundation
 
 public enum JobRecipe: Sendable, Codable, Equatable {
   case sourceIntake(IntakeRequest)
+  case sourceSplit(bundle: String)
   case sourceReading(bundle: String, sources: [String]?)
   case conceptCuration(bundle: String)
   case syllabusBuild(subject: String)
@@ -16,6 +17,7 @@ public enum JobRecipe: Sendable, Codable, Equatable {
   public func prepare(_ ctx: PrepareContext) throws -> PreparedJob {
     switch self {
     case .sourceIntake(let request): try SourceIntake.prepare(request, ctx)
+    case .sourceSplit(let bundle): try SourceSplit.prepare(bundle: bundle, ctx)
     case .sourceReading(let bundle, let sources): try SourceReading.prepare(bundle: bundle, sources: sources, ctx)
     case .conceptCuration(let bundle): try ConceptCuration.prepare(bundle: bundle, ctx)
     case .syllabusBuild(let subject): try SyllabusBuild.prepare(subject: subject, ctx)

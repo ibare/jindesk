@@ -214,7 +214,7 @@ struct ContinueCommand: AsyncParsableCommand {
     commandName: "continue", abstract: "남은 일(읽지 않은 자료, 정리하지 않은 엔트리, 없거나 낡은 페이지와 한국어)을 이어서 한다")
 
   @Option(help: "데이터 폴더. 주지 않으면 앱에서 고른 폴더") var data: String?
-  @Option(help: "이 종류만 넣는다 (source-reading, regen, ask, syllabus-build, concept-curation, page-build, translation, facets)") var only: String?
+  @Option(help: "이 종류만 넣는다 (source-split, source-reading, regen, ask, syllabus-build, concept-curation, page-build, translation, facets)") var only: String?
   @Flag(help: "남은 일만 보이고 넣지 않는다") var list = false
 
   @MainActor

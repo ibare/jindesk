@@ -190,18 +190,19 @@ public enum SourceIntake {
       warnings: warnings.isEmpty ? nil : warnings)
     if added.isEmpty && failed > 0 { throw ToolError("파일을 하나도 넣지 못했습니다") }
 
-    // 뒤따름: 자료마다 자료 읽기. 토큰 없이 넣었으면 넣지 않는다 (토큰을 넣은 뒤 이어서 하기로 읽는다).
+    // 뒤따름: 묶음마다 자료 나누기 (여러 수업이 든 파일을 수업마다 나눈 뒤 자료 읽기를 넣는다).
+    // 토큰 없이 넣었으면 넣지 않는다 (토큰을 넣은 뒤 이어서 하기로 읽는다).
     guard !added.isEmpty else { return }
     guard !context.config.claudeToken.isEmpty else {
-      await context.log(.warn, "자료 읽기는 넣지 않았습니다. 토큰 없이 넣었거나 명령줄에서 --follow 없이 넣었습니다. 이어서 하기로 읽을 수 있습니다")
+      await context.log(.warn, "자료 나누기와 읽기는 넣지 않았습니다. 토큰 없이 넣었거나 명령줄에서 --follow 없이 넣었습니다. 이어서 하기로 읽을 수 있습니다")
       return
     }
     guard labels.subjectID != nil else {
-      await context.log(.warn, "과목 꼬리표가 없어 자료 읽기를 넣지 않았습니다. 꼬리표를 붙인 뒤 이어서 하기로 읽을 수 있습니다")
+      await context.log(.warn, "과목 꼬리표가 없어 자료 나누기와 읽기를 넣지 않았습니다. 꼬리표를 붙인 뒤 이어서 하기로 읽을 수 있습니다")
       return
     }
-    for id in touched where await context.queueFollowUp("자료 읽기", { try SourceReading.prepare(bundle: id, $0) }) != nil {
-      await context.log(.info, "자료 읽기를 대기열에 넣었습니다: 묶음 \(id)")
+    for id in touched where await context.queueFollowUp("자료 나누기", { try SourceSplit.prepare(bundle: id, $0) }) != nil {
+      await context.log(.info, "자료 나누기를 대기열에 넣었습니다: 묶음 \(id)")
     }
     // 목차의 근거로 표시했으면 목차 만들기도 넣는다
     if request.syllabusBasis, let subject = labels.subjectID,

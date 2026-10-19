@@ -49,9 +49,10 @@ public struct SourceLibrary: Sendable, Equatable {
 
   public func source(_ id: String) -> SourceSummary? { sources.first { $0.id == id } }
 
-  // 원본 해시 → 자료 id (같은 파일을 다시 넣었는지 볼 때)
+  // 원본 해시 → 자료 id (같은 파일을 다시 넣었는지 볼 때). 수업마다 쪼갠 자료는 원래 파일의 해시로도 찾는다.
   public var hashes: [String: String] {
-    Dictionary(sources.map { ($0.meta.original.sha256, $0.id) }, uniquingKeysWith: { a, _ in a })
+    let split = sources.compactMap { s in s.meta.splitFrom.map { ($0.sha256, s.id) } }
+    return Dictionary(sources.map { ($0.meta.original.sha256, $0.id) } + split, uniquingKeysWith: { a, _ in a })
   }
 
   // 그 꼬리표에 쓴 값들. 최근에 쓴 것부터이고, 대소문자만 다른 값은 하나만 둔다.

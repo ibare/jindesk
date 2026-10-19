@@ -122,6 +122,36 @@
           "type": "integer"
         }
       }
+    },
+    "split_from": {
+      "description": "여러 수업이 든 파일을 수업마다 쪼갠 자료의 원래 파일 (자료 나누기)",
+      "type": "object",
+      "required": [
+        "name",
+        "sha256",
+        "pages",
+        "title"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "pages": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 2
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

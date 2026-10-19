@@ -35,12 +35,13 @@
     source.pdf                  PPT 를 PDF 로 바꾼 것 (PDF 와 사진이면 없다). 리포에 넣지 않고 자료 버킷에 올린다
     pages/0001.txt …            쪽마다 글자층
     index.md                    쪽 목록, 쪽마다 글자층의 길이와 만든 방법, 이어 채운 쪽 묶음. 에이전트가 먼저 읽는다
-    meta.yaml                   받을 때 정해진 사실: 내용 해시, 받은 날, 쪽 수, 바꾼 방법, 글자층. 고치지 않는다
+    meta.yaml                   받을 때 정해진 사실: 내용 해시, 받은 날, 쪽 수, 바꾼 방법, 글자층, 수업마다 쪼갠 자료면 원래 파일. 고치지 않는다
     labels.yaml                 학생이 붙인 것: 꼬리표(학년, 과목, 수준), 메모, 목차의 근거 표시. 고칠 수 있다
   bundles/<묶음 id>.yaml        자료 묶음: 같은 내용을 다루는 자료와 그 차례, 메모, 묶음 읽기가 지은 이름 (DECISIONS.md 35). 고칠 수 있다
   records/
     runs/<YYYY-MM>.jsonl        모든 작업의 실행 요약 (작업 id, 종류, 시작·끝, 결과, 사용량, 지침 판, 모델)
     syllabus-build/<작업 id>/   decisions.json(근거 문서, 목차 밖 개념을 옮긴 곳), report.md
+    source-split/<작업 id>/     result.json(본 자료와 나눈 수업: 쪽 범위, 이름, 새 자료 id), report.md
     source-reading/<작업 id>/   request.md(머리말에 묶음과 읽은 자료), report.md(머리말에 묶음 이름, 자료마다 제목·종류·평가 과제 여부·학습 목표), report.first-pass.md, coverage.json
     concept-curation/<작업 id>/ plan.json, report.md, apply.json
     ask/<작업 id>/              question.json, answer.json, coverage.json
@@ -256,6 +257,15 @@ build_ups: [[3, 4, 5], [9, 10]]
 ```
 
 `build_ups`는 앞 쪽의 글자를 모두 담고 더해 가는 쪽들의 묶음이다(슬라이드 애니메이션을 단계마다 내보낸 PDF). 자료 읽기는 묶음의 마지막 쪽을 중심으로 읽는다.
+
+여러 수업이 든 파일을 자료 나누기가 수업마다 쪼갠 자료(`JOBS.md`의 자료 나누기)는 `split_from`이 더 있다. `original`은 잘라 낸 PDF 이고, 쪽 번호는 수업 안에서 1부터다.
+
+```yaml
+original: { name: "Forces and Motion slides · Class 3: Conservation of momentum.pdf", bytes: 41382, sha256: "7c1e09ab33d2f610" }
+converted: null
+pages: 8
+split_from: { name: "Forces and Motion slides.pdf", sha256: "5e0a71c94b2d83f0", pages: [18, 25], title: "Class 3: Conservation of momentum" }
+```
 
 `sources/20260903-3fa2c1d0/labels.yaml` (학생이 붙인 것. 고칠 수 있다)
 

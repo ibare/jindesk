@@ -382,8 +382,8 @@ final class AppModel {
     apply(runSettings, to: manager)
     manager.onFinish = { [weak self] s in
       self?.jobsChanged()
-      // 넣은 자료의 원본과 쪽 이미지를 자료 버킷에 올린다
-      if s.kind == .sourceIntake && s.phase == "done" { self?.syncBucket() }
+      // 넣거나 수업마다 나눈 자료의 원본과 쪽 이미지를 자료 버킷에 올린다
+      if (s.kind == .sourceIntake || s.kind == .sourceSplit) && s.phase == "done" { self?.syncBucket() }
       self?.scheduleSync("\(s.typeLabel) · \(s.title)\(s.phase == "failed" ? " (실패)" : "")")
     }
     manager.onPhase = { [weak self] _ in self?.jobsChanged() }
@@ -560,12 +560,15 @@ final class AppModel {
   // 화면 찍기: 스레드·비교를 펼치고 그 자리로 간다 ({ openThreads, openCompare, scrollTo })
   var snapshotDebug: JSONValue?
 
-  // 자료의 읽기 상태. 자료 읽기는 묶음 단위로 돈다 (작업의 대상이 묶음 id. 예전 작업은 자료 id)
+  // 자료의 읽기 상태. 자료 나누기와 읽기는 묶음 단위로 돈다 (작업의 대상이 묶음 id. 예전 작업은 자료 id)
   func readingState(_ sourceID: String) -> ReadingState {
     let targets = Set([sourceID] + (bundle(of: sourceID).map { [$0.id] } ?? []))
+    let kinds: Set<JobKind> = [.sourceSplit, .sourceReading]
     if readSources[sourceID] != nil { return .read }
-    if let s = jobs?.active.first(where: { $0.kind == .sourceReading && targets.contains($0.target ?? "") }) { return .reading(s.phaseLabel) }
-    if jobs?.queue.contains(where: { $0.kind == .sourceReading && targets.contains($0.target ?? "") }) == true { return .queued }
+    if let s = jobs?.active.first(where: { $0.kind.map(kinds.contains) == true && targets.contains($0.target ?? "") }) {
+      return .reading(s.kind == .sourceSplit ? "나누기 \(s.phaseLabel)" : s.phaseLabel)
+    }
+    if jobs?.queue.contains(where: { $0.kind.map(kinds.contains) == true && targets.contains($0.target ?? "") }) == true { return .queued }
     if let last = history.first(where: { $0.snapshot.kind == .sourceReading && targets.contains($0.snapshot.target ?? "") }), last.snapshot.phase == "failed" {
       return .failed(last.snapshot.error ?? "실패")
     }

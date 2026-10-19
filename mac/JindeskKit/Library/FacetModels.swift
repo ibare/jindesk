@@ -64,7 +64,7 @@ public struct ConceptFacets: Sendable, Equatable {
 
   public var yaml: YAMLMap {
     var m: YAMLMap = [
-      "kind": "facets", "v": 2, "concept": .string(concept), "from": .string(from), "item": item.map(YAMLValue.string) ?? .null,
+      "kind": "facets", "v": 1, "concept": .string(concept), "from": .string(from), "item": item.map(YAMLValue.string) ?? .null,
       "level": level.map(YAMLValue.string) ?? .null, "command_terms": .array(commandTerms.map(YAMLValue.string)),
       "key_concepts": .array(keyConcepts.map(YAMLValue.string)), "related_concepts": .array(relatedConcepts.map(YAMLValue.string)),
       "global_contexts": .array(globalContexts.map(YAMLValue.string)), "nos": .array(nos.map(YAMLValue.string)), "tok": .array(tok.map(YAMLValue.string)),

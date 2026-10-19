@@ -15,6 +15,13 @@
 
     static var dataFolder: DataFolder? { directory.map { DataFolder($0.appending(path: "data")) } }
 
+    // 자료 넣기 시트에 미리 채울 파일: -snapshotIntakeFiles "<경로>,<경로>|<경로>" (| 로 묶음을 나눈다)
+    static var intakePreset: [[URL]] {
+      (UserDefaults.standard.string(forKey: "snapshotIntakeFiles") ?? "").split(separator: "|").map { group in
+        group.split(separator: ",").map { URL(fileURLWithPath: String($0)) }
+      }.filter { !$0.isEmpty }
+    }
+
     static var folders: AppFolders? {
       directory.map { AppFolders(support: $0.appending(path: "support"), cache: $0.appending(path: "cache")) }
     }
@@ -236,6 +243,18 @@
         Scenario(name: "intake", target: .sheet) { m in
           m.phase = .ready
           m.showIntake = true
+        },
+        // 파일을 채운 자료 넣기: 묶음 카드들과 있는 묶음에 더하기 (DECISIONS.md 35)
+        Scenario(name: "intake-groups", target: .sheet) { m in
+          m.phase = .ready
+          m.intakeBundle = m.bundles.first?.id
+          m.showIntake = true
+        },
+        // 묶음 보기: 첫 묶음
+        Scenario(name: "bundle") { m in
+          m.phase = .ready
+          m.section = .today
+          m.selection = m.bundles.first.map { .bundle($0.id) }
         },
         Scenario(name: "migrating") { $0.phase = .migrating("자동 백업: ~/Library/Application Support/com.mintae.Jindesk/backups/Jindesk-마이그레이션-1-2.zip") },
         Scenario(name: "migration-failed") {

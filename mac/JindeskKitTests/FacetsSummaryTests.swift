@@ -68,24 +68,6 @@ import Testing
     #expect(Facets.pendingFacets(t.data, subject: "math").isEmpty)
   }
 
-  @Test func 스키마_1_의_관점을_판_2_로_올린다() async throws {
-    let t = TempPlace()
-    try t.data.initialize(app: testApp)
-    try SchemaFile(schema: 1, created: "2026-10-01T00:00:00+04:00", lastOpenedBy: testApp, history: []).write(to: t.data)
-    try t.write(
-      "library/unplaced/math/quartiles/facets.yaml",
-      "kind: \"facets\"\nv: 1\nconcept: \"math/unplaced/quartiles\"\nfrom: \"abc\"\nitem: null\nlevel: null\ncommand_terms: []\nkey_concepts: []\nrelated_concepts: []\nglobal_contexts: []\nnos: []\ntok: []\nprovenance: {}\n"
-    )
-    try t.write("library/facets.yaml", "kind: \"facet-vocab\"\nv: 1\nrelated_concepts: {}\nnos: {}\n")
-    let report = try await Migrator(data: t.data, folders: t.folders, app: testApp).migrate()
-    #expect(report.from == 1 && report.to == 2)
-    #expect(report.checks == ["검증 통과"])
-    let v = try YAML.read(t.data.library.appending(path: "unplaced/math/quartiles/facets.yaml"))
-    #expect(v["v"]?.int == 2)
-    #expect(v["summary"] == nil)
-    #expect(try YAML.read(t.data.library.appending(path: "facets.yaml"))["v"]?.int == 1)
-  }
-
   @Test func 명령어_목록의_말은_모두_정의가_있다() {
     #expect(FacetVocabulary.commandTerms.allSatisfy { CommandTerms.lookup($0) != nil })
     #expect(CommandTerms.lookup("compare")?.definition.hasPrefix("Give an account of the similarities") == true)

@@ -52,7 +52,7 @@ struct RepoConnectForm: View {
           Button("고르기…") { choose() }
         }
       }
-      Text("없거나 빈 폴더, 또는 이미 그 리포의 클론인 폴더입니다. 빈 리포면 데이터 폴더를 새로 만들어 첫 커밋을 올리고, Jindesk 데이터 리포면 클론합니다.")
+      Text("없거나 빈 폴더, 또는 이미 그 리포의 클론인 폴더입니다. 리포의 마지막 상태가 비어 있으면 데이터 폴더를 새로 만들어 올리고, Jindesk 데이터가 있으면 받아서 엽니다.")
         .font(.caption).foregroundStyle(.secondary)
       if let error {
         Label(error, systemImage: "xmark.octagon").foregroundStyle(.red).font(.callout).textSelection(.enabled)

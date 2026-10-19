@@ -1,20 +1,43 @@
 // 자료 넣기 (source-intake, JOBS.md). 에이전트 없이 러너만 한다.
-// 그날 받은 파일 몇 개에 꼬리표(학년, 과목, 수준)와 메모를 붙여 넣는다. 강의 계획 항목과 단원은 고르지 않는다.
+// 그날 받은 파일들을 묶음으로 넣는다 (DECISIONS.md 35). 꼬리표(학년, 과목, 수준)는 한 번에 넣는 파일 모두에 붙고, 메모는 묶음에 붙는다.
+// 강의 계획 항목과 단원은 고르지 않고, 묶음의 이름도 받지 않는다(묶음 읽기가 짓는다).
 // 자료 하나는 데이터 폴더의 sources/.incoming-<자료 id>/ 에서 다 만든 뒤 sources/<자료 id>/ 로 한 번에 옮긴다.
 import Foundation
 
-public struct IntakeRequest: Sendable, Equatable {
+// 묶음 하나로 넣을 파일들
+public struct IntakeGroup: Sendable, Equatable {
   public var files: [URL]
-  public var labels: SourceLabels
   public var memo: String?
+  // 더할 묶음 id. nil 이면 새 묶음을 만든다
+  public var bundle: String?
+  // 목차의 근거 (과목 가이드, 과정·단원 안내). 파일마다 묶음 하나로 넣는다
   public var syllabusBasis: Bool
 
-  public init(files: [URL], labels: SourceLabels, memo: String? = nil, syllabusBasis: Bool = false) {
+  public init(files: [URL], memo: String? = nil, bundle: String? = nil, syllabusBasis: Bool = false) {
     self.files = files
-    self.labels = labels
     self.memo = memo
+    self.bundle = bundle
     self.syllabusBasis = syllabusBasis
   }
+}
+
+public struct IntakeRequest: Sendable, Equatable {
+  public var labels: SourceLabels
+  public var groups: [IntakeGroup]
+
+  public init(labels: SourceLabels, groups: [IntakeGroup]) {
+    self.labels = labels
+    self.groups = groups
+  }
+
+  // 파일들을 한 묶음으로 넣는다 (명령줄과 시험)
+  public init(files: [URL], labels: SourceLabels, memo: String? = nil, syllabusBasis: Bool = false) {
+    self.labels = labels
+    groups = syllabusBasis ? files.map { IntakeGroup(files: [$0], memo: memo, syllabusBasis: true) } : [IntakeGroup(files: files, memo: memo)]
+  }
+
+  public var files: [URL] { groups.flatMap(\.files) }
+  public var syllabusBasis: Bool { groups.contains(where: \.syllabusBasis) }
 }
 
 // 넣기 전에 파일마다 볼 것: 새 자료인지, 왜 빼는지
@@ -80,6 +103,7 @@ public enum SourceIntake {
 
   public static func prepare(_ request: IntakeRequest, _ ctx: PrepareContext) throws -> PreparedJob {
     guard !request.files.isEmpty else { throw RequestError("넣을 파일이 없습니다") }
+    for g in request.groups { if let b = g.bundle, BundleStore.bundle(ctx.data, id: b) == nil { throw RequestError("더할 묶음을 찾지 못했습니다: \(b)") } }
     for url in request.files where !FileOps.exists(url) { throw RequestError("파일이 없습니다: \(url.path)") }
     let first = request.files[0].deletingPathExtension().lastPathComponent
     let id = try JobID.make(date: ctx.now, slugSource: "intake \(first)", exists: ctx.taken)
@@ -101,21 +125,39 @@ public enum SourceIntake {
       await context.log(.warn, "뺌: \(c.name) — \(c.status.reason ?? "")")
     }
     await context.setPhase("running")
+    let accepted = Dictionary(candidates.filter(\.status.accepted).map { ($0.url, $0) }, uniquingKeysWith: { a, _ in a })
     var added: [String] = []
     var failed = 0
-    for c in candidates where c.status.accepted {
-      try context.checkCancellation()
-      await context.log(.info, "넣는 중: \(c.name)")
-      do {
-        let id = try await ingest(c, labels: labels, memo: request.memo, syllabusBasis: request.syllabusBasis, context: context)
-        added.append(id)
-        await context.log(.info, "넣었습니다: \(c.name) → \(id)")
-      } catch is CancellationError {
-        throw CancellationError()
-      } catch {
-        failed += 1
-        warnings.append("\(c.name): \(error.localizedDescription)")
-        await context.log(.error, "넣지 못했습니다: \(c.name) — \(error.localizedDescription)")
+    // 넣은 자료가 든 묶음 (자료 읽기를 넣을 대상)
+    var touched: [String] = []
+    for group in request.groups {
+      var ids: [String] = []
+      for url in group.files {
+        guard let c = accepted[url] else { continue }
+        try context.checkCancellation()
+        await context.log(.info, "넣는 중: \(c.name)")
+        do {
+          let id = try await ingest(c, labels: labels, memo: nil, syllabusBasis: group.syllabusBasis, context: context)
+          ids.append(id)
+          await context.log(.info, "넣었습니다: \(c.name) → \(id)")
+        } catch is CancellationError {
+          throw CancellationError()
+        } catch {
+          failed += 1
+          warnings.append("\(c.name): \(error.localizedDescription)")
+          await context.log(.error, "넣지 못했습니다: \(c.name) — \(error.localizedDescription)")
+        }
+      }
+      guard !ids.isEmpty else { continue }
+      added += ids
+      if let existing = group.bundle {
+        try BundleStore.add(context.data, sources: ids, to: existing, memo: group.memo)
+        touched.append(existing)
+        await context.log(.info, "묶음 \(existing) 에 자료 \(ids.count)개를 더했습니다")
+      } else {
+        let bundle = try BundleStore.create(context.data, sources: ids, memo: group.memo)
+        touched.append(bundle.id)
+        await context.log(.info, "묶음 \(bundle.id) 를 만들었습니다 (자료 \(ids.count)개)")
       }
     }
     await context.report(
@@ -133,8 +175,8 @@ public enum SourceIntake {
       await context.log(.warn, "과목 꼬리표가 없어 자료 읽기를 넣지 않았습니다. 꼬리표를 붙인 뒤 이어서 하기로 읽을 수 있습니다")
       return
     }
-    for id in added where await context.queueFollowUp("자료 읽기", { try SourceReading.prepare(sourceID: id, $0) }) != nil {
-      await context.log(.info, "자료 읽기를 대기열에 넣었습니다: \(id)")
+    for id in touched where await context.queueFollowUp("자료 읽기", { try SourceReading.prepare(bundle: id, $0) }) != nil {
+      await context.log(.info, "자료 읽기를 대기열에 넣었습니다: 묶음 \(id)")
     }
     // 목차의 근거로 표시했으면 목차 만들기도 넣는다
     if request.syllabusBasis, let subject = labels.subjectID,

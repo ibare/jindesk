@@ -70,7 +70,7 @@ import Testing
   @Test func 처음_쓸_때_폴더와_meta_schema_yaml_을_만든다() throws {
     let t = TempPlace()
     try t.data.initialize(app: testApp, now: Date(timeIntervalSince1970: 1_790_000_000))
-    #expect(FileOps.list(t.data.url).sorted() == ["learner", "library", "meta", "records", "sources", "syllabus"])
+    #expect(FileOps.list(t.data.url).sorted() == ["bundles", "learner", "library", "meta", "records", "sources", "syllabus"])
     let file = try SchemaFile.read(t.data)
     #expect(file.schema == CurrentSchema.version && file.lastOpenedBy == testApp && file.history.isEmpty)
     #expect(try t.read("meta/schema.yaml").hasPrefix("kind: \"schema\"\nv: 1\nschema: \(CurrentSchema.version)\n"))

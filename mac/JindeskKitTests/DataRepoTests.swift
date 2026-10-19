@@ -64,21 +64,75 @@ import Testing
     #expect(try await DataRepo.connect(link, token: nil, app: testApp, git: git) == .opened)
   }
 
+  // 다른 작업 폴더에서 리포의 마지막 상태를 바꿔 올린다 (files: 이름 → 내용. nil 이면 모든 파일을 지운다)
+  func push(_ place: TempPlace, _ bare: URL, files: [String: String]?, message: String) async throws {
+    let work = place.root.appending(path: "work-\(UUID().uuidString.prefix(6))")
+    try await run(["clone", "-q", bare.path, work.path], in: place.root)
+    if let files {
+      for (name, text) in files { try text.write(to: work.appending(path: name), atomically: true, encoding: .utf8) }
+    } else {
+      try await run(["rm", "-r", "-q", "."], in: work)
+    }
+    try await run(["-c", "user.name=시험", "-c", "user.email=test@invalid", "add", "-A"], in: work)
+    try await run(["-c", "user.name=시험", "-c", "user.email=test@invalid", "commit", "-q", "-m", message], in: work)
+    try await run(["push", "-q", "origin", "HEAD"], in: work)
+  }
+
   @Test func Jindesk_리포가_아니면_연결하지_않고_로컬_위치를_남기지_않는다() async throws {
     let place = TempPlace()
     let bare = try await emptyRemote(place)
-    let work = place.root.appending(path: "work")
-    try await run(["clone", "-q", bare.path, work.path], in: place.root)
-    try "다른 리포\n".write(to: work.appending(path: "README.md"), atomically: true, encoding: .utf8)
-    try await run(["-c", "user.name=시험", "-c", "user.email=test@invalid", "add", "-A"], in: work)
-    try await run(["-c", "user.name=시험", "-c", "user.email=test@invalid", "commit", "-q", "-m", "다른 것"], in: work)
-    try await run(["push", "-q", "origin", "HEAD"], in: work)
+    try await push(place, bare, files: ["README.md": "다른 리포\n", "main.swift": "print(1)\n"], message: "다른 것")
 
     let error = await #expect(throws: DataRepoError.self) {
       try await DataRepo.connect(RepoLink(url: bare.path, path: place.data.path), token: nil, app: testApp, git: git)
     }
     #expect(error?.message.contains("Jindesk 데이터 리포가 아닙니다") == true)
+    #expect(error?.message.contains("main.swift") == true)
     #expect(!FileOps.exists(place.data.url))
+  }
+
+  // 리포는 커밋이 있느냐가 아니라 마지막 상태로 판단한다 (DECISIONS.md 37)
+  @Test func 파일을_모두_지운_리포에_연결하면_그_위에_데이터_폴더를_새로_만든다() async throws {
+    let place = TempPlace()
+    let (_, bare) = try await connected(place)
+    try await push(place, bare, files: nil, message: "모두 지움")
+    let other = DataFolder(place.root.appending(path: "새로/Jindesk"))
+    let result = try await DataRepo.connect(RepoLink(url: bare.path, path: other.path), token: nil, app: testApp, git: git)
+    #expect(result == .created(error: nil))
+    #expect(other.isInitialized)
+    #expect(try await tracked(place, in: bare).contains("meta/schema.yaml"))
+    // 이전 기록은 그대로 두고 그 위에 올린다
+    #expect(try await run(["--git-dir", bare.path, "log", "--format=%s", "main"], in: place.root) == "처음 연결\n모두 지움\n처음 연결")
+  }
+
+  @Test func 리포_기본_파일만_있는_리포는_빈_리포로_본다() async throws {
+    let place = TempPlace()
+    let bare = try await emptyRemote(place)
+    try await push(place, bare, files: ["README.md": "# 데이터\n", ".gitignore": ".DS_Store\n"], message: "Initial commit")
+    let result = try await DataRepo.connect(RepoLink(url: bare.path, path: place.data.path), token: nil, app: testApp, git: git)
+    #expect(result == .created(error: nil))
+    let files = try await tracked(place, in: bare)
+    #expect(files.contains("README.md") && files.contains("meta/schema.yaml"))
+  }
+
+  @Test func 빈_리포를_클론만_한_폴더에_연결하면_그_자리에_만든다() async throws {
+    let place = TempPlace()
+    let bare = try await emptyRemote(place)
+    try await run(["clone", "-q", bare.path, place.data.path], in: place.root)
+    let result = try await DataRepo.connect(RepoLink(url: bare.path, path: place.data.path), token: nil, app: testApp, git: git)
+    #expect(result == .created(error: nil))
+    #expect(try await tracked(place, in: bare).contains("meta/schema.yaml"))
+  }
+
+  @Test func 연결한_클론의_리포에서_파일을_모두_지우면_받아서_새로_만든다() async throws {
+    let place = TempPlace()
+    let (link, bare) = try await connected(place)
+    try await push(place, bare, files: nil, message: "모두 지움")
+    // 켤 때와 같은 길: 이미 그 리포의 클론인 폴더를 다시 연결한다
+    let result = try await DataRepo.connect(link, token: nil, app: testApp, git: git)
+    #expect(result == .created(error: nil))
+    #expect(place.data.isInitialized)
+    #expect(try await run(["--git-dir", bare.path, "log", "-1", "--format=%s", "main"], in: place.root) == "처음 연결")
   }
 
   @Test func 로컬_위치가_비어_있지_않거나_다른_리포의_클론이면_연결하지_않는다() async throws {

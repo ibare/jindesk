@@ -1,77 +1,112 @@
-// 개념 정리 (concept-curation, JOBS.md). 아직 개념에 들어가지 않은 엔트리를 같은 개념끼리 묶어 개념 원문(concept.yaml)을 새로 쓰거나 보강한다.
-// 시작할 때 할 일을 다시 고른다. 할 일이 없으면 실패 없이 끝난다. 한 건에 엔트리 열두 개까지 하고, 남으면 다음 건을 뒤따라 넣는다.
+// 개념 정리 (concept-curation, JOBS.md). 묶음 하나의 아직 정리하지 않은 엔트리를 모두 한 번에 같은 개념끼리 묶어
+// 개념 원문(concept.yaml)을 새로 쓰거나 보강한다 (DECISIONS.md 35). 그 과목의 보류된 엔트리도 까닭과 함께 다시 받아, 맞는 개념이 있으면 붙인다.
+// 시작할 때 할 일을 다시 고른다. 할 일이 없으면 실패 없이 끝난다.
 import Foundation
 
 public enum ConceptCuration {
-  static let batch = 12
   static let prompt =
-    "input/request.md 의 엔트리들을 지침대로 개념으로 정리하라. 엔트리는 input/entries/, 이미 있는 개념은 input/concepts/ 에 있다. "
+    "input/request.md 의 엔트리들을 지침대로 개념으로 정리하라. 정리할 엔트리는 input/entries/, 보류된 엔트리는 input/held/, 이미 있는 개념은 input/concepts/ 에 있다. "
     + "결정은 out/plan.json 에, 짧은 기록은 out/report.md 에 쓴다."
 
-  public static func prepare(subject: String, _ ctx: PrepareContext) throws -> PreparedJob {
-    let id = try JobID.make(date: ctx.now, slugSource: "curate \(subject)", exists: ctx.taken)
-    return PreparedJob(id: id, kind: .conceptCuration, title: subject, target: subject, coalesceKey: "concept-curation:\(subject)") { c in
-      try await run(subject: subject, c)
+  public static func prepare(bundle: String, _ ctx: PrepareContext) throws -> PreparedJob {
+    let library = SourceLibrary.load(ctx.data)
+    let found = BundleStore.bundle(ctx.data, id: bundle, library: library)
+    let name = found?.title ?? found?.sources.first.flatMap { library.source($0)?.meta.original.name } ?? bundle
+    let id = try JobID.make(date: ctx.now, slugSource: "curate \(found?.title ?? bundle)", exists: ctx.taken)
+    return PreparedJob(id: id, kind: .conceptCuration, title: name, target: bundle, coalesceKey: "concept-curation:\(bundle)") { c in
+      try await run(bundle: bundle, c)
     }
   }
 
-  // 아직 개념에도, 보류에도 들어가지 않은 엔트리
-  public static func pending(_ data: DataFolder, subject: String) -> [Entry] {
-    let done = ConceptStore.curatedEntries(ConceptStore.all(data, subject: subject)).union(held(data, subject: subject))
+  // 그 묶음의 아직 개념에도, 보류에도 들어가지 않은 엔트리. 엔트리의 묶음은 첫 자료로 정한다.
+  public static func pending(_ data: DataFolder, bundle: SourceBundle) -> [Entry] {
     let library = SourceLibrary.load(data)
-    let received = Dictionary(library.sources.map { ($0.id, $0.meta.received) }, uniquingKeysWith: { a, _ in a })
-    return EntryStore.all(data, subject: subject).filter { !done.contains($0.id) }.sorted {
-      (received[$0.source] ?? "", $0.source, $0.id) < (received[$1.source] ?? "", $1.source, $1.id)
+    guard let subject = BundleStore.subject(bundle, library: library) else { return [] }
+    let members = Set(bundle.sources)
+    let done = ConceptStore.curatedEntries(ConceptStore.all(data, subject: subject)).union(heldReasons(data, subject: subject).keys)
+    let order = Dictionary(bundle.sources.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
+    return EntryStore.all(data, subject: subject).filter { members.contains($0.source) && !done.contains($0.id) }.sorted {
+      (order[$0.source] ?? 0, $0.id) < (order[$1.source] ?? 0, $1.id)
     }
   }
 
-  // 지난 개념 정리가 보류한 엔트리 (기록의 plan.json)
-  static func held(_ data: DataFolder, subject: String) -> Set<String> {
+  // 그 과목의 보류된 엔트리와 까닭: 지난 정리의 보류(기록의 plan.json)와 자료 읽기의 보류(엔트리의 held). 개념에 붙은 것은 뺀다.
+  public static func heldEntries(_ data: DataFolder, subject: String) -> [(entry: Entry, reason: String)] {
+    let reasons = heldReasons(data, subject: subject)
+    let curated = ConceptStore.curatedEntries(ConceptStore.all(data, subject: subject))
+    return EntryStore.all(data, subject: subject).compactMap { e in
+      guard !curated.contains(e.id), let reason = reasons[e.id] else { return nil }
+      return (e, reason)
+    }.sorted { $0.entry.id < $1.entry.id }
+  }
+
+  // 엔트리 id → 보류 까닭 (가장 나중 것)
+  static func heldReasons(_ data: DataFolder, subject: String) -> [String: String] {
+    var out: [String: String] = [:]
+    for e in EntryStore.all(data, subject: subject) { if let h = e.held { out[e.id] = h } }
     let root = data.records.appending(path: JobKind.conceptCuration.rawValue)
-    var out: Set<String> = []
-    for job in FileOps.list(root) where JobID.isValid(job) {
+    for job in FileOps.list(root).sorted() where JobID.isValid(job) {
       guard let bytes = try? Data(contentsOf: root.appending(path: job).appending(path: "plan.json")), let plan = try? JSONValue.parse(bytes),
         plan["subject"]?.stringValue == subject
       else { continue }
-      for h in plan["held"]?.arrayValue ?? [] { if let e = h["entry"]?.stringValue { out.insert(e) } }
+      for h in plan["held"]?.arrayValue ?? [] {
+        if let e = h["entry"]?.stringValue { out[e] = h["reason"]?.stringValue ?? "보류" }
+      }
     }
     return out
   }
 
   struct Input: Sendable {
     let subject: String
-    // e01 → 엔트리
+    var bundle: String = ""
+    // e01 → 정리할 엔트리
     let entries: [(key: String, entry: Entry)]
     // k01 → 개념
     let concepts: [(key: String, concept: Concept)]
     let conceptHashes: [String: String]
     // 다른 과목의 개념 (과목 사이 연결의 후보)
     var others: [Concept] = []
+    // h01 → 보류된 엔트리와 까닭. 개념에 붙이거나 그대로 둔다
+    var held: [(key: String, entry: Entry, reason: String)] = []
+
+    // 키 → 엔트리 (정리할 것과 보류된 것)
+    var entryByKey: [String: Entry] {
+      Dictionary(entries.map { ($0.key, $0.entry) } + held.map { ($0.key, $0.entry) }, uniquingKeysWith: { a, _ in a })
+    }
 
     // 정리할 엔트리와 이미 있는 개념이 나온 자료
-    var sources: Set<String> { Set(entries.map(\.entry.source)).union(concepts.flatMap { $0.concept.occurrences.map(\.source) }) }
+    var sources: Set<String> {
+      Set(entries.flatMap { $0.entry.sources.map(\.source) }).union(concepts.flatMap { $0.concept.occurrences.map(\.source) })
+    }
   }
 
-  static func run(subject: String, _ ctx: JobContext) async throws {
+  static func run(bundle bundleID: String, _ ctx: JobContext) async throws {
     await ctx.setPhase("preparing")
-    let all = pending(ctx.data, subject: subject)
-    if all.isEmpty {
+    let library = SourceLibrary.load(ctx.data)
+    guard let bundle = BundleStore.bundle(ctx.data, id: bundleID, library: library), let subject = BundleStore.subject(bundle, library: library) else {
+      await ctx.log(.info, "정리할 묶음이 없습니다: \(bundleID)")
+      await ctx.report(counts: [JobCount(key: "entries", label: "엔트리", count: 0)])
+      return
+    }
+    let chosen = pending(ctx.data, bundle: bundle)
+    if chosen.isEmpty {
       await ctx.log(.info, "정리할 엔트리가 없습니다")
       await ctx.report(counts: [JobCount(key: "entries", label: "엔트리", count: 0)])
       return
     }
-    let chosen = Array(all.prefix(batch))
+    let held = heldEntries(ctx.data, subject: subject)
     let concepts = ConceptStore.all(ctx.data, subject: subject)
     let input = Input(
-      subject: subject, entries: chosen.enumerated().map { (String(format: "e%02d", $0.offset + 1), $0.element) },
+      subject: subject, bundle: bundleID, entries: chosen.enumerated().map { (String(format: "e%02d", $0.offset + 1), $0.element) },
       concepts: concepts.enumerated().map { (String(format: "k%02d", $0.offset + 1), $0.element) },
       conceptHashes: Dictionary(concepts.compactMap { c in ConceptStore.fileHash(ctx.data, id: c.cid).map { (c.id, $0) } }, uniquingKeysWith: { a, _ in a }),
-      others: ConceptStore.everything(ctx.data).filter { $0.subject != subject })
+      others: ConceptStore.everything(ctx.data).filter { $0.subject != subject },
+      held: held.enumerated().map { (String(format: "h%02d", $0.offset + 1), $0.element.entry, $0.element.reason) })
     let dirs = AgentDirs(ctx.folders, ctx.id)
     try dirs.make()
     let (instructions, instructionsFile) = try await AgentStep.fixInstructions(.conceptCuration, ctx, into: dirs.run)
     try writeInput(input, dirs: dirs, data: ctx.data)
-    await ctx.log(.info, "엔트리 \(chosen.count)개 (남은 것 \(all.count - chosen.count)개), 이미 있는 개념 \(concepts.count)개")
+    await ctx.log(.info, "묶음 \(bundleID): 엔트리 \(chosen.count)개, 보류된 엔트리 \(held.count)개, 이미 있는 개념 \(concepts.count)개")
     try ctx.checkCancellation()
 
     await ctx.setPhase("running")
@@ -135,19 +170,18 @@ public enum ConceptCuration {
     try FileOps.writeNew(FrontMatter.render(head) + "\n" + report.trimmingCharacters(in: .whitespacesAndNewlines) + "\n", to: record.appending(path: "report.md"))
 
     let created = plan.concepts.filter { $0.existing == nil }.count
+    let attached = Set(plan.concepts.flatMap(\.entries)).intersection(input.held.map(\.key)).count
     await ctx.report(
       counts: [
         JobCount(key: "entries", label: "엔트리", count: chosen.count), JobCount(key: "created", label: "새 개념", count: created),
         JobCount(key: "updated", label: "보강", count: plan.concepts.count - created), JobCount(key: "held", label: "보류", count: plan.held.count),
+        JobCount(key: "attached", label: "보류에서 붙임", count: attached),
       ], warnings: readerWarnings.isEmpty ? nil : readerWarnings)
     for c in written { await ctx.log(.info, "개념: \(c.id) (단위 \(c.units.count)개)") }
     for h in plan.held { await ctx.log(.info, "보류: \(h.entry) — \(h.reason)") }
 
     if !written.isEmpty, await ctx.queueFollowUp("학습 페이지 만들기", { try PageBuild.prepare(subject: subject, $0) }) != nil {
       await ctx.log(.info, "학습 페이지 만들기를 대기열에 넣었습니다")
-    }
-    if all.count > chosen.count, await ctx.queueFollowUp("개념 정리", { try prepare(subject: subject, $0) }) != nil {
-      await ctx.log(.info, "남은 엔트리 \(all.count - chosen.count)개의 개념 정리를 대기열에 넣었습니다")
     }
   }
 
@@ -173,11 +207,11 @@ public enum ConceptCuration {
 
   // 학습 목표 시험: 개념마다 그 개념이 나온 자료의 학습 목표를 받아, 해당하는데 개념의 글만으로 해낼 수 없는 목표를 문제 줄로 돌려준다.
   static func outcomeTest(_ plan: Plan, input: Input, level: String, subject: String, ctx: JobContext, scratch: URL) async -> [String] {
-    let entryByKey = Dictionary(input.entries.map { ($0.key, $0.entry) }, uniquingKeysWith: { a, _ in a })
+    let entryByKey = input.entryByKey
     let conceptByKey = Dictionary(input.concepts.map { ($0.key, $0.concept) }, uniquingKeysWith: { a, _ in a })
     var problems: [String] = []
     for (i, p) in plan.concepts.enumerated() {
-      let sources = Set(p.entries.compactMap { entryByKey[$0]?.source })
+      let sources = Set(p.entries.flatMap { entryByKey[$0]?.sources.map(\.source) ?? [] })
         .union(p.existing.flatMap { conceptByKey[$0] }?.occurrences.map(\.source) ?? [])
       let outcomes = SourceReading.outcomes(ctx.data, sources: sources)
       guard !outcomes.isEmpty else { continue }
@@ -209,11 +243,21 @@ public enum ConceptCuration {
       if !s.levels.isEmpty { request.append("- 수준: \(s.levels.joined(separator: ", "))") }
     }
     request.append("- 목차: \(FileOps.exists(data.syllabusFile(input.subject)) ? "input/syllabus.yaml" : "아직 없다. 모든 개념이 목차 밖이다")")
-    request += ["", "## 정리할 엔트리", "", "| 키 | 제목 | 자료 | 쪽 |", "|---|---|---|---|"]
+    if !input.bundle.isEmpty { request.append("- 묶음: \(input.bundle) (같은 내용을 다룬다고 학생이 묶어 넣은 자료들. 주제 하나의 경계는 아니다)") }
+    func where_(_ e: Entry) -> String {
+      e.sources.map { s in "\(s.source) (\(library.source(s.source)?.meta.original.name ?? s.source)) \(s.pages.map(String.init).joined(separator: ", "))" }
+        .joined(separator: " / ")
+    }
+    request += ["", "## 정리할 엔트리", "", "| 키 | 제목 | 자료와 쪽 |", "|---|---|---|"]
     for (key, e) in input.entries {
-      let name = library.source(e.source)?.meta.original.name ?? e.source
-      request.append("| \(key) | \(e.title) | \(e.source) (\(name)) | \(e.pages.map(String.init).joined(separator: ", ")) |")
+      request.append("| \(key) | \(e.title) | \(where_(e)) |")
       try FileOps.write(e.markdown, to: dirs.input.appending(path: "entries/\(key).md"))
+    }
+    request += ["", "## 보류된 엔트리", "", "지난 정리나 자료 읽기가 보류한 엔트리다. 맞는 개념이 있으면 그 개념의 entries 에 넣어 붙이고, 없으면 적지 않는다(계속 보류로 남는다).", ""]
+    if input.held.isEmpty { request.append("없다.") } else { request += ["| 키 | 제목 | 자료와 쪽 | 보류 까닭 |", "|---|---|---|---|"] }
+    for h in input.held {
+      request.append("| \(h.key) | \(h.entry.title) | \(where_(h.entry)) | \(h.reason) |")
+      try FileOps.write(h.entry.markdown, to: dirs.input.appending(path: "held/\(h.key).md"))
     }
     request += ["", "## 이미 있는 개념", ""]
     if input.concepts.isEmpty { request.append("아직 없다.") } else {
@@ -226,7 +270,7 @@ public enum ConceptCuration {
     request += ["", "## 다른 과목의 개념 (과목 사이 연결에 쓴다)", ""]
     if input.others.isEmpty { request.append("아직 없다.") }
     for c in input.others { request.append("- `\(c.id)` \(c.title)") }
-    // 자료가 밝힌 학습 목표: 개념이 해당하는 목표를 학생이 글만 읽고 해낼 수 있게 쓴다 (지침 1장의 7)
+    // 자료가 밝힌 학습 목표: 개념이 해당하는 목표를 학생이 글만 읽고 해낼 수 있게 쓴다 (지침 1장의 9)
     let outcomes = SourceReading.outcomes(data, sources: input.sources)
     request += ["", "## 학습 목표 (자료가 밝힌 것)", ""]
     if outcomes.isEmpty { request.append("자료가 밝힌 학습 목표가 없다.") }
@@ -268,11 +312,12 @@ public enum ConceptCuration {
     let held: [(entry: String, reason: String)]
 
     func recordJSON(input: Input, written: [Concept]) -> JSONValue {
-      let entryID = Dictionary(input.entries.map { ($0.key, $0.entry.id) }, uniquingKeysWith: { a, _ in a })
+      let entryID = input.entryByKey.mapValues(\.id)
       let conceptID = Dictionary(input.concepts.map { ($0.key, $0.concept.id) }, uniquingKeysWith: { a, _ in a })
       return .object([
         "v": .number(1),
         "subject": .string(input.subject),
+        "bundle": .string(input.bundle),
         "concepts": .array(
           zip(concepts, written).map { p, c in
             .object([
@@ -302,8 +347,9 @@ public enum ConceptCuration {
     case .success(let value): v = value
     }
     let entryKeys = Set(input.entries.map(\.key))
+    let heldKeys = Set(input.held.map(\.key))
     let conceptByKey = Dictionary(input.concepts.map { ($0.key, $0.concept) }, uniquingKeysWith: { a, _ in a })
-    let entryByKey = Dictionary(input.entries.map { ($0.key, $0.entry) }, uniquingKeysWith: { a, _ in a })
+    let entryByKey = input.entryByKey
     var placedEntries: [String: Int] = [:]
     var usedConcepts: Set<String> = []
     // 이미 있는 개념들의 출처. 너무 커진 개념을 나눌 때 옮긴 단위가 원래 출처를 그대로 쓴다.
@@ -326,7 +372,7 @@ public enum ConceptCuration {
       if slug.isEmpty { problems.append("\(at).slug 가 없습니다") }
       let entries = AgentJSON.strings(raw["entries"])
       for e in entries {
-        if !entryKeys.contains(e) { problems.append("\(at).entries: 없는 엔트리 키입니다 (\(e))") }
+        if !entryKeys.contains(e) && !heldKeys.contains(e) { problems.append("\(at).entries: 없는 엔트리 키입니다 (\(e))") }
         placedEntries[e, default: 0] += 1
       }
       if entries.isEmpty && existing == nil { problems.append("\(at).entries 가 비었습니다") }
@@ -413,6 +459,8 @@ public enum ConceptCuration {
     var held: [(entry: String, reason: String)] = []
     for h in v["held"]?.arrayValue ?? [] {
       guard let e = AgentJSON.string(h["entry"]) else { continue }
+      // 보류된 엔트리는 적지 않아도 그대로 보류로 남는다
+      if heldKeys.contains(e) { continue }
       if !entryKeys.contains(e) { c.problems.append("held: 없는 엔트리 키입니다 (\(e))") }
       guard let reason = AgentJSON.string(h["reason"]) else {
         c.problems.append("held: \(e) 를 보류한 까닭(reason)이 없습니다")
@@ -429,6 +477,9 @@ public enum ConceptCuration {
       default: c.problems.append("엔트리 \(key) 가 두 곳 이상에 들어갔습니다")
       }
     }
+    for key in heldKeys.sorted() where (placedEntries[key] ?? 0) > 1 {
+      c.problems.append("보류된 엔트리 \(key) 가 개념 두 곳 이상에 들어갔습니다")
+    }
     if c.problems.isEmpty { c.plan = Plan(concepts: concepts, held: held) }
     return c
   }
@@ -438,7 +489,6 @@ public enum ConceptCuration {
   static func apply(_ plan: Plan, input: Input, data: DataFolder, provenance: YAMLMap) throws -> [Concept] {
     let syllabus = Syllabus.load(data, subject: input.subject)
     let conceptByKey = Dictionary(input.concepts.map { ($0.key, $0.concept) }, uniquingKeysWith: { a, _ in a })
-    let entryByKey = Dictionary(input.entries.map { ($0.key, $0.entry) }, uniquingKeysWith: { a, _ in a })
     var taken = Set(input.concepts.map { $0.concept.cid.slug })
     var out: [Concept] = []
     for p in plan.concepts {
@@ -495,8 +545,8 @@ public enum ConceptCuration {
   // 출현 목록은 러너가 계산한다: 이 개념에 넣은 엔트리와, 주장의 출처가 이 개념의 출처와 겹치는 엔트리.
   // 이전에 개념에 들어 있던 엔트리가 이번 정리로 어디에도 남지 않으면(그 출처의 단위가 모두 빠졌을 때) 원래 개념에 그대로 둔다.
   static func occurrences(_ concepts: inout [Concept], plan: Plan, input: Input, data: DataFolder) {
-    let entryByKey = Dictionary(input.entries.map { ($0.key, $0.entry) }, uniquingKeysWith: { a, _ in a })
-    var pool: [Entry] = input.entries.map(\.entry)
+    let entryByKey = input.entryByKey
+    var pool: [Entry] = input.entries.map(\.entry) + input.held.map(\.entry)
     var previous: [String: String] = [:]
     for (_, c) in input.concepts {
       for o in c.occurrences {
@@ -508,14 +558,17 @@ public enum ConceptCuration {
     for (i, p) in zip(concepts.indices, plan.concepts) {
       let assigned = Set(p.entries.compactMap { entryByKey[$0]?.id })
       let refs = concepts[i].refs
-      concepts[i].occurrences = pool.filter { assigned.contains($0.id) || !$0.refs.isDisjoint(with: refs) }.map {
-        Occurrence(entry: $0.id, source: $0.source, pages: $0.pages)
-      }
+      concepts[i].occurrences = pool.filter { assigned.contains($0.id) || !$0.refs.isDisjoint(with: refs) }.flatMap(Self.occurrences(of:))
     }
     let placed = Set(concepts.flatMap { $0.occurrences.map(\.entry) })
     for (entry, conceptID) in previous where !placed.contains(entry) {
       guard let i = concepts.firstIndex(where: { $0.id == conceptID }), let e = pool.first(where: { $0.id == entry }) else { continue }
-      concepts[i].occurrences.append(Occurrence(entry: e.id, source: e.source, pages: e.pages))
+      concepts[i].occurrences += Self.occurrences(of: e)
     }
+  }
+
+  // 엔트리 하나의 출현: 자료마다 하나
+  static func occurrences(of e: Entry) -> [Occurrence] {
+    e.sources.map { Occurrence(entry: e.id, source: $0.source, pages: $0.pages) }
   }
 }

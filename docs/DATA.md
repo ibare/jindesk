@@ -37,10 +37,11 @@
     index.md                    쪽 목록, 쪽마다 글자층의 길이와 만든 방법, 이어 채운 쪽 묶음. 에이전트가 먼저 읽는다
     meta.yaml                   받을 때 정해진 사실: 내용 해시, 받은 날, 쪽 수, 바꾼 방법, 글자층. 고치지 않는다
     labels.yaml                 학생이 붙인 것: 꼬리표(학년, 과목, 수준), 메모, 목차의 근거 표시. 고칠 수 있다
+  bundles/<묶음 id>.yaml        자료 묶음: 같은 내용을 다루는 자료와 그 차례, 메모, 묶음 읽기가 지은 이름 (DECISIONS.md 35). 고칠 수 있다
   records/
     runs/<YYYY-MM>.jsonl        모든 작업의 실행 요약 (작업 id, 종류, 시작·끝, 결과, 사용량, 지침 판, 모델)
     syllabus-build/<작업 id>/   decisions.json(근거 문서, 목차 밖 개념을 옮긴 곳), report.md
-    source-reading/<작업 id>/   request.md, report.md(머리말에 자료 제목·종류·평가 과제 여부·학습 목표), report.first-pass.md, coverage.json
+    source-reading/<작업 id>/   request.md(머리말에 묶음과 읽은 자료), report.md(머리말에 묶음 이름, 자료마다 제목·종류·평가 과제 여부·학습 목표), report.first-pass.md, coverage.json
     concept-curation/<작업 id>/ plan.json, report.md, apply.json
     ask/<작업 id>/              question.json, answer.json, coverage.json
     regen/<작업 id>/            request.json, base.json, candidate.json, checks.json, figures/(그림 후보), decision.json(고치기)
@@ -72,7 +73,7 @@
 목차가 없거나 목차에 없는 것은 `<항목>`을 `unplaced`로 쓴다. 엔트리는 `entries/<과목 id>/unplaced/<slug>.md`, 개념은 `unplaced/<과목 id>/<slug>/`에 두고 개념 id 는 `<과목 id>/unplaced/<slug>`다. 자료 읽기와 개념 정리가 제안한 단원·주제 이름은 `item_proposed`에 남고, 목록은 그 이름으로 묶어 보인다. MYP 처럼 단원 안내가 오기 전에는 모든 개념이 여기에 있다.
 
 **기록과 정리층.**
-- 기록: `records/`, `library/entries/`, `learner/*.jsonl`, `sources/`, `library/vendor/`. 고치지 않는다. 다만 자료의 `labels.yaml`은 학생이 꼬리표를 고치거나 합칠 때 다시 쓴다.
+- 기록: `records/`, `library/entries/`, `learner/*.jsonl`, `sources/`, `library/vendor/`. 고치지 않는다. 다만 자료의 `labels.yaml`은 학생이 꼬리표를 고치거나 합칠 때 다시 쓴다. 묶음(`bundles/`)도 메모를 고치거나 자료를 옮길 때 다시 쓴다.
 - 정리층: `syllabus/`, `library/concepts/`, `library/unplaced/`, `glossary.yaml`, `facets.yaml`, `references.yaml`. 작업이 다시 만든다. 선수 개념과 과목 사이 연결은 `concept.yaml`의 `prerequisites`, `links`에 둔다. 아직 없는 선수 개념은 `missing:<제목>`이다.
 - `history.jsonl`은 정리층 폴더 안에 있지만 덧붙이기만 한다.
 - `figures/`의 코드 파일도 정리층 폴더 안에 있지만 판마다 새로 쓰고 고치지 않는다.
@@ -154,11 +155,13 @@
   - 쓰기 토큰: 그 리포만 고른 fine-grained 토큰, Contents: Read and write. 키체인에 둔다
   - 로컬 위치 (기본 `~/Jindesk/`)
 
-  연결하는 리포는 둘 가운데 하나다. 그 밖의 리포면 연결하지 않고 알린다.
-  - 아무것도 없는 빈 리포: 그 위치에 데이터 폴더를 새로 만들고 `git init`, 원격 연결, 첫 커밋, 올리기를 한다
-  - Jindesk 데이터 폴더 모양의 리포(`meta/schema.yaml`이 있다): 클론해서 연다. 스키마가 옛 판이면 마이그레이션하고 그 결과를 커밋한다
+  리포는 커밋이 있느냐가 아니라 마지막 상태로 판단한다(`DECISIONS.md` 37). 먼저 리포의 마지막 상태를 받고(클론하거나, 이미 그 리포의 클론이면 받아서 맞춘다), 받은 것을 본다. 그 밖의 리포면 연결하지 않고 어떤 파일이 있는지 알린다.
+  - 비어 있다(아무 파일도 없거나, 리포를 만들 때 들어가는 `README*`, `LICENSE*`, `.gitignore`, `.gitattributes`만 있다): 그 자리에 데이터 폴더를 새로 만들고 커밋해 올린다. 커밋이 전혀 없는 리포면 `git init`과 원격 연결부터 한다. 이전 커밋 기록은 그대로 둔다
+  - Jindesk 데이터 폴더 모양이다(`meta/schema.yaml`이 있다): 그대로 연다
 
-  로컬 위치는 없거나 비어 있는 폴더, 또는 이미 그 리포의 클론인 폴더다. 그 리포의 클론이면 그대로 연다.
+  로컬 위치는 없거나 비어 있는 폴더, 또는 이미 그 리포의 클론인 폴더다.
+
+  켤 때도 같다. 연결한 폴더를 받아 맞춘 뒤 비어 있으면(리포의 파일을 모두 지웠을 때) 그 자리에 데이터 폴더를 새로 만들어 올린다.
 - **리포 바꾸기.** 새 리포를 연결하기만 한다. 이전 리포와 그 클론은 건드리지 않는다. 이전 클론이 있는 폴더에는 새 리포를 받을 수 없으므로, 새 리포는 연결할 때 넣는 로컬 위치에 받는다.
 - **그 맥에 묶기.** 연결(리포 주소와 로컬 위치의 짝)은 그 맥의 앱 설정에 둔다. 데이터 폴더 안에는 두지 않는다. 열 때 폴더의 `origin`이 연결한 리포와 같은지 보고, 다르면 올리지 않고 알린다. 그래서 개발 맥에서 학생의 백업을 풀어 열어도 학생의 리포로 올라가지 않는다. 개발 맥은 시험 리포에 연결한다.
 - **인증.** 앱이 git 을 띄울 때만 키체인의 토큰을 자격 증명으로 넘긴다(그 실행에만 주는 자격 증명 도우미). `.git/config`와 원격 주소에는 토큰을 적지 않는다. 토큰이 만료되거나 틀리면 올리지 못한다(아래 올리기와 받기).
@@ -230,13 +233,13 @@
 ```yaml
 kind: "schema"
 v: 1
-schema: 3
+schema: 1
 created: "2026-09-01T20:10:00+09:00"
 last_opened_by: { app: "0.4.0", build: "41" }
-history:
-  - { from: 1, to: 2, app: "0.2.0", at: "2026-09-20T21:00:00+09:00", kind: "code", backup: "Jindesk-마이그레이션-1-2.zip" }
-  - { from: 2, to: 3, app: "0.4.0", at: "2026-10-12T19:30:00+09:00", kind: "code+agent", backup: "Jindesk-마이그레이션-2-3.zip" }
+history: []
 ```
+
+출시 전에는 스키마가 1 이다(`MIGRATION.md`의 출시 전). `history`에는 출시 후 마이그레이션할 때마다 `{ from, to, app, at, kind, backup }` 한 줄이 쌓인다.
 
 `sources/20260903-3fa2c1d0/meta.yaml` (받을 때 정해진 사실. 고치지 않는다)
 
@@ -267,6 +270,20 @@ syllabus_basis: false
 
 `labels`는 열린 이름-값이다. 처음 제안하는 이름은 `grade`(학년), `subject`(과목), `level`(수준)이다. 과목 id 는 `subject` 값에서 만든다(`Physics` → `physics`).
 
+`bundles/20260903-7c1e9a2b.yaml` (자료 넣기가 만들고, 묶음 읽기가 이름을 짓는다. 메모와 자료는 고칠 수 있다)
+
+```yaml
+kind: "bundle"
+v: 1
+id: "20260903-7c1e9a2b"
+created: "2026-09-03T17:42:00+09:00"
+sources: ["20260903-3fa2c1d0", "20260903-91b2c3d4"]
+memo: null
+title: "Projectile motion"          # 묶음 읽기가 자료 내용으로 짓는다. 읽기 전에는 null
+```
+
+묶음은 같은 내용을 다루는 자료들이고, 자료 읽기와 개념 정리의 단위다(`DECISIONS.md` 35). 자료 하나는 묶음 하나에만 든다. `sources`는 넣은 차례다. 묶음 id 는 `<만든 날 YYYYMMDD>-<임의 8자>`다. 어느 묶음에도 없는 자료는 자료 id 를 묶음 id 로 하는 혼자인 묶음으로 본다. 엔트리가 어느 묶음의 것인지는 엔트리의 첫 자료로 정한다. 그래서 자료를 다른 묶음으로 옮기면 아직 정리하지 않은 그 자료의 엔트리도 따라간다.
+
 `library/entries/physics/a.1/projectile-motion.md` (자료 읽기가 쓴다. 고치지 않는다)
 
 ```markdown
@@ -278,8 +295,9 @@ subject: "physics"
 item: "A.1"
 item_proposed: null
 title: "Projectile motion"
-source: "20260903-3fa2c1d0"
-pages: [10, 11, 12]
+sources:
+  - { source: "20260903-3fa2c1d0", pages: [10, 11, 12] }
+  - { source: "20260903-91b2c3d4", pages: [2] }
 claims:
   - { text: "horizontal velocity constant without air resistance", src: ["20260903-3fa2c1d0#p12"] }
 symbols:
@@ -293,7 +311,9 @@ provenance: { job: "20260903-1801-read-kinematics-slides", instructions: { kind:
 Without air resistance, no force acts horizontally …
 ```
 
-같은 경로가 이미 있으면 `<slug>--<작업 id>.md`로 나란히 둔다. 엔트리 id 는 `entries/` 아래 경로에서 `.md`를 뗀 것이다. 개념 정리가 보류한 엔트리는 그 작업의 `records/concept-curation/<작업 id>/plan.json`의 `held`에 남고, 다음 정리가 다시 고르지 않는다.
+같은 경로가 이미 있으면 `<slug>--<작업 id>.md`로 나란히 둔다. 엔트리 id 는 `entries/` 아래 경로에서 `.md`를 뗀 것이다. 엔트리는 묶음의 여러 자료에 걸칠 수 있고, `sources`는 자료마다 이 엔트리의 내용이 나온 쪽이다.
+
+**보류.** 개념이 되지 못한 엔트리는 보류로 남는다(`DECISIONS.md` 35). 개념 정리가 보류한 것은 그 작업의 `records/concept-curation/<작업 id>/plan.json`의 `held`에 까닭과 함께 남는다. 자료 읽기에서 학생 독자 시험에 고쳐 써도 떨어진 엔트리는 머리말에 `held: "<까닭>"`을 달고 들어간다. 보류된 엔트리는 그 과목의 다음 정리마다 까닭과 함께 다시 넘어가고, 개념에 붙으면(그 개념의 출현 목록에 들면) 보류가 풀린다.
 
 `syllabus/physics.yaml`
 
@@ -353,7 +373,7 @@ provenance: { job: "20260905-0930-curate-physics", instructions: { kind: "concep
 
 ```yaml
 kind: "facets"
-v: 2
+v: 1
 concept: "physics/a.1/projectile-motion"
 from: "5c1d0e9a7b3f2e61"            # 이때의 concept.yaml 해시. 바뀌면 다시 붙인다
 item: "A.1"
@@ -369,7 +389,7 @@ formulas: []                       # 공식으로 고른 주장
 provenance: { job: "20260906-1010-facets-physics", instructions: { kind: "facets", version: "0.2", commit: "…", dirty: false }, model: "claude-opus-5-5" }
 ```
 
-`summary`와 `formulas`는 스키마 2 부터 있다(`DECISIONS.md` 34). 없으면 아직 고르지 않은 것이고, 관점 붙이기가 남은 일로 다시 돈다.
+`summary`와 `formulas`가 없으면 아직 고르지 않은 것이고, 관점 붙이기가 남은 일로 다시 돈다(`DECISIONS.md` 34).
 
 `learner/comments.jsonl` (줄마다 하나)
 

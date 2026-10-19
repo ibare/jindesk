@@ -80,6 +80,22 @@
         "type": "string"
       }
     },
+    "summary": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^u[0-9]+\\.c[0-9]+$"
+      },
+      "description": "한 장 요약으로 고른 주장 (단위 id.주장 id). 없으면 아직 고르지 않았다"
+    },
+    "formulas": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^u[0-9]+\\.c[0-9]+$"
+      },
+      "description": "공식으로 고른 주장"
+    },
     "provenance": {
       "type": "object"
     }

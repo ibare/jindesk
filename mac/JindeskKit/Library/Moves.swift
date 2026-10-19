@@ -107,8 +107,9 @@ public enum SubjectRename {
         n += 1
       }
       let moved = Entry(
-        id: newID, subject: target, item: e.item, itemProposed: e.itemProposed, title: e.title, source: e.source, pages: e.pages, claims: e.claims,
-        symbols: e.symbols, examples: e.examples, misconceptions: e.misconceptions, body: e.body, recorded: e.recorded, provenance: e.provenance)
+        id: newID, subject: target, item: e.item, itemProposed: e.itemProposed, title: e.title, sources: e.sources, claims: e.claims,
+        symbols: e.symbols, examples: e.examples, misconceptions: e.misconceptions, body: e.body, recorded: e.recorded, provenance: e.provenance,
+        held: e.held)
       try FileOps.writeNew(moved.markdown, to: data.entryFile(newID))
       FileOps.remove(data.entryFile(e.id))
       try Moves.append(data, kind: "entry", from: e.id, to: newID, why: "과목 \(subject) → \(target)")

@@ -18,10 +18,12 @@ struct RootView: View {
     case .newerData(let version):
       StatusScreen(
         icon: "arrow.down.circle", title: "이 데이터는 더 새 판의 Jindesk 가 만들었습니다",
-        detail: "데이터의 스키마는 \(version), 이 앱은 \(CurrentSchema.version) 입니다. 앱을 업데이트합니다.",
-        busy: false)
+        detail: "데이터의 스키마는 \(version), 이 앱은 \(CurrentSchema.version) 입니다. 앱을 업데이트하거나 다른 데이터 리포를 연결합니다.",
+        busy: false, action: ("데이터 리포 바꾸기…", { model.phase = .connecting(nil) }))
     case .unusable(let message):
-      StatusScreen(icon: "exclamationmark.triangle", title: "데이터 폴더를 열 수 없습니다", detail: message, busy: false)
+      StatusScreen(
+        icon: "exclamationmark.triangle", title: "데이터 폴더를 열 수 없습니다", detail: message, busy: false,
+        action: ("데이터 리포 바꾸기…", { model.phase = .connecting(nil) }))
     case .ready:
       MainView()
     }
@@ -33,6 +35,8 @@ struct StatusScreen: View {
   let title: String
   let detail: String
   let busy: Bool
+  // 이 화면에서 나가는 길 (이름, 할 일)
+  var action: (String, () -> Void)?
 
   var body: some View {
     VStack(spacing: 14) {
@@ -40,6 +44,7 @@ struct StatusScreen: View {
       Text(title).font(.title2.weight(.semibold))
       Text(detail).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 480)
       if busy { ProgressView().controlSize(.small) }
+      if let action { Button(action.0, action: action.1).padding(.top, 4) }
     }
     .padding(40)
     .frame(maxWidth: .infinity, maxHeight: .infinity)

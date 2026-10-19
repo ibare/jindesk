@@ -155,12 +155,16 @@ enum SampleFiles {
     #expect(try FileOps.read(source.folder.pageText(4)).lowercased().contains("venn"))
     #expect(try FileOps.read(source.folder.pageText(1)).contains("Do Now"))
     #expect(source.labels.labels.summary == "MYP 5 · Extended Math · Extended")
-    #expect(source.labels.memo == "오늘 수업")
+    // 메모는 묶음에 붙는다 (DECISIONS.md 35)
+    #expect(source.labels.memo == nil)
+    let bundle = try #require(BundleStore.bundle(of: source.id, in: t.data))
+    #expect(bundle.memo == "오늘 수업" && bundle.sources == [source.id] && bundle.title == nil && !bundle.implicit)
+    #expect(try t.read("bundles/\(bundle.id).yaml").hasSuffix("sources: [\"\(source.id)\"]\nmemo: \"오늘 수업\"\ntitle: null\n"))
     // 파일 모양
     #expect(FileOps.list(source.folder.url).sorted() == ["index.md", "labels.yaml", "meta.yaml", "original.pdf", "pages"])
     #expect(
       try t.read("sources/\(source.id)/labels.yaml")
-        == "kind: \"labels\"\nv: 1\nsource: \"\(source.id)\"\nlabels: { grade: \"MYP 5\", subject: \"Extended Math\", level: \"Extended\" }\nmemo: \"오늘 수업\"\nsyllabus_basis: false\n")
+        == "kind: \"labels\"\nv: 1\nsource: \"\(source.id)\"\nlabels: { grade: \"MYP 5\", subject: \"Extended Math\", level: \"Extended\" }\nmemo: null\nsyllabus_basis: false\n")
     let index = try t.read("sources/\(source.id)/index.md")
     #expect(index.contains("| 1 |") && index.contains("2쪽으로 이어짐") && index.contains("마지막 모습"))
     // 쪽 이미지는 캐시에 둔다 (긴 변 1600px)

@@ -4,7 +4,7 @@ import Foundation
 
 public struct PendingWork: Sendable, Equatable, Identifiable {
   public let kind: JobKind
-  // 자료 id (자료 읽기) 또는 과목 id
+  // 묶음 id (자료 읽기, 개념 정리) 또는 과목 id
   public let target: String
   public let label: String
 
@@ -12,16 +12,24 @@ public struct PendingWork: Sendable, Equatable, Identifiable {
 }
 
 public enum Pipeline {
-  // 남은 일. 앞 단계에 할 일이 있는 과목은 뒤 단계를 넣지 않는다 (앞 단계가 끝나면 뒤따라 넣는다).
+  // 남은 일. 읽기가 남은 묶음은 정리를 넣지 않고, 읽기나 정리가 남은 과목은 페이지 이후 단계를 넣지 않는다 (앞 단계가 끝나면 뒤따라 넣는다).
   public static func pending(_ data: DataFolder, instructions: InstructionSource) -> [PendingWork] {
     var out: [PendingWork] = []
     let library = SourceLibrary.load(data)
     let read = SourceReading.readSources(data)
+    let bundles = BundleStore.all(data, library: library)
     var busySubjects: Set<String> = []
-    for s in library.sources.reversed() {
-      guard let subject = s.labels.labels.subjectID, read[s.id] == nil else { continue }
-      out.append(PendingWork(kind: .sourceReading, target: s.id, label: s.meta.original.name))
-      busySubjects.insert(subject)
+    var curation: [PendingWork] = []
+    for b in bundles.reversed() {
+      guard let subject = BundleStore.subject(b, library: library) else { continue }
+      let label = b.title ?? b.sources.first.flatMap { library.source($0)?.meta.original.name } ?? b.id
+      if b.sources.contains(where: { read[$0] == nil }) {
+        out.append(PendingWork(kind: .sourceReading, target: b.id, label: label))
+        busySubjects.insert(subject)
+      } else if !ConceptCuration.pending(data, bundle: b).isEmpty {
+        curation.append(PendingWork(kind: .conceptCuration, target: b.id, label: label))
+        busySubjects.insert(subject)
+      }
     }
     let pageVersion = (try? Instructions.read(instructions, kind: .pageBuild))?.version
     let subjects = Set(EntryStore.subjects(data) + ConceptStore.subjects(data)).sorted()
@@ -34,10 +42,9 @@ public enum Pipeline {
     for s in library.subjects where SyllabusBuild.needed(data, subject: s.id, library: library) {
       out.append(PendingWork(kind: .syllabusBuild, target: s.id, label: s.name))
     }
+    out += curation
     for subject in subjects where !busySubjects.contains(subject) {
-      if !ConceptCuration.pending(data, subject: subject).isEmpty {
-        out.append(PendingWork(kind: .conceptCuration, target: subject, label: subject))
-      } else if !PageBuild.pending(data, subject: subject, version: pageVersion).isEmpty {
+      if !PageBuild.pending(data, subject: subject, version: pageVersion).isEmpty {
         out.append(PendingWork(kind: .pageBuild, target: subject, label: subject))
       } else if !Translation.pending(data, subject: subject).isEmpty {
         out.append(PendingWork(kind: .translation, target: subject, label: subject))
@@ -51,8 +58,8 @@ public enum Pipeline {
   public static func prepare(_ work: PendingWork) -> @Sendable (PrepareContext) async throws -> PreparedJob {
     let target = work.target
     switch work.kind {
-    case .sourceReading: return { try SourceReading.prepare(sourceID: target, $0) }
-    case .conceptCuration: return { try ConceptCuration.prepare(subject: target, $0) }
+    case .sourceReading: return { try SourceReading.prepare(bundle: target, $0) }
+    case .conceptCuration: return { try ConceptCuration.prepare(bundle: target, $0) }
     case .pageBuild: return { try PageBuild.prepare(subject: target, $0) }
     case .syllabusBuild: return { try SyllabusBuild.prepare(subject: target, $0) }
     case .ask: return { try Ask.prepare(commentID: target, $0) }

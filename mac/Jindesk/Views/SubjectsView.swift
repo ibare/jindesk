@@ -436,9 +436,12 @@ struct SourceRow: View {
     return name.replacingOccurrences(of: "_", with: " ").replacingOccurrences(of: "  ", with: " ")
   }
 
+  // 화면 글은 한국어다. 시스템 언어와 상관없이 "10월 18일 (일)"로 쓴다
+  static let korean = Locale(identifier: "ko_KR")
+
   static func date(_ iso: String) -> String {
     guard let d = Clock.parse(iso) else { return "" }
-    return d.formatted(.dateTime.month().day().weekday(.abbreviated))
+    return d.formatted(.dateTime.month().day().weekday(.abbreviated).locale(Self.korean))
   }
 }
 

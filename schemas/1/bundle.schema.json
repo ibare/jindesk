@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jindesk/1/bundle",
+  "title": "bundles/<묶음 id>.yaml",
+  "description": "자료 묶음: 같은 내용을 다루는 자료들. 자료 읽기와 개념 정리의 단위 (DECISIONS.md 35)",
+  "type": "object",
+  "required": [
+    "kind",
+    "v",
+    "id",
+    "created",
+    "sources",
+    "memo",
+    "title"
+  ],
+  "properties": {
+    "kind": {
+      "const": "bundle"
+    },
+    "v": {
+      "const": 1
+    },
+    "id": {
+      "type": "string"
+    },
+    "created": {
+      "type": "string"
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "넣은 차례"
+    },
+    "memo": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "title": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "묶음 읽기가 자료 내용으로 지은 영어 이름. 읽기 전에는 null"
+    }
+  },
+  "additionalProperties": false
+}

@@ -26,6 +26,8 @@ public struct DataFolder: Sendable, Equatable {
   public var lockFile: URL { meta.appending(path: ".lock") }
   public var syllabus: URL { url.appending(path: "syllabus") }
   public var sources: URL { url.appending(path: "sources") }
+  // 자료 묶음 (DECISIONS.md 35)
+  public var bundles: URL { url.appending(path: "bundles") }
   public var records: URL { url.appending(path: "records") }
   public var library: URL { url.appending(path: "library") }
   public var learner: URL { url.appending(path: "learner") }
@@ -41,7 +43,7 @@ public struct DataFolder: Sendable, Equatable {
   }
 
   // 처음 쓸 때 만드는 폴더들
-  static let topFolders = ["meta", "syllabus", "sources", "records", "library", "learner"]
+  static let topFolders = ["meta", "syllabus", "sources", "bundles", "records", "library", "learner"]
 
   // Jindesk 데이터 폴더인가 (meta/schema.yaml 이 있다)
   public var isInitialized: Bool { FileOps.exists(schemaFile) }

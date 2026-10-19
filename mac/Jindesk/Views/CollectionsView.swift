@@ -6,10 +6,10 @@ struct TodayView: View {
   @Environment(AppModel.self) private var model
 
   var body: some View {
-    let sources = model.recentSources(days: 7)
+    let bundles = model.recentBundles(days: 7)
     let candidates = model.candidates()
-    if sources.isEmpty && candidates.isEmpty && model.waitingWork.isEmpty {
-      ContentUnavailableView("오늘 볼 것이 아직 없어요", systemImage: "sun.max", description: Text("자료를 넣으면 그 자료에서 정리된 개념이 여기에 모입니다."))
+    if bundles.isEmpty && candidates.isEmpty && model.waitingWork.isEmpty {
+      ContentUnavailableView("오늘 볼 것이 아직 없어요", systemImage: "sun.max", description: Text("자료를 넣으면 그 묶음에서 정리된 개념이 여기에 모입니다."))
     } else {
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 6) {
@@ -24,9 +24,9 @@ struct TodayView: View {
             }
             .card()
           }
-          ForEach(Self.days(sources), id: \.label) { day in
-            ListLabel(text: "\(day.label) 넣은 자료", trailing: "\(day.sources.count)").padding(.horizontal, 10).padding(.top, 10)
-            ForEach(day.sources) { SourceCard(source: $0) }
+          ForEach(Self.days(bundles, model: model), id: \.label) { day in
+            ListLabel(text: "\(day.label) 넣은 묶음", trailing: "\(day.bundles.count)").padding(.horizontal, 10).padding(.top, 10)
+            ForEach(day.bundles) { BundleCard(bundle: $0) }
           }
         }
         .padding(.horizontal, 10)
@@ -35,14 +35,14 @@ struct TodayView: View {
     }
   }
 
-  // 넣은 날마다 묶는다 ("오늘", "어제", "10월 16일 금요일")
-  static func days(_ sources: [SourceSummary]) -> [(label: String, sources: [SourceSummary])] {
-    var out: [(label: String, sources: [SourceSummary])] = []
-    for s in sources {
-      let label = Clock.parse(s.meta.received).map { d in
-        Calendar.current.isDateInToday(d) ? "오늘" : Calendar.current.isDateInYesterday(d) ? "어제" : d.formatted(.dateTime.month().day().weekday(.wide))
+  // 넣은 날마다 묶는다 ("오늘", "어제", "10월 16일 금요일"). 나중에 자료를 더한 묶음은 더한 날로 올라온다.
+  static func days(_ bundles: [SourceBundle], model: AppModel) -> [(label: String, bundles: [SourceBundle])] {
+    var out: [(label: String, bundles: [SourceBundle])] = []
+    for b in bundles {
+      let label = Clock.parse(model.lastReceived(b)).map { d in
+        Calendar.current.isDateInToday(d) ? "오늘" : Calendar.current.isDateInYesterday(d) ? "어제" : d.formatted(.dateTime.month().day().weekday(.wide).locale(SourceRow.korean))
       } ?? "날짜 모름"
-      if out.last?.label == label { out[out.count - 1].sources.append(s) } else { out.append((label, [s])) }
+      if out.last?.label == label { out[out.count - 1].bundles.append(b) } else { out.append((label, [b])) }
     }
     return out
   }
@@ -68,33 +68,34 @@ struct CandidateRow: View {
   }
 }
 
-// 넣은 자료 하나와 그 자료에서 정리된 개념
-struct SourceCard: View {
+// 넣은 묶음 하나: 이름, 자료와 쪽, 단계 막대, 그 묶음에서 정리된 개념 (DECISIONS.md 35)
+struct BundleCard: View {
   @Environment(AppModel.self) private var model
-  let source: SourceSummary
+  let bundle: SourceBundle
 
   var body: some View {
-    let rows = model.concepts(from: source.id).map { (concept: $0, state: model.pageState($0)) }
+    let rows = model.concepts(fromBundle: bundle).map { (concept: $0, state: model.pageState($0)) }
+    let progress = model.progress(bundle)
     VStack(alignment: .leading, spacing: 0) {
       Button {
-        model.selection = .source(source.id)
+        model.selection = .bundle(bundle.id)
       } label: {
-        HStack(alignment: .top, spacing: 10) {
-          SourceThumb()
-          VStack(alignment: .leading, spacing: 3) {
-            Text(SourceRow.title(source)).font(.system(size: 13, weight: .semibold)).lineLimit(2).multilineTextAlignment(.leading)
-            Text(meta).font(.system(size: 11.5)).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
+        VStack(alignment: .leading, spacing: 6) {
+          Text(model.bundleTitle(bundle)).font(.system(size: 14.5, design: .serif)).lineLimit(2).multilineTextAlignment(.leading)
+          Text(meta).font(.system(size: 11.5)).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
+          HStack(spacing: 8) {
+            StageBar(progress: progress, onAccent: model.selection == .bundle(bundle.id)).frame(width: 110)
+            Text(progress.summary).font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
           }
-          Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(8)
-        .rowHighlight(model.selection == .source(source.id))
+        .contentShape(Rectangle())
+        .rowHighlight(model.selection == .bundle(bundle.id))
       }
       .buttonStyle(.plain)
-      Divider().padding(.horizontal, 8).padding(.vertical, 4)
-      if rows.isEmpty {
-        Text(status).font(.system(size: 12)).foregroundStyle(.secondary).padding(.horizontal, 8).padding(.bottom, 8)
-      } else {
+      if !rows.isEmpty {
+        Divider().padding(.horizontal, 8).padding(.vertical, 4)
         ListLabel(text: "정리된 개념", trailing: rows.compactMap(\.state.madeAt).max()).padding(.horizontal, 8).padding(.bottom, 2)
         ForEach(rows, id: \.concept.id) { row in
           Button {
@@ -103,9 +104,7 @@ struct SourceCard: View {
             HStack(spacing: 8) {
               ConceptNames(title: row.concept.title, titleKo: row.state.titleKo)
               Spacer(minLength: 4)
-              if let pages = Occurrence.pagesLabel(row.concept.occurrences, source: source.id) {
-                Text(pages).font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
-              }
+              if let note = row.state.note { Text(note).font(.system(size: 11)).foregroundStyle(.secondary) }
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
@@ -130,21 +129,11 @@ struct SourceCard: View {
     .card()
   }
 
-  // "Extended Mathematics · 55쪽 · 22:45 넣음"
+  // "자료 2 · 61쪽 · 22:45 넣음"
   var meta: String {
-    let time = Clock.parse(source.meta.received).map { Self.clock.string(from: $0) + " 넣음" }
-    return [model.subjectName(source), "\(source.meta.pages)쪽", time].compactMap { $0 }.joined(separator: " · ")
-  }
-
-  // 아직 개념이 없을 때
-  var status: String {
-    switch model.readingState(source.id) {
-    case .unread: "읽기 전이에요"
-    case .queued: "읽기를 기다려요"
-    case .reading(let phase): "읽는 중 · \(phase)"
-    case .read: "개념을 정리하는 중이에요"
-    case .failed: "읽지 못했어요"
-    }
+    let members = model.members(bundle)
+    let time = Clock.parse(model.lastReceived(bundle)).map { Self.clock.string(from: $0) + " 넣음" }
+    return ["자료 \(members.count)", "\(members.map(\.meta.pages).reduce(0, +))쪽", time].compactMap { $0 }.joined(separator: " · ")
   }
 
   static let clock: DateFormatter = {
@@ -152,6 +141,39 @@ struct SourceCard: View {
     f.dateFormat = "HH:mm"
     return f
   }()
+}
+
+// 묶음의 단계 막대: 읽기 · 정리 · 페이지 · 한국어. 끝난 칸은 채우고, 도는 칸은 흐리게 채운다.
+struct StageBar: View {
+  let progress: AppModel.BundleProgress
+  // 고른 줄의 강조색 위에 그린다 (흰색 계열)
+  var onAccent = false
+
+  var body: some View {
+    HStack(spacing: 3) {
+      ForEach(Array(progress.stages.enumerated()), id: \.offset) { _, stage in
+        Capsule().fill(color(stage.state)).frame(height: 4)
+      }
+    }
+    .accessibilityElement()
+    .accessibilityLabel(progress.summary)
+  }
+
+  func color(_ state: AppModel.StageState) -> Color {
+    if onAccent {
+      switch state {
+      case .done: return .white
+      case .active, .failed: return .white.opacity(0.55)
+      case .waiting, .none: return .white.opacity(0.25)
+      }
+    }
+    return switch state {
+    case .done: Color.accentColor
+    case .active: Color.accentColor.opacity(0.45)
+    case .failed: Color.red.opacity(0.7)
+    case .waiting, .none: Color.primary.opacity(0.15)
+    }
+  }
 }
 
 // 모아 보기 (DECISIONS.md 34): 위에 범주 칩 세 줄(사전, 모음, 내 것)과 과목 거르기. 목록은 첫 글자로 묶고 오른쪽에 A–Z 인덱스를 둔다.

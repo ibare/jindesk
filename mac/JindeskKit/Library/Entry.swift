@@ -1,5 +1,5 @@
 // 원시 개념 엔트리 (library/entries/<과목 id>/<항목>/<slug>.md). 자료 읽기가 쓰고, 고치지 않는다.
-// 머리말 YAML 과 영어 본문이다. 주장마다 출처(<자료 id>#p<쪽>)를 단다.
+// 머리말 YAML 과 영어 본문이다. 주장마다 출처(<자료 id>#p<쪽>)를 단다. 엔트리는 묶음의 여러 자료에 걸칠 수 있다 (DECISIONS.md 35).
 import Foundation
 
 // 머리말: 첫 줄 --- 부터 다음 --- 까지
@@ -77,6 +77,17 @@ public struct EntryClaim: Sendable, Equatable {
   }
 }
 
+// 엔트리의 내용이 나온 자료 하나와 그 쪽
+public struct EntrySource: Sendable, Equatable {
+  public let source: String
+  public let pages: [Int]
+
+  public init(source: String, pages: [Int]) {
+    self.source = source
+    self.pages = pages
+  }
+}
+
 public struct Entry: Sendable, Equatable, Identifiable {
   // entries/ 아래 경로에서 .md 를 뗀 것: <과목 id>/<항목>/<slug>
   public let id: String
@@ -86,8 +97,8 @@ public struct Entry: Sendable, Equatable, Identifiable {
   // 자료 읽기가 내용을 보고 제안한 항목이나 단원 이름
   public let itemProposed: String?
   public let title: String
-  public let source: String
-  public let pages: [Int]
+  // 자료마다 이 엔트리의 내용이 나온 쪽. 첫 자료의 묶음이 이 엔트리의 묶음이다
+  public let sources: [EntrySource]
   public let claims: [EntryClaim]
   public let symbols: [SymbolDef]
   public let examples: [String]
@@ -95,18 +106,19 @@ public struct Entry: Sendable, Equatable, Identifiable {
   public let body: String
   public let recorded: String
   public let provenance: YAMLMap
+  // 자료 읽기에서 학생 독자 시험에 고쳐 써도 떨어져 보류로 넣은 까닭 (DECISIONS.md 35)
+  public let held: String?
 
   public init(
-    id: String, subject: String, item: String?, itemProposed: String?, title: String, source: String, pages: [Int], claims: [EntryClaim],
-    symbols: [SymbolDef], examples: [String], misconceptions: [String], body: String, recorded: String, provenance: YAMLMap
+    id: String, subject: String, item: String?, itemProposed: String?, title: String, sources: [EntrySource], claims: [EntryClaim],
+    symbols: [SymbolDef], examples: [String], misconceptions: [String], body: String, recorded: String, provenance: YAMLMap, held: String? = nil
   ) {
     self.id = id
     self.subject = subject
     self.item = item
     self.itemProposed = itemProposed
     self.title = title
-    self.source = source
-    self.pages = pages
+    self.sources = sources
     self.claims = claims
     self.symbols = symbols
     self.examples = examples
@@ -114,13 +126,17 @@ public struct Entry: Sendable, Equatable, Identifiable {
     self.body = body
     self.recorded = recorded
     self.provenance = provenance
+    self.held = held?.nilIfBlank
   }
+
+  // 첫 자료 (이 엔트리의 묶음을 정한다)
+  public var source: String { sources.first?.source ?? "" }
 
   // 주장들이 가리키는 쪽
   public var refs: Set<String> { Set(claims.flatMap(\.src)) }
 
   public var frontMatter: YAMLMap {
-    [
+    var m: YAMLMap = [
       "kind": "entry",
       "v": 1,
       "id": .string(id),
@@ -128,8 +144,7 @@ public struct Entry: Sendable, Equatable, Identifiable {
       "item": item.map(YAMLValue.string) ?? .null,
       "item_proposed": itemProposed.map(YAMLValue.string) ?? .null,
       "title": .string(title),
-      "source": .string(source),
-      "pages": .array(pages.map(YAMLValue.int)),
+      "sources": .array(sources.map { .map(["source": .string($0.source), "pages": .array($0.pages.map(YAMLValue.int))]) }),
       "claims": .array(claims.map(\.yaml)),
       "symbols": .array(symbols.map(\.yaml)),
       "examples": .array(examples.map(YAMLValue.string)),
@@ -137,6 +152,8 @@ public struct Entry: Sendable, Equatable, Identifiable {
       "recorded": .string(recorded),
       "provenance": .map(provenance),
     ]
+    if let held { m["held"] = .string(held) }
+    return m
   }
 
   public var markdown: String {
@@ -145,14 +162,16 @@ public struct Entry: Sendable, Equatable, Identifiable {
 
   public static func parse(_ text: String) throws -> Entry {
     guard let (d, body) = FrontMatter.split(text), d["kind"]?.string == "entry", let id = d["id"]?.string, let subject = d["subject"]?.string,
-      let title = d["title"]?.string, let source = d["source"]?.string
+      let title = d["title"]?.string
     else { throw ToolError("엔트리 머리말의 모양이 맞지 않습니다") }
+    let sources = (d["sources"]?.array ?? []).compactMap { v in v["source"]?.string.map { EntrySource(source: $0, pages: (v["pages"]?.array ?? []).compactMap(\.int)) } }
+    guard !sources.isEmpty else { throw ToolError("엔트리 머리말에 자료가 없습니다") }
     return Entry(
-      id: id, subject: subject, item: d["item"]?.string, itemProposed: d["item_proposed"]?.string, title: title, source: source,
-      pages: (d["pages"]?.array ?? []).compactMap(\.int), claims: (d["claims"]?.array ?? []).compactMap(EntryClaim.init(yaml:)),
+      id: id, subject: subject, item: d["item"]?.string, itemProposed: d["item_proposed"]?.string, title: title, sources: sources,
+      claims: (d["claims"]?.array ?? []).compactMap(EntryClaim.init(yaml:)),
       symbols: (d["symbols"]?.array ?? []).compactMap(SymbolDef.init(yaml:)), examples: d["examples"]?.strings ?? [],
       misconceptions: d["misconceptions"]?.strings ?? [], body: body.trimmingCharacters(in: .whitespacesAndNewlines),
-      recorded: d["recorded"]?.string ?? "", provenance: d["provenance"]?.map ?? YAMLMap([]))
+      recorded: d["recorded"]?.string ?? "", provenance: d["provenance"]?.map ?? YAMLMap([]), held: d["held"]?.string)
   }
 }
 

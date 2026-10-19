@@ -102,6 +102,12 @@ struct SelectionDetail: View {
       UnitOverviewView(subject: subject, key: key).id("\(subject)|\(key)")
     case .entry(let id)?:
       CompendiumEntryView(id: id).id(id)
+    case .bundle(let id)?:
+      if let bundle = model.bundle(id) {
+        BundleDetailView(bundle: bundle).id(bundle.id)
+      } else {
+        ContentUnavailableView("묶음을 찾지 못했어요", systemImage: "questionmark.folder")
+      }
     case nil:
       ContentUnavailableView("개념이나 자료를 고르세요", systemImage: "doc.text.magnifyingglass")
     }

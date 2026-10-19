@@ -77,6 +77,8 @@ enum SubjectSelection: Hashable {
   case unit(String, String)
   // 모아 보기의 항목 ("<범주>:<키>", DECISIONS.md 34)
   case entry(String)
+  // 자료 묶음 (묶음 id, DECISIONS.md 35)
+  case bundle(String)
 }
 
 enum ReadingState: Equatable {
@@ -121,6 +123,8 @@ final class AppModel {
   private(set) var history: [RunRecord] = []
   // 자료 목록. 과목 목록은 자료의 꼬리표에서 모은다.
   private(set) var library = SourceLibrary(sources: [])
+  // 자료 묶음 (DECISIONS.md 35). 만든 때가 늦은 것부터
+  private(set) var bundles: [SourceBundle] = []
   // 과목마다 정리된 개념과 목차
   private(set) var concepts: [String: [Concept]] = [:]
   private(set) var syllabi: [String: Syllabus] = [:]
@@ -150,6 +154,8 @@ final class AppModel {
   private(set) var searchPageHits: [PageHit] = []
   @ObservationIgnored private lazy var searchIndex = SearchIndex(folders)
   var showIntake = false
+  // 자료 넣기 시트를 그 묶음에 더하는 카드로 연다 (묶음 보기의 "자료 더하기…")
+  var intakeBundle: String?
   let update = UpdateStatus()
   // 데이터 리포 (DATA.md 의 데이터 리포): 이 맥의 앱 설정에서 연결한 리포, 마지막으로 커밋하고 올린 결과, 켤 때 받기의 문제
   private(set) var repoLink: RepoLink?
@@ -214,6 +220,17 @@ final class AppModel {
     }
     repoLink = link
     await pullOnOpen(saved, link)
+    // 받은 마지막 상태가 비어 있으면(리포의 파일을 모두 지웠을 때) 그 자리에 데이터 폴더를 새로 만들어 올린다 (DECISIONS.md 37)
+    if !saved.isInitialized && DataRepo.isRepo(saved) && !hasMigrationLeftovers(saved) {
+      do {
+        if case .created(let error?) = try await DataRepo.connect(link, token: RepoToken.read(), app: app) {
+          repo = DataRepo.Outcome(at: Clock.isoLocal(), remote: link.url, error: error)
+        }
+      } catch {
+        phase = .connecting(error.localizedDescription)
+        return
+      }
+    }
     await open(saved, creating: false)
   }
 
@@ -355,6 +372,8 @@ final class AppModel {
     guard let data else { return }
     let fresh = SourceLibrary.load(data)
     if fresh != library { library = fresh }
+    let groups = BundleStore.all(data, library: fresh)
+    if groups != bundles { bundles = groups }
     var byID: [String: [Concept]] = [:]
     for subject in ConceptStore.subjects(data) { byID[subject] = ConceptStore.all(data, subject: subject) }
     if byID != concepts { concepts = byID }
@@ -437,12 +456,13 @@ final class AppModel {
   // 화면 찍기: 스레드·비교를 펼치고 그 자리로 간다 ({ openThreads, openCompare, scrollTo })
   var snapshotDebug: JSONValue?
 
-  // 자료의 읽기 상태
+  // 자료의 읽기 상태. 자료 읽기는 묶음 단위로 돈다 (작업의 대상이 묶음 id. 예전 작업은 자료 id)
   func readingState(_ sourceID: String) -> ReadingState {
-    if let s = jobs?.active.first(where: { $0.kind == .sourceReading && $0.target == sourceID }) { return .reading(s.phaseLabel) }
-    if jobs?.queue.contains(where: { $0.kind == .sourceReading && $0.target == sourceID }) == true { return .queued }
+    let targets = Set([sourceID] + (bundle(of: sourceID).map { [$0.id] } ?? []))
     if readSources[sourceID] != nil { return .read }
-    if let last = history.first(where: { $0.snapshot.kind == .sourceReading && $0.snapshot.target == sourceID }), last.snapshot.phase == "failed" {
+    if let s = jobs?.active.first(where: { $0.kind == .sourceReading && targets.contains($0.target ?? "") }) { return .reading(s.phaseLabel) }
+    if jobs?.queue.contains(where: { $0.kind == .sourceReading && targets.contains($0.target ?? "") }) == true { return .queued }
+    if let last = history.first(where: { $0.snapshot.kind == .sourceReading && targets.contains($0.snapshot.target ?? "") }), last.snapshot.phase == "failed" {
       return .failed(last.snapshot.error ?? "실패")
     }
     return .unread
@@ -549,16 +569,6 @@ final class AppModel {
 
   var allConcepts: [Concept] { concepts.values.flatMap { $0 }.sorted { $0.id < $1.id } }
 
-  // 최근 며칠 사이에 넣은 자료 (오늘), 새것부터
-  func recentSources(days: Int) -> [SourceSummary] {
-    let since = Clock.isoLocal(Date().addingTimeInterval(-Double(days) * 86400))
-    return library.sources.filter { $0.meta.received >= since }.sorted { $0.meta.received > $1.meta.received }
-  }
-
-  // 자료에서 정리된 개념 (개념의 출처에 그 자료가 있다), 배우는 순서로
-  func concepts(from source: String) -> [Concept] {
-    inLearningOrder(allConcepts.filter { c in c.occurrences.contains { $0.source == source } })
-  }
 
   // 자료가 붙은 과목의 이름
   func subjectName(_ source: SourceSummary) -> String? {
@@ -734,12 +744,14 @@ final class AppModel {
     try await jobs.submitAll(config: config, work.map { w in Pipeline.prepare(w) })
   }
 
-  // 자료 하나를 (다시) 읽는다
+  // 자료 하나를 (다시) 읽는다. 그 자료가 든 묶음의 읽기로 돈다.
   func read(_ source: SourceSummary) async throws {
     guard let jobs else { throw RequestError("데이터 폴더가 열려 있지 않습니다") }
+    guard let bundle = bundle(of: source.id) else { throw RequestError("자료가 든 묶음을 찾지 못했습니다") }
     let config = try await agentConfig()
     let id = source.id
-    try await jobs.submit(config: config) { try SourceReading.prepare(sourceID: id, $0) }
+    let bundleID = bundle.id
+    try await jobs.submit(config: config) { try SourceReading.prepare(bundle: bundleID, sources: [id], $0) }
   }
 
   // 자료의 꼬리표, 메모, 목차의 근거 표시를 고친다 (labels.yaml)

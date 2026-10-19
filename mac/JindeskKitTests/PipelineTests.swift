@@ -101,54 +101,112 @@ extension URL {
     }
   }
 
+  // 묶음 하나의 결과: out/bundle.json, out/sources/<자료 id>.json, out/report.md
+  func basics(_ out: URL, sources: [String: Any] = [:], bundle: Any = ["title": "Laws of indices"]) throws {
+    try write(out, "bundle.json", bundle)
+    try write(out, "report.md", "# Laws of indices\n\n지수 법칙 자료다.\n")
+    for (id, value) in sources { try write(out, "sources/\(id).json", value) }
+  }
+
+  let slides = "20261017-aaaabbbb"
+  let worksheet = "20261017-ccccdddd"
+
+  func meta(_ id: String, pages: Int) -> SourceMeta {
+    SourceMeta(
+      id: id, original: .init(name: "\(id).pdf", bytes: 1, sha256: id), received: "2026-10-17T10:00:00+09:00", converted: nil, pages: pages,
+      textLayer: .init(by: "pdfkit", pagesWithText: pages, ocrPages: []), buildUps: [])
+  }
+
   @Test func 맞는_엔트리는_받고_틀린_엔트리는_까닭과_함께_뺀다() throws {
     let out = TempPlace().root.appending(path: "out")
-    try write(out, "source.json", ["title": "Laws of indices", "kind": "lecture slides", "assessment": false, "skipped_pages": [["page": 1, "reason": "표지"]]])
-    try write(out, "report.md", "# Laws of indices\n\n지수 법칙 자료다.\n")
+    try basics(out, sources: [slides: ["title": "Laws of indices", "kind": "lecture slides", "assessment": false, "skipped_pages": [["page": 1, "reason": "표지"]]]])
     try write(
       out, "entries/good.json",
       ["slug": "laws-of-indices", "title": "Laws of indices", "body": "Add exponents: \\(a^m a^n = a^{m+n}\\).", "claims": [["text": "\\(a^m a^n = a^{m+n}\\)", "pages": [2]]]])
     try write(out, "entries/korean.json", ["title": "지수 법칙", "body": "x", "claims": [["text": "y", "pages": [2]]]])
     try write(out, "entries/badpage.json", ["title": "Zero exponent", "body": "\\(a^0 = 1\\)", "claims": [["text": "\\(a^0 = 1\\)", "pages": [9]]]])
     try write(out, "entries/slide.json", ["title": "Negative exponent", "body": "As shown on the slide, \\(a^{-1}\\).", "claims": [["text": "c", "pages": [2]]]])
-    let checked = SourceReading.check(out: out, meta: meta(pages: 3), math: MathChecker(katex: repoKatex))
+    let checked = SourceReading.check(out: out, sources: [meta(pages: 3)], math: MathChecker(katex: repoKatex))
     #expect(checked.problems.isEmpty)
     #expect(checked.entries.map(\.slug) == ["laws-of-indices"])
     #expect(Set(checked.rejected.map(\.file)) == ["korean.json", "badpage.json", "slide.json"])
-    #expect(checked.note?.skipped == [1])
+    #expect(checked.notes[slides]?.skipped == [1])
+    #expect(checked.bundleTitle == "Laws of indices")
+  }
+
+  @Test func 묶음의_엔트리는_주장마다_자료와_쪽을_달고_자료마다_쪽을_모은다() throws {
+    let out = TempPlace().root.appending(path: "out")
+    let note: [String: Any] = ["title": "T", "kind": "worksheet", "assessment": false, "skipped_pages": []]
+    try basics(out, sources: [slides: note, worksheet: note])
+    try write(
+      out, "entries/quartiles.json",
+      [
+        "slug": "quartiles", "title": "Quartiles", "body": "The quartiles split ordered data into four equal parts.",
+        "claims": [["text": "The median splits the data in half.", "source": slides, "pages": [3]], ["text": "The upper quartile of 1, 2, 3, 4, 5, 6, 7 is 6.", "source": worksheet, "pages": [5]]],
+        "pages": [slides: [3, 4]],
+      ])
+    // 자료를 빠뜨리거나 읽을 자료 표에 없는 자료를 쓰면 그 엔트리만 뺀다
+    try write(out, "entries/nosource.json", ["title": "Range", "body": "b", "claims": [["text": "c", "pages": [1]]]])
+    try write(out, "entries/other.json", ["title": "Mode", "body": "b", "claims": [["text": "c", "source": "20261001-99998888", "pages": [1]]]])
+    let checked = SourceReading.check(out: out, sources: [meta(slides, pages: 10), meta(worksheet, pages: 6)], math: nil)
+    #expect(checked.problems.isEmpty, "\(checked.problems)")
+    let q = try #require(checked.entries.first)
+    #expect(q.sources == [slides, worksheet])
+    #expect(q.pages == [slides: [3, 4], worksheet: [5]])
+    #expect(Set(checked.rejected.map(\.file)) == ["nosource.json", "other.json"])
+    // 자료마다 결과가 있어야 한다
+    FileOps.remove(out.appending(path: "sources/\(worksheet).json"))
+    #expect(SourceReading.check(out: out, sources: [meta(slides, pages: 10), meta(worksheet, pages: 6)], math: nil).problems.contains { $0.contains(worksheet) })
+  }
+
+  @Test func 시험에_떨어진_엔트리는_버리지_않고_보류로_넣는다() throws {
+    let t = TempPlace()
+    try t.data.initialize(app: testApp)
+    let out = t.root.appending(path: "out")
+    try basics(out, sources: [slides: ["title": "T", "kind": "worksheet", "assessment": false, "skipped_pages": []]])
+    try write(out, "entries/tree.json", ["slug": "tree-diagrams", "title": "Tree diagrams", "item": "Probability", "body": "b", "claims": [["text": "c", "pages": [2]]]])
+    let checked = SourceReading.check(out: out, sources: [meta(pages: 3)], math: nil)
+    let placed = try SourceReading.place(
+      checked.entries, held: ["tree.json": "학생 독자 시험 실패: 무엇을 곱하는지 모른다"], subject: "math", data: t.data, jobID: "j", provenance: [:])
+    #expect(placed.first?.held?.hasPrefix("학생 독자 시험 실패") == true)
+    let reread = try Entry.parse(try String(contentsOf: t.data.entryFile(placed[0].id), encoding: .utf8))
+    #expect(reread == placed[0])
+    #expect(ConceptCuration.heldEntries(t.data, subject: "math").map(\.entry.id) == [placed[0].id])
   }
 
   @Test func 요약과_엔트리가_없으면_작업_전체가_틀린다() throws {
     let out = TempPlace().root.appending(path: "out")
     try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
-    let checked = SourceReading.check(out: out, meta: meta(pages: 2), math: nil)
-    #expect(checked.problems.count == 3)
+    let checked = SourceReading.check(out: out, sources: [meta(pages: 2)], math: nil)
+    // bundle.json, sources/<자료 id>.json, report.md, 엔트리
+    #expect(checked.problems.count == 4)
   }
 
   @Test func 자료가_밝힌_학습_목표를_뽑고_없는_쪽은_틀린다() throws {
     let out = TempPlace().root.appending(path: "out")
-    try write(out, "report.md", "# Laws of indices\n\n지수 법칙 자료다.\n")
+    try basics(
+      out,
+      sources: [
+        slides: [
+          "title": "Laws of indices", "kind": "lecture slides", "assessment": false, "skipped_pages": [["page": 1, "reason": "학습 목표"]],
+          "outcomes": [["text": "Can multiply powers with the same base.", "pages": [1]], ["text": "Can explain the zero exponent.", "pages": [9]]],
+        ]
+      ])
     try write(
       out, "entries/good.json",
       ["slug": "laws-of-indices", "title": "Laws of indices", "body": "Add exponents: \\(a^m a^n = a^{m+n}\\).", "claims": [["text": "\\(a^m a^n = a^{m+n}\\)", "pages": [2]]]])
-    try write(
-      out, "source.json",
-      ["title": "Laws of indices", "kind": "lecture slides", "assessment": false, "skipped_pages": [["page": 1, "reason": "학습 목표"]],
-       "outcomes": [["text": "Can multiply powers with the same base.", "pages": [1]], ["text": "Can explain the zero exponent.", "pages": [9]]]])
-    let checked = SourceReading.check(out: out, meta: meta(pages: 3), math: nil)
-    #expect(checked.note?.outcomes.map(\.text) == ["Can multiply powers with the same base.", "Can explain the zero exponent."])
-    #expect(checked.problems == ["out/source.json outcomes[1].pages: 없는 쪽입니다 (9)"])
+    let checked = SourceReading.check(out: out, sources: [meta(pages: 3)], math: nil)
+    #expect(checked.notes[slides]?.outcomes.map(\.text) == ["Can multiply powers with the same base.", "Can explain the zero exponent."])
+    #expect(checked.problems == ["out/sources/\(slides).json outcomes[1].pages: 없는 쪽입니다 (9)"])
   }
 
   @Test func 개념이_없는_자료는_모든_쪽을_까닭과_함께_건너뛰면_엔트리가_없어도_된다() throws {
     let out = TempPlace().root.appending(path: "out")
-    try write(out, "report.md", "# Unit plan\n\n단원 계획서다. 수업 주제의 이름만 있다.\n")
-    try write(out, "source.json", ["title": "Unit plan", "kind": "unit plan", "assessment": false, "skipped_pages": [["page": 1, "reason": "단원 계획"]]])
-    #expect(SourceReading.check(out: out, meta: meta(pages: 2), math: nil).problems.count == 1)
-    try write(
-      out, "source.json",
-      ["title": "Unit plan", "kind": "unit plan", "assessment": false, "skipped_pages": [["page": 1, "reason": "단원 계획"], ["page": 2, "reason": "평가 일정"]]])
-    #expect(SourceReading.check(out: out, meta: meta(pages: 2), math: nil).problems.isEmpty)
+    try basics(out, sources: [slides: ["title": "Unit plan", "kind": "unit plan", "assessment": false, "skipped_pages": [["page": 1, "reason": "단원 계획"]]]])
+    #expect(SourceReading.check(out: out, sources: [meta(pages: 2)], math: nil).problems.count == 1)
+    try basics(
+      out, sources: [slides: ["title": "Unit plan", "kind": "unit plan", "assessment": false, "skipped_pages": [["page": 1, "reason": "단원 계획"], ["page": 2, "reason": "평가 일정"]]]])
+    #expect(SourceReading.check(out: out, sources: [meta(pages: 2)], math: nil).problems.isEmpty)
   }
 
   @Test func 읽은_쪽을_세고_이어_채운_묶음은_마지막_쪽으로_센다() {
@@ -162,7 +220,7 @@ extension URL {
 @Suite struct CurationCheckTests {
   func entry(_ id: String, refs: [String]) -> Entry {
     Entry(
-      id: id, subject: "math", item: nil, itemProposed: "Exponents", title: "T", source: "20261017-aaaabbbb", pages: [1],
+      id: id, subject: "math", item: nil, itemProposed: "Exponents", title: "T", sources: [EntrySource(source: "20261017-aaaabbbb", pages: [1])],
       claims: [EntryClaim(text: "c", src: refs)], symbols: [], examples: [], misconceptions: [], body: "b", recorded: "", provenance: YAMLMap([]))
   }
 
@@ -243,7 +301,7 @@ extension CurationCheckTests {
     try t.data.initialize(app: testApp)
     // 기존 개념 k01 에 들어 있던 엔트리
     let old = Entry(
-      id: "math/unplaced/old", subject: "math", item: nil, itemProposed: nil, title: "Old", source: "20261010-11112222", pages: [3],
+      id: "math/unplaced/old", subject: "math", item: nil, itemProposed: nil, title: "Old", sources: [EntrySource(source: "20261010-11112222", pages: [3])],
       claims: [EntryClaim(text: "x", src: ["20261010-11112222#p3"])], symbols: [], examples: [], misconceptions: [], body: "b", recorded: "", provenance: YAMLMap([]))
     try FileOps.write(old.markdown, to: t.data.entryFile(old.id))
     var k01 = existing()
@@ -483,12 +541,15 @@ extension CurationCheckTests {
     emit({"type": "system", "subtype": "init", "session_id": "fake"})
     req = read("request.md")
     if "# 자료 읽기 요청" in req:
-        for p in sorted(glob.glob(cwd + "/input/pages/*.png")): tool(p)
-        out("source.json", json.dumps({"title": "Laws of indices", "kind": "lecture slides", "assessment": False, "skipped_pages": [],
-            "outcomes": [{"text": "Can multiply powers with the same base and explain why the exponents add.", "pages": [1]}]}))
+        ids = sorted(os.listdir(cwd + "/input/sources"))
+        for p in sorted(glob.glob(cwd + "/input/sources/*/pages/*.png")): tool(p)
+        out("bundle.json", json.dumps({"title": "Laws of indices"}))
+        for i in ids:
+            out("sources/" + i + ".json", json.dumps({"title": "Laws of indices", "kind": "lecture slides", "assessment": False, "skipped_pages": [],
+                "outcomes": [{"text": "Can multiply powers with the same base and explain why the exponents add.", "pages": [1]}]}))
         out("entries/laws-of-indices.json", json.dumps({"slug": "laws-of-indices", "title": "Laws of indices", "item": "Exponents",
             "body": "When you multiply powers with the same base, add the exponents: \\(a^m a^n = a^{m+n}\\).",
-            "claims": [{"text": "\\(a^m a^n = a^{m+n}\\)", "pages": [1]}], "pages": [1, 2]}))
+            "claims": [{"text": "\\(a^m a^n = a^{m+n}\\)", "source": ids[0], "pages": [1]}], "pages": {ids[0]: [1, 2]}}))
         out("report.md", "# Laws of indices\n\n## 무엇인가\n지수 법칙 수업 자료다.\n")
     elif "# 개념 정리 요청" in req:
         keys = re.findall(r"^\| (e\d+) \|", req, re.M)
@@ -576,8 +637,13 @@ extension CurationCheckTests {
     #expect(runs.map { $0["kind"]?.stringValue ?? "" } == ["source-intake", "source-reading", "concept-curation", "page-build", "translation", "facets"])
     #expect(runs.allSatisfy { $0["result"]?.stringValue == "done" }, "\(runs.map { $0["error"]?.stringValue ?? "" })")
 
+    // 자료 하나가 묶음 하나가 되고, 묶음 읽기가 이름을 짓는다
+    let bundles = BundleStore.all(t.data)
+    #expect(bundles.count == 1 && bundles.first?.implicit == false)
+    #expect(bundles.first?.title == "Laws of indices")
     let entries = EntryStore.all(t.data, subject: "extended-math")
     #expect(entries.map(\.id) == ["extended-math/unplaced/laws-of-indices"])
+    #expect(entries.first?.sources.first?.pages == [1, 2])
     #expect(entries.first?.claims.first?.src.first?.hasSuffix("#p1") == true)
     let concepts = ConceptStore.all(t.data, subject: "extended-math")
     let concept = try #require(concepts.first)
@@ -685,9 +751,9 @@ extension CurationCheckTests {
     try t.data.initialize(app: testApp)
     let m = JobManager(data: t.data, folders: t.folders)
     m.hold(.update)
-    let a = try await m.submit(config: testConfig) { try ConceptCuration.prepare(subject: "math", $0) }
-    let b = try await m.submit(config: testConfig) { try ConceptCuration.prepare(subject: "math", $0) }
-    let c = try await m.submit(config: testConfig) { try ConceptCuration.prepare(subject: "physics", $0) }
+    let a = try await m.submit(config: testConfig) { try ConceptCuration.prepare(bundle: "20261019-aaaabbbb", $0) }
+    let b = try await m.submit(config: testConfig) { try ConceptCuration.prepare(bundle: "20261019-aaaabbbb", $0) }
+    let c = try await m.submit(config: testConfig) { try ConceptCuration.prepare(bundle: "20261019-ccccdddd", $0) }
     #expect(a == b)
     #expect(a != c)
     #expect(m.queue.count == 2)

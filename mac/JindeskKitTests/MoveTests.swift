@@ -39,8 +39,9 @@ import Testing
     let request = IntakeRequest(files: [pdf], labels: SourceLabels(grade: "MYP 5", subject: "Extended Math", level: nil))
     let id = try await m.submit(config: testConfig) { try SourceIntake.prepare(request, $0) }
     _ = await m.waitForEnd(id)
+    let sid = try #require(SourceLibrary.load(t.data).sources.first?.id)
     let entry = Entry(
-      id: "extended-math/unplaced/logs", subject: "extended-math", item: nil, itemProposed: "Logs", title: "Logs", source: "20261017-aaaabbbb", pages: [1],
+      id: "extended-math/unplaced/logs", subject: "extended-math", item: nil, itemProposed: "Logs", title: "Logs", sources: [EntrySource(source: sid, pages: [1])],
       claims: [], symbols: [], examples: [], misconceptions: [], body: "b", recorded: "", provenance: YAMLMap([]))
     try FileOps.writeNew(entry.markdown, to: t.data.entryFile(entry.id))
     var c = try concept(t.data, "extended-math/unplaced/logs")
@@ -55,7 +56,8 @@ import Testing
     #expect(moved.first?.occurrences.first?.entry == "mathematics/unplaced/logs")
     #expect(ConceptStore.all(t.data, subject: "extended-math").isEmpty)
     // 개념 정리가 이 엔트리를 다시 고르지 않는다
-    #expect(ConceptCuration.pending(t.data, subject: "mathematics").isEmpty)
+    let bundle = try #require(BundleStore.bundle(of: sid, in: t.data))
+    #expect(ConceptCuration.pending(t.data, bundle: bundle).isEmpty)
   }
 }
 

@@ -140,7 +140,8 @@ public enum DataRepo {
 
   // MARK: - 연결
 
-  // 리포를 연결한다. 빈 리포면 데이터 폴더를 새로 만들어 첫 커밋을 올리고, Jindesk 리포면 클론한다.
+  // 리포를 연결한다. 리포는 마지막 상태로 판단한다 (DECISIONS.md 37): 마지막 상태를 받은 뒤 Jindesk 데이터 폴더이면 열고,
+  // 비어 있으면(리포 기본 파일만 있는 것 포함) 그 자리에 데이터 폴더를 새로 만들어 올린다. 다른 파일이 있으면 연결하지 않는다.
   // 로컬 위치는 없거나 빈 폴더, 또는 이미 그 리포의 클론이어야 한다.
   public static func connect(_ link: RepoLink, token: String?, app: AppVersion, git: String? = nil) async throws -> Connected {
     guard !link.url.isEmpty else { throw DataRepoError("리포 주소가 비어 있습니다") }
@@ -149,8 +150,13 @@ public enum DataRepo {
       guard let origin = await remote(data, git: git), RepoLink.same(origin, link.url) else {
         throw DataRepoError("로컬 위치가 다른 리포의 클론입니다. 없거나 빈 폴더를 넣습니다")
       }
-      guard data.isInitialized else { throw DataRepoError("로컬 위치의 클론이 Jindesk 데이터 폴더가 아닙니다") }
-      return .opened
+      try await catchUp(data, token: token, git: git)
+      if data.isInitialized { return .opened }
+      let foreign = foreignFiles(data.url)
+      guard foreign.isEmpty else {
+        throw DataRepoError("로컬 위치의 클론에 Jindesk 데이터가 아닌 파일이 있습니다: \(foreign.prefix(5).joined(separator: ", "))")
+      }
+      return try await create(data, link: link, token: token, app: app, git: git)
     }
     if FileOps.exists(data.url) && FileOps.list(data.url).contains(where: { $0 != ".DS_Store" }) {
       throw DataRepoError("로컬 위치가 비어 있지 않습니다. 없거나 빈 폴더를 넣습니다")
@@ -163,13 +169,13 @@ public enum DataRepo {
     let heads = try await outside.run(["ls-remote", "--heads", link.url])
     guard heads.succeeded else { throw DataRepoError("리포에 닿지 못했습니다. 주소와 토큰을 봅니다 — \(heads.summary)") }
 
+    // 커밋이 전혀 없는 리포: 받을 것이 없으니 git init 과 원격 연결부터 한다
     if heads.trimmed.isEmpty {
-      try data.initialize(app: app)
+      try FileOps.makeDirectory(data.url)
       guard let g = Git(data.path, executable: git, token: token, timeout: .seconds(60)) else { throw DataRepoError("git 을 찾지 못했습니다") }
       _ = try await g.check(["init", "-q", "-b", "main"])
       _ = try await g.check(["remote", "add", "origin", link.url])
-      let first = await sync(data, link: link, token: token, message: "처음 연결", git: git)
-      return .created(error: first.error)
+      return try await create(data, link: link, token: token, app: app, git: git)
     }
 
     let made = !FileOps.exists(data.url)
@@ -180,11 +186,65 @@ public enum DataRepo {
       if made { FileOps.remove(data.url) } else { clearContents(data.url) }
       throw DataRepoError("클론하지 못했습니다 — \(clone.summary)")
     }
-    guard data.isInitialized else {
+    if data.isInitialized { return .cloned }
+    // 마지막 상태에 Jindesk 데이터가 없다. 비어 있으면 그 위에 새로 만든다
+    let foreign = foreignFiles(data.url)
+    guard foreign.isEmpty else {
       if made { FileOps.remove(data.url) } else { clearContents(data.url) }
-      throw DataRepoError("Jindesk 데이터 리포가 아닙니다(meta/schema.yaml 이 없습니다). 빈 리포나 Jindesk 데이터 리포를 연결합니다")
+      throw DataRepoError(
+        "Jindesk 데이터 리포가 아닙니다. 마지막 상태에 meta/schema.yaml 이 없고 다른 파일이 있습니다: \(foreign.prefix(5).joined(separator: ", ")). 파일을 모두 지운 리포나 Jindesk 데이터 리포를 연결합니다")
     }
-    return .cloned
+    return try await create(data, link: link, token: token, app: app, git: git)
+  }
+
+  // 리포의 클론 자리에 데이터 폴더를 새로 만들어 커밋하고 올린다
+  static func create(_ data: DataFolder, link: RepoLink, token: String?, app: AppVersion, git: String?) async throws -> Connected {
+    try data.initialize(app: app)
+    let first = await sync(data, link: link, token: token, message: "처음 연결", git: git)
+    return .created(error: first.error)
+  }
+
+  // 리포를 만들 때 들어가는 파일. 이것만 있으면 빈 리포로 본다
+  static func isRepoDefault(_ name: String) -> Bool {
+    name.hasPrefix("README") || name.hasPrefix("LICENSE") || [".gitignore", ".gitattributes", ".DS_Store"].contains(name)
+  }
+
+  // 로컬 위치의 맨 위에서 .git 과 리포 기본 파일이 아닌 것. 파일이 하나도 없는 폴더(git 이 추적하지 않아 남은 빈 폴더)는 뺀다.
+  static func foreignFiles(_ url: URL) -> [String] {
+    FileOps.list(url).filter { name in
+      guard name != ".git" && !isRepoDefault(name) else { return false }
+      let item = url.appending(path: name)
+      return !FileOps.isDirectory(item) || FileOps.files(under: item).contains { !$0.hasSuffix(".DS_Store") }
+    }.sorted()
+  }
+
+  // 클론을 원격의 마지막 상태로 맞춘다. 로컬에 커밋이 없으면(빈 리포를 클론한 폴더) 원격 브랜치를 그대로 받고,
+  // 뒤처져 있으면 빨리 감기로 받는다. 원격에 브랜치가 없거나 로컬이 앞서 있으면 그대로 둔다.
+  static func catchUp(_ data: DataFolder, token: String?, git: String?) async throws {
+    guard let g = Git(data.path, executable: git, token: token, timeout: .seconds(120)) else { throw DataRepoError("git 을 찾지 못했습니다") }
+    let fetch = try await g.run(["fetch", "-q", "origin"])
+    guard fetch.succeeded else { throw DataRepoError("리포에 닿지 못했습니다. 주소와 토큰을 봅니다 — \(fetch.summary)") }
+    var branch = try await g.check(["symbolic-ref", "--short", "HEAD"])
+    let ours = try await g.run(["rev-parse", "-q", "--verify", "HEAD"])
+    if !ours.succeeded {
+      // 커밋이 없는 클론은 원격의 기본 브랜치를 따른다 (이 맥의 git 기본 브랜치 이름이 다를 수 있다)
+      let symref = try await g.run(["ls-remote", "--symref", "origin", "HEAD"])
+      if let line = symref.stdoutText.split(separator: "\n").first(where: { $0.hasPrefix("ref: refs/heads/") }),
+        let name = line.dropFirst("ref: refs/heads/".count).split(separator: "\t").first
+      {
+        branch = String(name)
+      }
+    }
+    let theirs = try await g.run(["rev-parse", "-q", "--verify", "refs/remotes/origin/\(branch)"])
+    guard theirs.succeeded else { return }
+    if !ours.succeeded {
+      let r = try await g.run(["checkout", "-q", "-B", branch, "--track", "origin/\(branch)"])
+      guard r.succeeded else { throw DataRepoError("리포의 마지막 상태를 받지 못했습니다 — \(r.summary)") }
+      return
+    }
+    guard ours.trimmed != theirs.trimmed, try await g.run(["merge-base", "--is-ancestor", "HEAD", theirs.trimmed]).succeeded else { return }
+    let r = try await g.run(["merge", "-q", "--ff-only", theirs.trimmed])
+    guard r.succeeded else { throw DataRepoError("리포의 마지막 상태를 받지 못했습니다 — \(r.summary)") }
   }
 
   // 클론하다 실패한 빈 폴더를 처음처럼 비운다

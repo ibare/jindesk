@@ -1,5 +1,6 @@
 // 관점 붙이기 (facets, JOBS.md). Assayer 의 기술 추출과 같은 모양이다. 관점은 고정이고, 값은 어휘로 맞춘다.
-// 1. 개념 여덟 개씩 에이전트가 관점을 붙인다 (웹 없음).
+// 1. 개념 여덟 개씩 에이전트가 관점을 붙이고, 한 장 요약과 공식으로 쓸 주장을 id 로 고른다 (웹 없음, DECISIONS.md 34).
+//    새 문장은 쓰지 않는다. 러너는 고른 id 가 그 개념의 주장인지 본다.
 // 2. 레퍼런스 찾기: 아직 찾지 않은 개념을 열두 개씩 묶어 새 에이전트가 대표 공개 자료를 셋까지 찾는다. 웹을 쓰는 곳은 여기뿐이다.
 //    러너는 https 주소이면서 그 에이전트의 이벤트 기록에서 WebFetch 가 성공한 주소만 받는다. 찾지 못한 개념은 빈 목록으로 둔다.
 import Foundation
@@ -7,7 +8,7 @@ import Foundation
 public enum Facets {
   static let batch = 8
   static let referenceBatch = 12
-  static let prompt = "input/request.md 의 개념들에 지침의 \"관점\"대로 관점을 붙여라. 개념은 input/concepts/ 에 있다. out/facets.json 을 쓴다."
+  static let prompt = "input/request.md 의 개념들에 지침의 \"관점\"대로 관점을 붙이고, 지침의 \"요약과 공식\"대로 주장을 골라라. 개념은 input/concepts/ 에 있다. out/facets.json 을 쓴다."
   static let referencePrompt =
     "input/request.md 의 개념들마다 지침의 \"레퍼런스 찾기\"대로 학생이 볼 만한 대표 공개 자료를 셋까지 찾아라. 웹 검색과 웹 조회를 쓴다. out/references.json 을 쓴다."
 
@@ -18,11 +19,11 @@ public enum Facets {
     }
   }
 
-  // 관점이 없거나 개념 원문이 바뀐 개념
+  // 관점이 없거나, 개념 원문이 바뀌었거나, 한 장 요약을 아직 고르지 않은 개념
   public static func pendingFacets(_ data: DataFolder, subject: String) -> [Concept] {
     ConceptStore.all(data, subject: subject).filter { c in
       let f = ConceptFacets.load(ConceptFolder(c.cid, in: data))
-      return f == nil || f?.from != ConceptStore.fileHash(data, id: c.cid)
+      return f == nil || f?.from != ConceptStore.fileHash(data, id: c.cid) || f?.summary == nil
     }
   }
 
@@ -75,11 +76,12 @@ public enum Facets {
     let options = AgentStep.options(ctx, dirs, instructions: instructionsFile, prompt: prompt, events: "facets")
     let result = try await AgentStep.run(options, ctx, label: "관점 붙이기")
     await ctx.setPhase("checking")
-    var checked = check(out: dirs.out, keys: concepts.indices.map { String(format: "k%02d", $0 + 1) })
+    let claims = Dictionary(uniqueKeysWithValues: concepts.enumerated().map { i, c in (String(format: "k%02d", i + 1), c) })
+    var checked = check(out: dirs.out, keys: concepts.indices.map { String(format: "k%02d", $0 + 1) }, concepts: claims)
     if !checked.problems.isEmpty {
       await ctx.setPhase("fixing")
       try await AgentStep.fix(options, session: result.sessionID, problems: checked.problems, ctx: ctx, label: "관점 붙이기", events: "facets-fix")
-      checked = check(out: dirs.out, keys: concepts.indices.map { String(format: "k%02d", $0 + 1) })
+      checked = check(out: dirs.out, keys: concepts.indices.map { String(format: "k%02d", $0 + 1) }, concepts: claims)
     }
     guard checked.problems.isEmpty else { throw ToolError("관점 붙이기 검사 실패: " + checked.problems.prefix(5).joined(separator: " · ")) }
     await ctx.setPhase("finalizing")
@@ -91,7 +93,8 @@ public enum Facets {
       let facets = ConceptFacets(
         concept: c.id, from: ConceptStore.fileHash(ctx.data, id: c.cid) ?? "", item: c.item, level: c.level ?? syllabus?.item(c.item)?.level,
         commandTerms: f.commandTerms, keyConcepts: f.keyConcepts, relatedConcepts: v.merge(f.related, subject: subject, nos: false),
-        globalContexts: f.globalContexts, nos: v.merge(f.nos, subject: subject, nos: true), tok: f.tok, provenance: prov)
+        globalContexts: f.globalContexts, nos: v.merge(f.nos, subject: subject, nos: true), tok: f.tok, summary: f.summary, formulas: f.formulas,
+        provenance: prov)
       try facets.write(folder)
     }
     try v.write(ctx.data)
@@ -106,6 +109,8 @@ public enum Facets {
     var globalContexts: [String] = []
     var nos: [String] = []
     var tok: [String] = []
+    var summary: [String] = []
+    var formulas: [String] = []
   }
 
   struct Checked: Sendable {
@@ -113,7 +118,8 @@ public enum Facets {
     var problems: [String] = []
   }
 
-  static func check(out: URL, keys: [String]) -> Checked {
+  // concepts: 키 → 그 개념 (고른 주장 id 를 맞춰 본다). 주지 않으면 요약과 공식을 보지 않는다.
+  static func check(out: URL, keys: [String], concepts: [String: Concept] = [:]) -> Checked {
     var c = Checked()
     let v: JSONValue
     switch AgentJSON.read(out.appending(path: "facets.json"), label: "out/facets.json") {
@@ -148,9 +154,39 @@ public enum Facets {
       if x.related.count > 4 { c.problems.append("\(key).related_concepts: 4개까지다") }
       if x.nos.count > 2 { c.problems.append("\(key).nos: 2개까지다") }
       for t in x.related + x.nos { c.problems += TextChecks.englishProblems(t, field: "\(key)") }
+      if let concept = concepts[key] {
+        x.summary = picks(f["summary"], concept, field: "\(key).summary", range: summaryRange(concept), problems: &c.problems)
+        x.formulas = picks(f["formulas"], concept, field: "\(key).formulas", range: 0...4, problems: &c.problems)
+      }
       c.values[key] = x
     }
     return c
+  }
+
+  // 한 장 요약으로 고를 수: 3~6개. 서로 다른 주장이 3개보다 적으면 그만큼
+  static func summaryRange(_ concept: Concept) -> ClosedRange<Int> {
+    let distinct = Set(concept.claimRefs.map { TexText.key($0.claim.text) }).count
+    return distinct >= 3 ? 3...6 : distinct...distinct
+  }
+
+  // 고른 주장 id: 그 개념의 주장이어야 하고, 같은 id 나 같은 글을 두 번 고르지 않는다
+  static func picks(_ raw: JSONValue?, _ concept: Concept, field: String, range: ClosedRange<Int>, problems: inout [String]) -> [String] {
+    let refs = AgentJSON.strings(raw)
+    var out: [String] = []
+    var texts: Set<String> = []
+    for ref in refs {
+      guard let claim = concept.claim(ref) else {
+        problems.append("\(field): 그 개념의 주장이 아닙니다 (\(ref)). input/concepts/ 의 단위 id.주장 id 로 고른다")
+        continue
+      }
+      guard !out.contains(ref), texts.insert(TexText.key(claim.text)).inserted else {
+        problems.append("\(field): 같은 주장을 두 번 골랐습니다 (\(ref))")
+        continue
+      }
+      out.append(ref)
+    }
+    if !range.contains(refs.count) { problems.append("\(field): \(range.lowerBound)~\(range.upperBound)개를 고른다 (\(refs.count)개)") }
+    return out
   }
 
   // MARK: - 레퍼런스 찾기

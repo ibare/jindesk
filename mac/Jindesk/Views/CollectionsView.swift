@@ -154,301 +154,179 @@ struct SourceCard: View {
   }()
 }
 
-// 모아 보기 (DECISIONS.md 32): 연결(과목 사이 연결), 자료, 문제(확인 문제), 메모
+// 모아 보기 (DECISIONS.md 34): 위에 범주 칩 세 줄(사전, 모음, 내 것)과 과목 거르기. 목록은 첫 글자로 묶고 오른쪽에 A–Z 인덱스를 둔다.
+// 고른 항목은 내용 칸에 연다 (메모와 자료는 그 개념과 자료).
 struct CollectionsView: View {
   @Environment(AppModel.self) private var model
 
   var body: some View {
-    @Bindable var model = model
+    let items = model.compendium(model.collectionsTab, subject: model.collectionsSubject)
+    let sections = AlphaIndex.sections(items) { $0.index }
     VStack(spacing: 0) {
-      Picker("", selection: $model.collectionsTab) {
-        ForEach(CollectionsTab.allCases) { Text($0.label).tag($0) }
-      }
-      .pickerStyle(.segmented)
-      .labelsHidden()
-      .padding(.horizontal, 12)
-      .padding(.top, 10)
-      .padding(.bottom, 4)
-      switch model.collectionsTab {
-      case .links: LinksList()
-      case .sources: SourcesList()
-      case .checks: ChecksList()
-      case .memos: MemosList()
-      }
-    }
-  }
-}
-
-// 목록 위의 한 줄: 수와 거르기·차례
-struct ListHeadline<Trailing: View>: View {
-  let text: String
-  @ViewBuilder var trailing: Trailing
-
-  var body: some View {
-    HStack {
-      Text(text).font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit()
-      Spacer(minLength: 0)
-      trailing
-    }
-    .padding(.horizontal, 10)
-    .padding(.vertical, 4)
-  }
-}
-
-// 확인 문제: 개념마다 묶어 배우는 순서로. 답을 목록에서 펼쳐 보고, 그 학습 페이지를 연다.
-struct ChecksList: View {
-  @Environment(AppModel.self) private var model
-  // 거를 과목 (nil 이면 모든 과목)
-  @State private var subject: String?
-  @State private var open: Set<String> = []
-
-  var body: some View {
-    let all = model.allChecks()
-    let checks = all.filter { subject == nil || $0.concept.subject == subject }
-    let groups = Self.groups(checks)
-    if all.isEmpty {
-      EmptyList(icon: "checklist", title: "아직 확인 문제가 없어요", detail: "학습 페이지가 만들어지면 그 페이지의 확인 문제가 개념마다 여기에 모입니다.")
-    } else {
-      ScrollView {
-        LazyVStack(alignment: .leading, spacing: 0) {
-          ListHeadline(text: "확인 문제 \(checks.count) · 개념 \(groups.count)") {
-            Menu(model.library.subjects.first { $0.id == subject }?.name ?? "모든 과목") {
-              Button("모든 과목") { subject = nil }
-              Divider()
-              ForEach(model.library.subjects) { s in Button(s.name) { subject = s.id } }
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .font(.system(size: 12))
-          }
-          ForEach(groups, id: \.concept.id) { group in
-            CheckGroupHeader(concept: group.concept, count: group.checks.count)
-            ForEach(Array(group.checks.enumerated()), id: \.element.id) { i, check in
-              CheckRow(number: i + 1, check: check, open: open.contains(check.id)) {
-                if open.contains(check.id) { open.remove(check.id) } else { open.insert(check.id) }
-              }
-            }
-          }
+      CategoryChips().padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 8)
+      Divider()
+      HStack {
+        Text(Self.headline(model.collectionsTab, items)).font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit()
+        Spacer(minLength: 0)
+        Menu(model.library.subjects.first { $0.id == model.collectionsSubject }?.name ?? "모든 과목") {
+          Button("모든 과목") { model.collectionsSubject = nil }
+          Divider()
+          ForEach(model.library.subjects) { s in Button(s.name) { model.collectionsSubject = s.id } }
         }
-        .padding(.horizontal, 8)
-        .padding(.bottom, 16)
-      }
-    }
-  }
-
-  // 받은 차례(과목끼리, 배우는 순서)를 지키며 개념마다 묶는다
-  static func groups(_ checks: [AppModel.PageCheck]) -> [(concept: Concept, checks: [AppModel.PageCheck])] {
-    var out: [(concept: Concept, checks: [AppModel.PageCheck])] = []
-    for c in checks {
-      if out.last?.concept.id == c.concept.id { out[out.count - 1].checks.append(c) } else { out.append((c.concept, [c])) }
-    }
-    return out
-  }
-}
-
-struct CheckGroupHeader: View {
-  @Environment(AppModel.self) private var model
-  let concept: Concept
-  let count: Int
-
-  var body: some View {
-    let ko = model.pageState(concept).titleKo.map { TitleParts($0).head }
-    let subject = model.library.subjects.first { $0.id == concept.subject }?.name
-    HStack(alignment: .firstTextBaseline, spacing: 8) {
-      VStack(alignment: .leading, spacing: 1) {
-        Text(TitleParts(concept.title).head).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-        Text([ko, subject].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
-      }
-      Spacer(minLength: 4)
-      Text("\(count)문제").font(.system(size: 11)).foregroundStyle(.tertiary).monospacedDigit()
-    }
-    .padding(.horizontal, 10)
-    .padding(.top, 16)
-    .padding(.bottom, 4)
-  }
-}
-
-struct CheckRow: View {
-  @Environment(AppModel.self) private var model
-  let number: Int
-  let check: AppModel.PageCheck
-  let open: Bool
-  let toggle: () -> Void
-  @State private var hovering = false
-
-  var body: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 8) {
-      Text("\(number)").font(.system(size: 12)).foregroundStyle(.tertiary).monospacedDigit().frame(width: 18)
-      VStack(alignment: .leading, spacing: 6) {
-        Text(TexText.display(check.question)).font(.system(size: 13)).lineSpacing(2).lineLimit(open ? nil : 3)
-          .fixedSize(horizontal: false, vertical: true)
-        if open, let answer = check.answer {
-          VStack(alignment: .leading, spacing: 3) {
-            Text("답").font(.system(size: 10.5, weight: .bold)).foregroundStyle(Color.accentColor)
-            Text(TexText.display(answer)).font(.system(size: 12.5)).lineSpacing(2).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
-          }
-          .padding(.horizontal, 10)
-          .padding(.vertical, 8)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .background(RoundedRectangle(cornerRadius: 8).fill(Color.accentColor.opacity(0.1)))
-        }
-        HStack(spacing: 14) {
-          if check.answer != nil { Button(open ? "답 숨기기" : "답 보기", action: toggle).buttonStyle(.link) }
-          Button("페이지에서 보기") { model.selection = .concept(check.concept.id) }.buttonStyle(.plain).foregroundStyle(.secondary)
-        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
         .font(.system(size: 12))
       }
-    }
-    .padding(.horizontal, 10)
-    .padding(.vertical, 8)
-    .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(hovering ? 0.05 : 0)))
-    .onHover { hovering = $0 }
-  }
-}
-
-// 원래 자료: 넣은 날 순이나 이름 순
-struct SourcesList: View {
-  @Environment(AppModel.self) private var model
-  @State private var byName = false
-
-  var body: some View {
-    let sources = byName
-      ? model.library.sources.sorted { SourceRow.title($0).localizedStandardCompare(SourceRow.title($1)) == .orderedAscending }
-      : model.library.sources.sorted { $0.meta.received > $1.meta.received }
-    if sources.isEmpty {
-      EmptyList(icon: "doc", title: "아직 자료가 없어요", detail: "학교에서 받은 자료를 넣으면 여기에 모입니다.")
-    } else {
-      let checks = Dictionary(grouping: model.allChecks(), by: \.concept.id).mapValues(\.count)
-      ScrollView {
-        LazyVStack(alignment: .leading, spacing: 2) {
-          ListHeadline(text: "자료 \(sources.count) · \(sources.map(\.meta.pages).reduce(0, +))쪽") {
-            Menu(byName ? "이름 순" : "넣은 날 순") {
-              Button("넣은 날 순") { byName = false }
-              Button("이름 순") { byName = true }
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .font(.system(size: 12))
-          }
-          ForEach(sources) { source in
-            let concepts = model.concepts(from: source.id)
-            Button {
-              model.selection = .source(source.id)
-            } label: {
-              HStack(alignment: .top, spacing: 10) {
-                SourceThumb()
-                VStack(alignment: .leading, spacing: 3) {
-                  Text(SourceRow.title(source)).font(.system(size: 13, weight: .semibold)).lineLimit(2).multilineTextAlignment(.leading)
-                  Text([model.subjectName(source), SourceRow.date(source.meta.received), "\(source.meta.pages)쪽"].compactMap { $0 }.joined(separator: " · "))
-                    .font(.system(size: 11.5)).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
-                  if concepts.isEmpty {
-                    ReadingBadge(source: source).font(.system(size: 11.5)).foregroundStyle(.secondary)
-                  } else {
-                    Text("개념 \(concepts.count) · 확인 문제 \(concepts.map { checks[$0.id] ?? 0 }.reduce(0, +))")
-                      .font(.system(size: 11.5)).foregroundStyle(.secondary).monospacedDigit()
+      .padding(.leading, 18)
+      .padding(.trailing, 12)
+      .padding(.vertical, 6)
+      if items.isEmpty {
+        EmptyList(icon: "square.stack", title: Self.emptyTitle(model.collectionsTab), detail: Self.emptyDetail(model.collectionsTab))
+      } else {
+        ScrollViewReader { proxy in
+          HStack(spacing: 0) {
+            ScrollView {
+              LazyVStack(alignment: .leading, spacing: 1, pinnedViews: [.sectionHeaders]) {
+                ForEach(sections, id: \.letter) { section in
+                  Section {
+                    ForEach(section.items) { CompendiumRow(item: $0) }
+                  } header: {
+                    Text(section.letter).font(.system(size: 11.5, weight: .bold)).foregroundStyle(Color.accentColor)
+                      .padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 2)
+                      .frame(maxWidth: .infinity, alignment: .leading)
+                      .background(.background)
+                      .id("letter:\(section.letter)")
                   }
                 }
-                Spacer(minLength: 0)
               }
-              .padding(8)
-              .rowHighlight(model.selection == .source(source.id))
+              .padding(.leading, 8)
+              .padding(.bottom, 16)
             }
-            .buttonStyle(.plain)
+            AlphaIndexBar(present: Set(sections.map(\.letter))) { l in withAnimation { proxy.scrollTo("letter:\(l)", anchor: .top) } }
           }
         }
-        .padding(.horizontal, 8)
-        .padding(.bottom, 16)
       }
+    }
+  }
+
+  static func headline(_ tab: CollectionsTab, _ items: [CompendiumItem]) -> String {
+    switch tab {
+    case .terms: "용어 \(items.count) · 영어 ↔ 한국어"
+    case .symbols: "기호 \(items.count)"
+    case .commandTerms: "Command terms \(items.count) · 숫자는 붙은 개념 수"
+    case .ib: "IB 맥락 \(items.count) · 숫자는 묶인 개념 수"
+    case .links: "과목 사이 연결 \(items.count)"
+    case .sources: "자료 \(items.count)"
+    default: "\(tab.label) \(items.count) · 개념 이름순"
+    }
+  }
+
+  static func emptyTitle(_ tab: CollectionsTab) -> String {
+    switch tab {
+    case .links: "아직 과목 사이 연결이 없어요"
+    case .memos: "아직 메모가 없어요"
+    case .sources: "아직 자료가 없어요"
+    default: "아직 \(tab.label)이 없어요"
+    }
+  }
+
+  static func emptyDetail(_ tab: CollectionsTab) -> String {
+    switch tab {
+    case .terms: "자료를 읽으면 영어 용어와 한국어 뜻이 여기에 모입니다."
+    case .symbols: "개념이 정리되면 그 개념의 기호표가 여기에 모입니다."
+    case .commandTerms, .ib, .formulas: "관점 붙이기가 끝나면 여기에 모입니다."
+    case .mistakes: "학습 페이지의 오개념 상자가 여기에 모입니다."
+    case .references: "관점 붙이기가 찾은 공개 자료가 여기에 모입니다."
+    case .links: "두 과목 이상에서 개념이 정리되면, 서로 이어지는 개념이 여기에 모입니다."
+    case .checks: "학습 페이지가 만들어지면 그 페이지의 확인 문제가 여기에 모입니다."
+    case .memos: "학습 페이지의 문단에 남긴 메모가 여기에 모입니다."
+    case .sources: "학교에서 받은 자료를 넣으면 여기에 모입니다."
     }
   }
 }
 
-// 과목 사이 연결
-struct LinksList: View {
+// 범주 칩 세 줄 (사전, 모음, 내 것)
+struct CategoryChips: View {
   @Environment(AppModel.self) private var model
 
   var body: some View {
-    let links = model.crossLinks()
-    if links.isEmpty {
-      EmptyList(icon: "link", title: "아직 과목 사이 연결이 없어요", detail: "두 과목 이상에서 개념이 정리되면, 서로 이어지는 개념이 여기에 모입니다.")
-    } else {
-      ScrollView {
-        LazyVStack(alignment: .leading, spacing: 2) {
-          ListHeadline(text: "연결 \(links.count)") { EmptyView() }
-          ForEach(links, id: \.id) { l in
-            VStack(alignment: .leading, spacing: 6) {
-              HStack(alignment: .top, spacing: 8) {
-                LinkEnd(concept: l.from)
-                Image(systemName: "arrow.left.and.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary).padding(.top, 3)
-                LinkEnd(concept: l.to)
+    VStack(alignment: .leading, spacing: 7) {
+      ForEach(CollectionsTab.groups, id: \.name) { group in
+        HStack(alignment: .top, spacing: 6) {
+          Text(group.name).font(.system(size: 11)).foregroundStyle(.secondary).frame(width: 30, alignment: .leading).padding(.top, 5)
+          FlowLayout(spacing: 6) {
+            ForEach(group.tabs) { tab in
+              let on = model.collectionsTab == tab
+              Button {
+                model.collectionsTab = tab
+              } label: {
+                Text(tab.label)
+                  .font(.system(size: 12.5, weight: .medium))
+                  .foregroundStyle(on ? Color.white : Color.primary)
+                  .padding(.horizontal, 10)
+                  .frame(height: 24)
+                  .background(Capsule().fill(on ? Color.accentColor : Color.clear))
+                  .overlay(Capsule().stroke(on ? Color.clear : Color.primary.opacity(0.22)))
+                  .contentShape(Capsule())
               }
-              Text(l.note).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+              .buttonStyle(.plain)
+              .accessibilityAddTraits(on ? .isSelected : [])
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
           }
         }
-        .padding(.horizontal, 8)
-        .padding(.bottom, 16)
       }
     }
   }
 }
 
-struct LinkEnd: View {
+struct CompendiumRow: View {
   @Environment(AppModel.self) private var model
-  let concept: Concept
+  let item: CompendiumItem
 
   var body: some View {
     Button {
-      model.selection = .concept(concept.id)
+      model.selection = item.open
     } label: {
-      VStack(alignment: .leading, spacing: 1) {
-        Text(TitleParts(concept.title).head).font(.system(size: 12.5, weight: .semibold)).lineLimit(2).multilineTextAlignment(.leading)
-        Text(model.library.subjects.first { $0.id == concept.subject }?.name ?? concept.subject).font(.system(size: 11)).foregroundStyle(.secondary)
+      HStack(alignment: .firstTextBaseline, spacing: 10) {
+        VStack(alignment: .leading, spacing: 1) {
+          Text(item.title)
+            .font(item.symbol ? .system(size: 15, design: .serif).italic() : .system(size: 13, weight: .semibold))
+            .lineLimit(2)
+          if !item.sub.isEmpty { Text(item.sub).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        if let n = item.count { Text("\(n)").font(.system(size: 11.5)).foregroundStyle(.secondary).monospacedDigit() }
       }
-      .padding(.horizontal, 6)
-      .padding(.vertical, 4)
-      .rowHighlight(model.selection == .concept(concept.id))
+      .padding(.horizontal, 10)
+      .padding(.vertical, 5)
+      .rowHighlight(model.selection == item.open)
     }
     .buttonStyle(.plain)
-    .frame(maxWidth: .infinity, alignment: .leading)
   }
 }
 
-// 메모 (학습 페이지에 남긴 코멘트). 예전에 남긴 질문과 이상해요도 함께 보인다(DECISIONS.md 30).
-struct MemosList: View {
-  @Environment(AppModel.self) private var model
+// 오른쪽 A–Z 인덱스. 항목이 있는 글자만 누를 수 있다.
+struct AlphaIndexBar: View {
+  let present: Set<String>
+  let jump: (String) -> Void
 
   var body: some View {
-    let comments = model.allComments()
-    if comments.isEmpty {
-      EmptyList(icon: "pencil", title: "아직 메모가 없어요", detail: "학습 페이지의 문단에 남긴 메모가 여기에 모입니다.")
-    } else {
-      ScrollView {
-        LazyVStack(alignment: .leading, spacing: 2) {
-          ListHeadline(text: "메모 \(comments.count)") { EmptyView() }
-          ForEach(comments) { c in
-            let concept = c.anchor.flatMap { model.concept($0.concept) }
-            Button {
-              if let concept { model.selection = .concept(concept.id) }
-            } label: {
-              VStack(alignment: .leading, spacing: 4) {
-                Text(TexText.display(c.text ?? "")).font(.system(size: 13)).lineLimit(3).multilineTextAlignment(.leading)
-                Text([c.kind == .memo ? nil : c.kind.label, concept.map { TitleParts($0.title).head }, String(c.at.prefix(10))].compactMap { $0 }.joined(separator: " · "))
-                  .font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
-              }
-              .frame(maxWidth: .infinity, alignment: .leading)
-              .padding(.horizontal, 10)
-              .padding(.vertical, 8)
-              .rowHighlight(concept.map { model.selection == .concept($0.id) } ?? false)
-            }
-            .buttonStyle(.plain)
-          }
+    VStack(spacing: 0) {
+      ForEach(AlphaIndex.letters, id: \.self) { l in
+        let on = present.contains(l)
+        Button {
+          jump(l)
+        } label: {
+          Text(l).font(.system(size: 9.5, weight: .bold)).foregroundStyle(on ? Color.accentColor : Color.secondary.opacity(0.45))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 8)
-        .padding(.bottom, 16)
+        .buttonStyle(.plain)
+        .disabled(!on)
+        .accessibilityLabel("\(l) 로 가기")
       }
     }
+    .frame(width: 22)
+    .padding(.vertical, 6)
   }
 }

@@ -34,6 +34,7 @@ struct BrokenStep: MigrationStep {
   func sample() throws -> TempPlace {
     let t = TempPlace()
     try t.data.initialize(app: testApp)
+    try SchemaFile(schema: 1, created: "2026-10-01T00:00:00+04:00", lastOpenedBy: testApp, history: []).write(to: t.data)
     try t.write("library/glossary.yaml", "kind: \"glossary\"\nv: 1\nterms:\n  - { en: \"secant\", ko: \"할선\" }\n")
     try t.write("learner/comments.jsonl", "{\"v\":1,\"id\":\"cm-1\",\"text\":\"중력이 계속 당기는데 왜?\"}\n")
     try t.write("records/runs/2026-10.jsonl", "{\"v\":1,\"id\":\"20261016-1000-a\"}\n")
@@ -48,7 +49,7 @@ struct BrokenStep: MigrationStep {
   @Test func 데이터_폴더의_상태를_본다() throws {
     let t = try sample()
     #expect(migrator(t, []).state() == .older(1))
-    #expect(Migrator(data: t.data, folders: t.folders, app: testApp).state() == .current)
+    #expect(Migrator(data: t.data, folders: t.folders, app: testApp, target: 1).state() == .current)
     #expect(Migrator(data: t.data, folders: t.folders, app: testApp, target: 0).state() == .newer(1))
     #expect(Migrator(data: DataFolder(t.root.appending(path: "없음")), folders: t.folders, app: testApp).state() == .uninitialized)
   }
@@ -128,7 +129,8 @@ struct BrokenStep: MigrationStep {
   }
 
   @Test func 지금_스키마면_할_것이_없다고_알린다() async throws {
-    let t = try sample()
+    let t = TempPlace()
+    try t.data.initialize(app: testApp)
     let report = try await MigrationCheck.run(source: t.data.url, folders: t.folders, app: testApp)
     #expect(report.from == nil && report.issues.isEmpty && !report.notes.isEmpty)
   }

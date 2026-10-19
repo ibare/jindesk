@@ -168,7 +168,7 @@ import Testing
 }
 
 @Suite struct SchemaTests {
-  let set = SchemaSet(repoRoot.appending(path: "schemas/1"))
+  let set = SchemaSet(repoRoot.appending(path: "schemas/\(CurrentSchema.version)"))
 
   @Test func 틀린_모양을_잡는다() throws {
     #expect(set.kinds.contains("page") && set.kinds.contains("syllabus"))

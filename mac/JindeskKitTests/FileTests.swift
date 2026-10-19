@@ -73,7 +73,7 @@ import Testing
     #expect(FileOps.list(t.data.url).sorted() == ["learner", "library", "meta", "records", "sources", "syllabus"])
     let file = try SchemaFile.read(t.data)
     #expect(file.schema == CurrentSchema.version && file.lastOpenedBy == testApp && file.history.isEmpty)
-    #expect(try t.read("meta/schema.yaml").hasPrefix("kind: \"schema\"\nv: 1\nschema: 1\n"))
+    #expect(try t.read("meta/schema.yaml").hasPrefix("kind: \"schema\"\nv: 1\nschema: \(CurrentSchema.version)\n"))
     // 이미 있으면 바꾸지 않는다
     let before = try t.read("meta/schema.yaml")
     try t.data.initialize(app: AppVersion(app: "9", build: "9"))

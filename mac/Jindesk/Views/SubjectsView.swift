@@ -87,6 +87,7 @@ struct ConceptRows: View {
       ForEach(syllabus.flat, id: \.item.code) { entry in
         let inItem = concepts.filter { $0.item.map(ItemPath.dir) == ItemPath.dir(entry.item.code) }
         SyllabusItemRow(item: entry.item, depth: entry.depth, hasConcepts: !inItem.isEmpty)
+          .tag(SubjectSelection.unit(subject, "item:\(entry.item.code)"))
         ForEach(inItem) { c in
           ConceptRow(concept: c, comments: comments[c.id] ?? 0).tag(SubjectSelection.concept(c.id)).id(c.id).padding(.leading, CGFloat(entry.depth) * 10)
         }
@@ -94,7 +95,9 @@ struct ConceptRows: View {
     }
     let unplaced = concepts.filter { $0.item == nil }
     ForEach(Self.groups(unplaced, prefix: syllabus == nil ? nil : "목차 밖 · "), id: \.name) { group in
+      // 단원 이름을 고르면 단원 개요를 연다 (DECISIONS.md 34)
       ListLabel(text: group.name, trailing: "\(group.concepts.count)").padding(.top, 8)
+        .tag(SubjectSelection.unit(subject, "proposed:\(group.concepts.first?.itemProposed ?? "목차 밖")"))
       ForEach(group.concepts) { c in ConceptRow(concept: c, comments: comments[c.id] ?? 0).tag(SubjectSelection.concept(c.id)).id(c.id) }
     }
   }

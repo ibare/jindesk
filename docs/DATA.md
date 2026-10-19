@@ -51,7 +51,7 @@
       concept.yaml              정리된 개념 원문 (단위, 주장, 출처, 기호표)
       page.yaml                 학습 페이지 (단위, 판, 블록 명세, 요구)
       layers.yaml               곁 층 (한국어, 쉽게, 자세히)
-      facets.yaml               관점
+      facets.yaml               관점, 한 장 요약과 공식으로 고른 주장 id
       history.jsonl             페이지 단위의 이전 판
       figures/<단위 id>-r<판>.html  그림 블록 코드. 판마다 파일 하나이고 고치지 않는다
     unplaced/<과목 id>/<slug>/  목차 밖 개념. concepts 와 같은 모양
@@ -206,7 +206,7 @@
 ## 색인 (SQLite)
 
 - 캐시의 `index.sqlite`에 둔다.
-- 담는 것: 자료와 꼬리표, 개념 목록(과목, 항목, 제목, 수준, 자료 유무), 개념의 꼬리표(그 개념이 나온 자료들의 꼬리표를 모은 것), 단위 글(영어와 한국어, FTS5), 용어, 코멘트 위치, 낡은 단위 목록, 파일마다 경로·크기·수정 시각·해시.
+- 담는 것: 자료와 꼬리표, 개념 목록(과목, 항목, 제목, 수준, 자료 유무), 개념의 꼬리표(그 개념이 나온 자료들의 꼬리표를 모은 것), 단위 글(영어와 한국어, FTS5), 자료 쪽의 글자층(FTS5, 찾기의 원래 자료), 용어, 코멘트 위치, 낡은 단위 목록, 파일마다 경로·크기·수정 시각·해시.
 - 원본이 아니다. 켤 때와 작업이 끝날 때 바뀐 파일(크기·수정 시각)만 다시 읽는다. 색인 스키마가 바뀌거나 깨지면 지우고 다시 만든다.
 - SQLite 에만 있는 데이터는 없다. 화면 상태(펼친 번역, 읽던 자리)는 데이터가 아니므로 앱 지원 폴더의 `state.json`에 둔다. 잃어도 괜찮다.
 
@@ -348,6 +348,28 @@ units:
       - { id: "c3", text: "vertical acceleration g downward", src: ["20260903-3fa2c1d0#p12"] }
 provenance: { job: "20260905-0930-curate-physics", instructions: { kind: "concept-curation", version: "0.1", commit: "…", dirty: false }, model: "claude-opus-5-5" }
 ```
+
+`library/concepts/physics/a.1/projectile-motion/facets.yaml` (관점 붙이기가 쓴다)
+
+```yaml
+kind: "facets"
+v: 2
+concept: "physics/a.1/projectile-motion"
+from: "5c1d0e9a7b3f2e61"            # 이때의 concept.yaml 해시. 바뀌면 다시 붙인다
+item: "A.1"
+level: "SL+HL"
+command_terms: ["Calculate", "Determine"]
+key_concepts: []
+related_concepts: ["Motion"]
+global_contexts: []
+nos: ["Models"]
+tok: ["Natural sciences"]
+summary: ["u3.c1", "u3.c2", "u3.c3"]  # 한 장 요약으로 고른 주장 (단위 id.주장 id). 글은 concept.yaml 의 주장을 그대로 쓴다
+formulas: []                       # 공식으로 고른 주장
+provenance: { job: "20260906-1010-facets-physics", instructions: { kind: "facets", version: "0.2", commit: "…", dirty: false }, model: "claude-opus-5-5" }
+```
+
+`summary`와 `formulas`는 스키마 2 부터 있다(`DECISIONS.md` 34). 없으면 아직 고르지 않은 것이고, 관점 붙이기가 남은 일로 다시 돈다.
 
 `learner/comments.jsonl` (줄마다 하나)
 

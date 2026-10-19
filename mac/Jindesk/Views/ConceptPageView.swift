@@ -7,10 +7,31 @@ import WebKit
 struct ConceptPageView: View {
   @Environment(AppModel.self) private var model
   let concept: Concept
+  // 자료와 나란히: 화면 가운데에 걸린 단위 (렌더러가 알린다)
+  @State private var reading: String?
 
   var body: some View {
+    @Bindable var model = model
+    HStack(spacing: 0) {
+      page
+      if model.sideBySide {
+        Divider()
+        SourceSidePane(concept: concept, unit: reading).frame(width: 460)
+      }
+    }
+    .toolbar {
+      ToolbarItem(placement: .primaryAction) {
+        Toggle(isOn: $model.sideBySide) { Label("자료와 나란히", systemImage: "rectangle.split.2x1") }
+          .toggleStyle(.button)
+          .help("읽는 문단의 근거 쪽을 옆에 보입니다")
+      }
+    }
+  }
+
+  var page: some View {
     let json = model.pageJSON(concept)
-    PageWebView(json: json, data: model.data) { message in
+    return PageWebView(json: json, data: model.data, follow: model.sideBySide) { message in
+      if message["type"]?.stringValue == "reading", let unit = message["unit"]?.stringValue { reading = unit }
       if message["type"]?.stringValue == "error" {
         FileHandle.standardError.write(Data("렌더러 오류: \(message["message"]?.stringValue ?? "")\n".utf8))
       }
@@ -54,6 +75,8 @@ struct ConceptPageView: View {
 struct PageWebView: NSViewRepresentable {
   let json: String
   let data: DataFolder?
+  // 자료와 나란히: 읽는 단위를 알리게 한다
+  var follow = false
   let onMessage: (JSONValue) -> Void
 
   func makeCoordinator() -> Coordinator { Coordinator(onMessage: onMessage) }
@@ -77,6 +100,7 @@ struct PageWebView: NSViewRepresentable {
   func updateNSView(_ view: WKWebView, context: Context) {
     context.coordinator.onMessage = onMessage
     context.coordinator.show(json)
+    context.coordinator.setFollow(follow)
   }
 
   @MainActor
@@ -86,6 +110,15 @@ struct PageWebView: NSViewRepresentable {
     var pending: String?
     private var ready = false
     private var shown: String?
+    private var follow = false
+    private var followSent: Bool?
+
+    func setFollow(_ on: Bool) {
+      follow = on
+      guard ready, followSent != on else { return }
+      followSent = on
+      view?.evaluateJavaScript("window.jindesk.follow(\(on))")
+    }
 
     init(onMessage: @escaping (JSONValue) -> Void) {
       self.onMessage = onMessage
@@ -109,6 +142,7 @@ struct PageWebView: NSViewRepresentable {
         ready = true
         if let pending { show(pending) }
         pending = nil
+        setFollow(follow)
         return
       }
       onMessage(value)
@@ -353,6 +387,21 @@ struct SourcePeekSheet: View {
       }
       .clipShape(RoundedRectangle(cornerRadius: 6))
       .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.25)))
+      // 이 쪽을 쓴 개념 (찾기의 원래 자료에서 열었을 때 쓸모 있다, DECISIONS.md 34)
+      let users = model.concepts(using: peek.source, page: peek.page)
+      if !users.isEmpty {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+          Text("이 쪽을 쓴 개념").font(.caption).foregroundStyle(.secondary)
+          ForEach(users.prefix(4), id: \.id) { c in
+            Button(TitleParts(c.title).head) {
+              model.selection = .concept(c.id)
+              dismiss()
+            }
+            .buttonStyle(.link)
+            .font(.caption)
+          }
+        }
+      }
       HStack {
         Button("자료 보기") {
           model.selection = .source(peek.source)

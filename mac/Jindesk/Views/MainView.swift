@@ -49,10 +49,18 @@ struct MainView: View {
         }
       }
     }
-    .searchable(text: $model.searchText, placement: .sidebar, prompt: "개념 찾기 (영어·한국어)")
+    .searchable(text: $model.searchText, placement: .sidebar, prompt: "찾기 (개념·용어·기호·자료)")
+    // 자료와 나란히: 사이드바와 목록 칸을 접어 학습 페이지와 근거 쪽에 폭을 준다
+    .onChange(of: model.sideBySide) { SplitColumns.collapseLists(model.sideBySide) }
+    .onChange(of: model.selection) { if model.sideBySide, !Self.isConcept(model.selection) { model.sideBySide = false } }
     .sheet(isPresented: $model.showIntake) { IntakeSheet() }
     .sheet(item: $model.peek) { SourcePeekSheet(peek: $0) }
     .sheet(item: $model.regenTarget) { RegenSheet(target: $0) }
+  }
+
+  static func isConcept(_ s: SubjectSelection?) -> Bool {
+    if case .concept = s { return true }
+    return false
   }
 
   @ViewBuilder
@@ -90,6 +98,10 @@ struct SelectionDetail: View {
       }
     case .map(let subject)?:
       ConceptMapView(subject: subject).id(subject)
+    case .unit(let subject, let key)?:
+      UnitOverviewView(subject: subject, key: key).id("\(subject)|\(key)")
+    case .entry(let id)?:
+      CompendiumEntryView(id: id).id(id)
     case nil:
       ContentUnavailableView("개념이나 자료를 고르세요", systemImage: "doc.text.magnifyingglass")
     }
@@ -97,31 +109,123 @@ struct SelectionDetail: View {
 }
 
 // 찾은 것: 개념과 그 안의 단위. 누르면 그 개념의 학습 페이지로 간다.
+// 세 칸 창의 앞 두 칸(사이드바, 목록)을 접고 편다. NavigationSplitView 의 columnVisibility 는 맥에서 목록 칸을 접지 않아
+// 창의 NSSplitViewController 를 직접 다룬다.
+@MainActor
+enum SplitColumns {
+  static func collapseLists(_ on: Bool) {
+    guard let window = NSApp.windows.first(where: AppDelegate.isMainWindow), let split = find(window.contentView),
+      let controller = split.delegate as? NSSplitViewController
+    else { return }
+    for item in controller.splitViewItems.dropLast() {
+      item.canCollapse = true
+      item.animator().isCollapsed = on
+    }
+  }
+
+  static func find(_ view: NSView?) -> NSSplitView? {
+    guard let view else { return nil }
+    if let split = view as? NSSplitView { return split }
+    return view.subviews.lazy.compactMap { find($0) }.first
+  }
+}
+
 struct SearchResultsView: View {
   @Environment(AppModel.self) private var model
 
+  // 찾기 (DECISIONS.md 34): 개념, 용어, 기호, 원래 자료의 쪽으로 묶는다
   var body: some View {
+    let q = model.searchText
     let hits = model.searchResults
-    if hits.isEmpty {
-      ContentUnavailableView.search(text: model.searchText)
+    let terms = model.searchTerms(q)
+    let symbols = model.searchSymbols(q)
+    let pages = model.searchPageHits
+    if hits.isEmpty && terms.isEmpty && symbols.isEmpty && pages.isEmpty {
+      ContentUnavailableView.search(text: q)
     } else {
-      List(hits) { hit in
-        Button {
-          model.selection = .concept(hit.concept)
-        } label: {
-          VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-              Text(hit.title).font(.body.weight(.medium))
-              if let ko = hit.titleKo { Text(ko).font(.caption).foregroundStyle(.secondary) }
+      List {
+        if !hits.isEmpty {
+          // 개념마다 한 줄: 처음 찾은 곳과 찾은 곳의 수
+          let grouped = Self.byConcept(hits)
+          Section("개념 · \(grouped.count)") {
+            ForEach(grouped, id: \.first.concept) { g in
+              row(selected: model.selection == .concept(g.first.concept), action: { model.selection = .concept(g.first.concept) }) {
+                VStack(alignment: .leading, spacing: 3) {
+                  HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(TitleParts(g.first.title).head).font(.system(size: 13, weight: .semibold))
+                    if let ko = g.first.titleKo { Text(TitleParts(ko).head).font(.system(size: 12)).foregroundStyle(.secondary) }
+                    Spacer(minLength: 4)
+                    if g.count > 1 { Text("\(g.count)곳").font(.system(size: 11)).foregroundStyle(.tertiary).monospacedDigit() }
+                  }
+                  Text(Self.highlight(TexText.display(g.first.snippet))).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
+                }
+              }
             }
-            Text(Self.highlight(hit.snippet)).font(.callout).foregroundStyle(.secondary).lineLimit(3)
           }
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        if !terms.isEmpty {
+          Section("용어 · \(terms.count)") {
+            ForEach(terms, id: \.en) { t in
+              row(selected: model.selection == .entry("term:\(t.en)"), action: { model.selection = .entry("term:\(t.en)") }) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                  Text(t.en).font(.system(size: 13))
+                  Text(t.ko).font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+              }
+            }
+          }
+        }
+        if !symbols.isEmpty {
+          Section("기호 · \(symbols.count)") {
+            ForEach(symbols, id: \.symbol) { s in
+              row(selected: model.selection == .entry("symbol:\(s.symbol)"), action: { model.selection = .entry("symbol:\(s.symbol)") }) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                  Text(TexText.display(s.symbol)).font(.system(size: 14, design: .serif)).italic().frame(minWidth: 34, alignment: .leading)
+                  Text(TexText.display(s.meaning)).font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+              }
+            }
+          }
+        }
+        if !pages.isEmpty {
+          Section("원래 자료 · \(pages.count)쪽") {
+            ForEach(Dictionary(grouping: pages, by: \.source).sorted { $0.key < $1.key }, id: \.key) { source, hits in
+              Text(model.library.source(source).map(SourceRow.title) ?? source).font(.system(size: 11.5)).foregroundStyle(.secondary)
+              ForEach(hits) { hit in
+                row(selected: false, action: { model.peek = SourcePeek(source: hit.source, page: hit.page) }) {
+                  HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text("\(hit.page)쪽").font(.system(size: 11.5, weight: .semibold)).monospacedDigit().frame(width: 36, alignment: .leading)
+                    Text(Self.highlight(TexText.display(hit.snippet))).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
+                  }
+                }
+              }
+            }
+          }
+        }
       }
+      .listRowSeparator(.hidden)
     }
+  }
+
+  // 찾은 곳을 개념마다 묶는다 (처음 찾은 곳, 수). 차례는 처음 나온 차례 (FTS 순위)
+  static func byConcept(_ hits: [SearchHit]) -> [(first: SearchHit, count: Int)] {
+    var out: [(first: SearchHit, count: Int)] = []
+    for h in hits {
+      if let i = out.firstIndex(where: { $0.first.concept == h.concept }) { out[i].count += 1 } else { out.append((h, 1)) }
+    }
+    return out
+  }
+
+  func row(selected: Bool, action: @escaping () -> Void, @ViewBuilder label: () -> some View) -> some View {
+    Button(action: action) {
+      label()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .rowHighlight(selected)
+    }
+    .buttonStyle(.plain)
+    .listRowSeparator(.hidden)
   }
 
   // 찾은 말(SearchHit.open … close)을 굵게
@@ -131,7 +235,7 @@ struct SearchResultsView: View {
     var buffer = ""
     func flush() {
       var part = AttributedString(buffer)
-      if bold { part.font = .callout.bold() }
+      if bold { part.inlinePresentationIntent = .stronglyEmphasized }
       out += part
       buffer = ""
     }

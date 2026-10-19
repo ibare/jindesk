@@ -666,7 +666,15 @@
     var meta = el("div", "meta");
     (page.chips || []).forEach(function (c) { meta.appendChild(el("span", "chip", esc(c))); });
     (page.facets || []).forEach(function (g) {
-      g.values.forEach(function (v) { meta.appendChild(el("span", "chip facet", '<small>' + esc(g.label) + '</small> ' + esc(v))); });
+      g.values.forEach(function (v) {
+        var def = g.label === "Command terms" && page.commandTerms ? page.commandTerms[v] : null;
+        if (!def) { meta.appendChild(el("span", "chip facet", '<small>' + esc(g.label) + '</small> ' + esc(v))); return; }
+        // command term 칩: 누르면 IB 정의를 띄운다 (DECISIONS.md 34)
+        var chip = el("button", "chip facet cmd", '<small>' + esc(g.label) + '</small> ' + esc(v));
+        chip.type = "button";
+        chip.addEventListener("click", function (e) { e.stopPropagation(); commandPopover(chip, v, def); });
+        meta.appendChild(chip);
+      });
     });
     var count = el("span", "open-count");
     count.hidden = true;
@@ -754,12 +762,57 @@
     }
   }
 
+  // command term 의 IB 정의 (칩 아래에 띄운다. 바깥을 누르거나 Esc 로 닫는다)
+  var popover = null;
+  function closePopover() {
+    if (popover) { popover.remove(); popover = null; }
+    document.querySelectorAll(".chip.cmd.on").forEach(function (c) { c.classList.remove("on"); });
+  }
+  function commandPopover(chip, term, def) {
+    var again = chip.classList.contains("on");
+    closePopover();
+    if (again) return;
+    chip.classList.add("on");
+    popover = el("div", "cmd-pop");
+    popover.setAttribute("role", "dialog");
+    popover.innerHTML = '<div class="cp-head"><b>' + esc(term) + '</b><span>' + esc(def.ko || "") + '</span></div>' +
+      '<p>' + esc(def.definition) + '</p><small>IB command term</small>';
+    document.body.appendChild(popover);
+    var r = chip.getBoundingClientRect();
+    var left = Math.max(12, Math.min(r.left + window.scrollX, window.scrollX + document.documentElement.clientWidth - popover.offsetWidth - 12));
+    popover.style.left = left + "px";
+    popover.style.top = (r.bottom + window.scrollY + 6) + "px";
+  }
+  document.addEventListener("click", function (e) { if (popover && !popover.contains(e.target)) closePopover(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closePopover(); });
+
+  // 자료와 나란히 (DECISIONS.md 34): 화면 가운데에 걸린 단위를 앱에 알린다. 앱이 그 단위의 근거 쪽을 옆에 보인다.
+  var follow = null;
+  function setFollow(on) {
+    if (follow) { window.removeEventListener("scroll", follow); follow = null; }
+    if (!on) return;
+    var last = null, timer = null;
+    function pick() {
+      var mid = window.innerHeight / 2, best = null, bestD = Infinity;
+      document.querySelectorAll(".units .para[id], .units .blk[id], .units .check[id]").forEach(function (n) {
+        var r = n.getBoundingClientRect();
+        var d = r.top <= mid && r.bottom >= mid ? 0 : Math.min(Math.abs(r.top - mid), Math.abs(r.bottom - mid));
+        if (d < bestD) { bestD = d; best = n; }
+      });
+      if (best && best.id !== last) { last = best.id; post({ type: "reading", unit: best.id }); }
+    }
+    follow = function () { if (timer) return; timer = setTimeout(function () { timer = null; pick(); }, 120); };
+    window.addEventListener("scroll", follow, { passive: true });
+    pick();
+  }
+
   // 렌더러 오류는 앱에 알린다 (앱이 기록에 남긴다)
   window.addEventListener("error", function (e) { post({ type: "error", message: String(e.message) + " (" + e.lineno + ")" }); });
   window.jindesk = {
     render: function (page) {
       try { render(page); } catch (e) { post({ type: "error", message: String(e && e.stack ? e.stack : e) }); throw e; }
     },
+    follow: function (on) { setFollow(!!on); },
   };
   document.addEventListener("DOMContentLoaded", function () { post({ type: "ready" }); });
 })();

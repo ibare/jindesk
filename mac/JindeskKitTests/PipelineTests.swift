@@ -508,7 +508,15 @@ extension CurationCheckTests {
         out("page.json", json.dumps({"title_ko": "지수 법칙", "units": units}))
     elif "# 관점 붙이기" in req:
         keys = re.findall(r"^- (k\d+):", req, re.M)
-        out("facets.json", json.dumps({"concepts": {k: {"command_terms": ["Solve"], "key_concepts": ["Form"], "related_concepts": ["Equivalence"], "global_contexts": [], "nos": [], "tok": ["Mathematics"]} for k in keys}}))
+        # 한 장 요약과 공식: 개념 원문의 주장 id (단위 id.주장 id) 가운데서 고른다
+        def refs(k):
+            unit, found = None, []
+            for i in re.findall(r'\bid: "([uc]\d+)"', read("concepts/" + k + ".yaml")):
+                if i.startswith("u"): unit = i
+                elif unit: found.append(unit + "." + i)
+            return found
+        out("facets.json", json.dumps({"concepts": {k: {"command_terms": ["Solve"], "key_concepts": ["Form"], "related_concepts": ["Equivalence"], "global_contexts": [], "nos": [], "tok": ["Mathematics"],
+            "summary": refs(k)[:3], "formulas": refs(k)[:1]} for k in keys}}))
     elif "# 레퍼런스 찾기" in req:
         keys = re.findall(r"^- (k\d+):", req, re.M)
         # 열어 보지 않은 주소는 러너가 버린다
@@ -653,7 +661,7 @@ extension CurationCheckTests {
     #expect(rebuilt.recheck.isEmpty)
 
     // 러너가 쓴 모든 데이터 파일이 리포의 스키마에 맞는다
-    let issues = DataValidation.validate(t.data, schemas: SchemaSet(repoRoot.appending(path: "schemas/1")))
+    let issues = DataValidation.validate(t.data, schemas: SchemaSet(repoRoot.appending(path: "schemas/\(CurrentSchema.version)")))
     #expect(issues.isEmpty, "\(issues)")
   }
 

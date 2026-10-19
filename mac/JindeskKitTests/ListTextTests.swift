@@ -48,3 +48,18 @@ import Testing
     #expect(map.learningOrder() == ["math/unplaced/types", "math/unplaced/central", "math/unplaced/quartiles", "math/unplaced/spread"])
   }
 }
+
+// 모아 보기의 A–Z (DECISIONS.md 34)
+@Suite struct AlphaIndexTests {
+  @Test func 첫_글자로_묶고_숫자와_그_밖은_따로_둔다() {
+    #expect(AlphaIndex.letter("interquartile range") == "I")
+    #expect(AlphaIndex.letter("\\(Q_1\\)") == "Q")
+    #expect(AlphaIndex.letter("\\(\\sigma\\)") == "•")
+    #expect(AlphaIndex.letter("σ") == "•")
+    #expect(AlphaIndex.letter("1. Measures of Central Tendency") == "#")
+    #expect(AlphaIndex.letter("사분위수") == "•")
+    let s = AlphaIndex.sections(["mode", "Mean", "IQR", "median", "1. Slides", "σ"]) { $0 }
+    #expect(s.map(\.letter) == ["I", "M", "#", "•"])
+    #expect(s[1].items == ["Mean", "median", "mode"])
+  }
+}

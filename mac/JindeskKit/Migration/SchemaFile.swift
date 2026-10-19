@@ -2,7 +2,7 @@ import Foundation
 
 // 앱이 쓰는 데이터 폴더의 스키마 버전. 데이터 모양을 바꾸면 올리고, Migration/ 에 단계를 더한다 (MIGRATION.md).
 public enum CurrentSchema {
-  public static let version = 1
+  public static let version = 2
 }
 
 // meta/schema.yaml: 스키마 버전, 마이그레이션 이력, 이 폴더를 마지막으로 연 앱 판

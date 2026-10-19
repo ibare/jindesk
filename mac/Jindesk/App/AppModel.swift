@@ -41,20 +41,31 @@ struct RegenTarget: Identifiable, Equatable {
 }
 
 // 과목 화면에서 고른 것
-// 모아 보기의 탭 (DECISIONS.md 32)
+// 모아 보기의 범주 (DECISIONS.md 34): 사전, 모음, 내 것
 enum CollectionsTab: String, CaseIterable, Identifiable {
-  case links, sources, checks, memos
+  case terms, symbols, commandTerms, formulas, mistakes, references, ib, links, checks, memos, sources
 
   var id: String { rawValue }
 
   var label: String {
     switch self {
+    case .terms: "용어"
+    case .symbols: "기호"
+    case .commandTerms: "Command terms"
+    case .formulas: "공식"
+    case .mistakes: "실수"
+    case .references: "더 볼 자료"
+    case .ib: "IB 맥락"
     case .links: "연결"
-    case .sources: "자료"
     case .checks: "문제"
     case .memos: "메모"
+    case .sources: "자료"
     }
   }
+
+  static let groups: [(name: String, tabs: [CollectionsTab])] = [
+    ("사전", [.terms, .symbols, .commandTerms]), ("모음", [.formulas, .mistakes, .references, .ib, .links]), ("내 것", [.checks, .memos, .sources]),
+  ]
 }
 
 enum SubjectSelection: Hashable {
@@ -62,6 +73,10 @@ enum SubjectSelection: Hashable {
   case source(String)
   // 과목의 개념 지도 (과목 id)
   case map(String)
+  // 단원 개요 (과목 id, 단원 키: "item:<목차 코드>" 또는 "proposed:<단원 제안>", DECISIONS.md 34)
+  case unit(String, String)
+  // 모아 보기의 항목 ("<범주>:<키>", DECISIONS.md 34)
+  case entry(String)
 }
 
 enum ReadingState: Equatable {
@@ -121,13 +136,18 @@ final class AppModel {
   var revealInList: String?
   // 출처 칩으로 연 원래 자료의 쪽
   var peek: SourcePeek?
-  // 모아 보기에서 고른 탭
-  var collectionsTab = CollectionsTab.links
+  // 학습 페이지의 "자료와 나란히" (DECISIONS.md 34): 켜면 사이드바와 목록 칸을 접고 근거 쪽을 옆에 보인다
+  var sideBySide = false
+  // 모아 보기에서 고른 범주와 과목 (nil 이면 모든 과목)
+  var collectionsTab = CollectionsTab.terms
+  var collectionsSubject: String?
   // 찾기 (영어 원문과 한국어 곁 층)
   var searchText = "" {
     didSet { if searchText != oldValue { runSearch() } }
   }
   private(set) var searchResults: [SearchHit] = []
+  // 찾기의 원래 자료 (자료 쪽 글자층, DECISIONS.md 34)
+  private(set) var searchPageHits: [PageHit] = []
   @ObservationIgnored private lazy var searchIndex = SearchIndex(folders)
   var showIntake = false
   let update = UpdateStatus()
@@ -356,11 +376,39 @@ final class AppModel {
     let index = searchIndex
     Task.detached { [weak self] in
       let hits = index.search(q)
+      let pages = index.sourcePages(q)
       await MainActor.run { [weak self] in
         guard let self, self.searchText == q else { return }
         self.searchResults = hits
+        self.searchPageHits = pages
       }
     }
+  }
+
+  // 원래 자료의 쪽에서 찾은 곳 (모아 보기의 용어)
+  func sourcePageHits(_ query: String) -> [PageHit] { searchIndex.sourcePages(query) }
+
+  // 찾기의 용어: 영어나 한국어에 찾는 말이 든 용어집의 용어
+  func searchTerms(_ query: String) -> [GlossaryTerm] {
+    let q = query.trimmingCharacters(in: .whitespaces)
+    guard let data, !q.isEmpty else { return [] }
+    return Glossary.load(data).terms.filter { t in (t.names + [t.ko]).contains { $0.localizedCaseInsensitiveContains(q) } }
+      .sorted { $0.en.localizedCaseInsensitiveCompare($1.en) == .orderedAscending }
+  }
+
+  // 찾기의 기호: 기호나 뜻에 찾는 말이 든 개념의 기호
+  func searchSymbols(_ query: String) -> [(symbol: String, meaning: String)] {
+    let q = query.trimmingCharacters(in: .whitespaces)
+    guard !q.isEmpty else { return [] }
+    var seen = Set<String>()
+    return allConcepts.flatMap(\.symbols).filter { s in
+      (TexText.display(s.symbol).localizedCaseInsensitiveContains(q) || s.meaning.localizedCaseInsensitiveContains(q)) && seen.insert(s.symbol).inserted
+    }.map { ($0.symbol, $0.meaning) }
+  }
+
+  // 원래 자료의 그 쪽을 쓴 개념
+  func concepts(using source: String, page: Int) -> [Concept] {
+    inLearningOrder(allConcepts.filter { c in c.occurrences.contains { $0.source == source && $0.pages.contains(page) } })
   }
 
   func concept(_ id: String) -> Concept? {
@@ -443,6 +491,26 @@ final class AppModel {
     return list.sorted { a, b in
       a.subject != b.subject ? a.subject < b.subject : (ranks[a.subject]?[a.id] ?? .max, a.id) < (ranks[b.subject]?[b.id] ?? .max, b.id)
     }
+  }
+
+  // 단원: 이름, 개념(배우는 순서), 목차의 MYP 탐구 진술 (DECISIONS.md 34)
+  struct UnitContents {
+    let title: String
+    let concepts: [Concept]
+    let inquiry: String?
+  }
+
+  func unit(_ subject: String, _ key: String) -> UnitContents {
+    let all = concepts[subject] ?? []
+    if key.hasPrefix("item:") {
+      let code = String(key.dropFirst(5))
+      let item = syllabi[subject]?.item(code)
+      return UnitContents(
+        title: item.map { "\($0.code) \($0.title)" } ?? code, concepts: inLearningOrder(all.filter { $0.item.map(ItemPath.dir) == ItemPath.dir(code) }),
+        inquiry: item?.myp?.statementOfInquiry)
+    }
+    let name = String(key.dropFirst(9))
+    return UnitContents(title: name, concepts: inLearningOrder(all.filter { $0.item == nil && ($0.itemProposed ?? "목차 밖") == name }), inquiry: nil)
   }
 
   // 과목의 개념 지도 (PAGES.md 의 개념 지도). 저장하지 않고 지금 읽어 둔 개념 목록에서 계산한다.

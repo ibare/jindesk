@@ -38,16 +38,41 @@ public struct ConceptFacets: Sendable, Equatable {
   public var globalContexts: [String]
   public var nos: [String]
   public var tok: [String]
+  // 한 장 요약과 공식으로 고른 주장 (단위 id.주장 id, DECISIONS.md 34). nil 이면 아직 고르지 않았다 (스키마 1 의 관점)
+  public var summary: [String]?
+  public var formulas: [String]?
   public var provenance: YAMLMap
 
+  public init(
+    concept: String, from: String, item: String?, level: String?, commandTerms: [String], keyConcepts: [String], relatedConcepts: [String],
+    globalContexts: [String], nos: [String], tok: [String], summary: [String]? = nil, formulas: [String]? = nil, provenance: YAMLMap
+  ) {
+    self.concept = concept
+    self.from = from
+    self.item = item
+    self.level = level
+    self.commandTerms = commandTerms
+    self.keyConcepts = keyConcepts
+    self.relatedConcepts = relatedConcepts
+    self.globalContexts = globalContexts
+    self.nos = nos
+    self.tok = tok
+    self.summary = summary
+    self.formulas = formulas
+    self.provenance = provenance
+  }
+
   public var yaml: YAMLMap {
-    [
-      "kind": "facets", "v": 1, "concept": .string(concept), "from": .string(from), "item": item.map(YAMLValue.string) ?? .null,
+    var m: YAMLMap = [
+      "kind": "facets", "v": 2, "concept": .string(concept), "from": .string(from), "item": item.map(YAMLValue.string) ?? .null,
       "level": level.map(YAMLValue.string) ?? .null, "command_terms": .array(commandTerms.map(YAMLValue.string)),
       "key_concepts": .array(keyConcepts.map(YAMLValue.string)), "related_concepts": .array(relatedConcepts.map(YAMLValue.string)),
       "global_contexts": .array(globalContexts.map(YAMLValue.string)), "nos": .array(nos.map(YAMLValue.string)), "tok": .array(tok.map(YAMLValue.string)),
-      "provenance": .map(provenance),
     ]
+    if let summary { m["summary"] = .array(summary.map(YAMLValue.string)) }
+    if let formulas { m["formulas"] = .array(formulas.map(YAMLValue.string)) }
+    m["provenance"] = .map(provenance)
+    return m
   }
 
   public static func file(_ folder: ConceptFolder) -> URL { folder.url.appending(path: "facets.yaml") }
@@ -57,7 +82,8 @@ public struct ConceptFacets: Sendable, Equatable {
     return ConceptFacets(
       concept: c, from: v["from"]?.string ?? "", item: v["item"]?.string, level: v["level"]?.string, commandTerms: v["command_terms"]?.strings ?? [],
       keyConcepts: v["key_concepts"]?.strings ?? [], relatedConcepts: v["related_concepts"]?.strings ?? [],
-      globalContexts: v["global_contexts"]?.strings ?? [], nos: v["nos"]?.strings ?? [], tok: v["tok"]?.strings ?? [], provenance: v["provenance"]?.map ?? YAMLMap([]))
+      globalContexts: v["global_contexts"]?.strings ?? [], nos: v["nos"]?.strings ?? [], tok: v["tok"]?.strings ?? [], summary: v["summary"]?.strings,
+      formulas: v["formulas"]?.strings, provenance: v["provenance"]?.map ?? YAMLMap([]))
   }
 
   public func write(_ folder: ConceptFolder) throws {

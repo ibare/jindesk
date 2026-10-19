@@ -171,6 +171,11 @@ public enum PageComposer {
         groups.append(.object(["label": .string(label), "values": .array(values.map(JSONValue.string))]))
       }
       page["facets"] = .array(groups)
+      // command term 칩을 누르면 보일 IB 정의 (DECISIONS.md 34)
+      page["commandTerms"] = .object(
+        Dictionary(uniqueKeysWithValues: f.commandTerms.compactMap { CommandTerms.lookup($0) }.map {
+          ($0.term, JSONValue.object(["definition": .string($0.definition), "ko": .string($0.ko)]))
+        }))
     }
     page["references"] = .array(
       input.references.map { .object(["url": .string($0.url), "title": .string($0.title), "kind": .string($0.kind), "why": .string($0.why)]) })

@@ -33,6 +33,9 @@ targets:
         includes: [SourceLibrary.swift, Labels.swift, SourceRecord.swift]
       - path: ../mac/JindeskKit/Migration
         includes: [SchemaFile.swift]
+      # 목록과 요약의 수식 글 (TexText.display)
+      - path: ../mac/JindeskKit/Checks
+        includes: [TextChecks.swift]
       # 자료 버킷에서 쪽 이미지를 받는 GCS 요청
       - path: ../mac/JindeskKit/Sync
         includes: [FileBucket.swift]

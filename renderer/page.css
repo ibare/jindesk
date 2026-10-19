@@ -222,6 +222,14 @@ button.nm { transition: border-color .15s ease, box-shadow .15s ease; }
 .side-label { font-size: 10.5px; font-weight: 600; letter-spacing: .06em; color: var(--accent); }
 .cm-regen { align-self: flex-start; border: 1px solid var(--line); background: var(--paper); color: var(--ink-2); border-radius: 4px; font-size: 11px; padding: 1px 8px; }
 .chip.facet small { color: var(--ink-3); font-size: 10.5px; }
+/* command term 칩과 IB 정의 (DECISIONS.md 34) */
+.chip.cmd { cursor: pointer; font-family: inherit; line-height: inherit; }
+.chip.cmd:hover, .chip.cmd.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.cmd-pop { position: absolute; z-index: 30; width: min(340px, calc(100vw - 24px)); box-sizing: border-box; padding: 12px 14px; border-radius: 10px; background: var(--paper); border: 1px solid var(--line); box-shadow: 0 10px 28px rgba(0,0,0,.25); }
+.cmd-pop .cp-head { display: flex; gap: 8px; align-items: baseline; }
+.cmd-pop .cp-head span { color: var(--ink-3); font-size: 13px; }
+.cmd-pop p { margin: 6px 0 4px; font-size: 13.5px; line-height: 1.5; }
+.cmd-pop small { color: var(--ink-3); font-size: 11.5px; }
 .refs { display: flex; flex-direction: column; gap: 6px; }
 .refs h2 { font-size: 12px; font-weight: 600; color: var(--ink-3); margin: 0; letter-spacing: .04em; }
 .ref { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; text-align: left; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); font: inherit; }

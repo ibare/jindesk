@@ -1,6 +1,6 @@
 // SQLite 색인 (DATA.md 의 색인). 캐시의 index.sqlite 에 둔다. 원본이 아니라서 깨지거나 스키마가 바뀌면 지우고 다시 만든다.
-// 담는 것: 개념 목록(과목, 항목, 제목, 한국어 제목)과 단위 글(영어, 한국어). 단위 글은 trigram FTS5 로 찾는다.
-// 개념 폴더의 파일(크기, 수정 시각)이 바뀌었을 때만 다시 만든다.
+// 담는 것: 개념 목록(과목, 항목, 제목, 한국어 제목)과 단위 글(영어, 한국어), 자료 쪽의 글자층(찾기의 원래 자료, DECISIONS.md 34).
+// 글은 trigram FTS5 로 찾는다. 개념 폴더의 파일과 자료의 글자층(크기, 수정 시각)이 바뀌었을 때만 그 부분을 다시 만든다.
 import Foundation
 import SQLite3
 
@@ -12,6 +12,14 @@ public struct SearchHit: Sendable, Equatable, Identifiable {
   // 맞은 곳 앞뒤 글. 찾은 말은 SearchHit.open 과 SearchHit.close 사이에 있다
   public let snippet: String
   public var id: String { "\(concept)#\(unit ?? "")" }
+
+  public init(concept: String, unit: String?, title: String, titleKo: String?, snippet: String) {
+    self.concept = concept
+    self.unit = unit
+    self.title = title
+    self.titleKo = titleKo
+    self.snippet = snippet
+  }
 
   public static let open: Character = "\u{1}"
   public static let close: Character = "\u{2}"
@@ -31,8 +39,17 @@ public struct SearchHit: Sendable, Equatable, Identifiable {
   }
 }
 
+// 원래 자료의 쪽에서 찾은 곳
+public struct PageHit: Sendable, Equatable, Identifiable {
+  public let source: String
+  public let page: Int
+  // 찾은 말이 SearchHit.open, SearchHit.close 사이에 있는 앞뒤 글
+  public let snippet: String
+  public var id: String { "\(source)#\(page)" }
+}
+
 public final class SearchIndex: @unchecked Sendable {
-  static let schema = 2
+  static let schema = 3
   private let lock = NSLock()
   private var db: OpaquePointer?
   public let url: URL
@@ -55,12 +72,13 @@ public final class SearchIndex: @unchecked Sendable {
     }
     db = handle
     if scalar("PRAGMA user_version") != String(Self.schema) {
-      exec("DROP TABLE IF EXISTS concepts; DROP TABLE IF EXISTS units; DROP TABLE IF EXISTS meta;")
+      exec("DROP TABLE IF EXISTS concepts; DROP TABLE IF EXISTS units; DROP TABLE IF EXISTS pages; DROP TABLE IF EXISTS meta;")
       exec(
         """
         CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
         CREATE TABLE concepts(id TEXT PRIMARY KEY, subject TEXT, item TEXT, title TEXT, title_ko TEXT);
         CREATE VIRTUAL TABLE units USING fts5(concept UNINDEXED, unit UNINDEXED, en, ko, tokenize='trigram');
+        CREATE VIRTUAL TABLE pages USING fts5(source UNINDEXED, page UNINDEXED, text, tokenize='trigram');
         PRAGMA user_version = \(Self.schema);
         """)
     }
@@ -106,9 +124,43 @@ public final class SearchIndex: @unchecked Sendable {
     return Hash.short(Data(parts.sorted().joined(separator: "\n").utf8))
   }
 
+  // 자료 쪽 글자층의 표시 (sources/<자료 id>/pages/<쪽>.txt)
+  static func pageSignature(_ data: DataFolder) -> String {
+    let root = data.url.appending(path: "sources")
+    var parts: [String] = []
+    for rel in FileOps.files(under: root) where rel.contains("/pages/") && rel.hasSuffix(".txt") {
+      let attrs = try? FileManager.default.attributesOfItem(atPath: root.appending(path: rel).path)
+      parts.append("\(rel):\((attrs?[.size] as? Int) ?? 0):\(Int(((attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0) * 1000))")
+    }
+    return Hash.short(Data(parts.sorted().joined(separator: "\n").utf8))
+  }
+
   // 바뀐 것이 있으면 다시 만든다. 다시 만들었으면 true.
   @discardableResult
   public func update(_ data: DataFolder) -> Bool {
+    let pages = updatePages(data)
+    return updateConcepts(data) || pages
+  }
+
+  private func updatePages(_ data: DataFolder) -> Bool {
+    let sig = Self.pageSignature(data)
+    return lock.withLock {
+      guard open() != nil else { return false }
+      if scalar("SELECT value FROM meta WHERE key = 'pages'") == sig { return false }
+      exec("BEGIN; DELETE FROM pages;")
+      for s in SourceLibrary.load(data).sources {
+        for n in 1...max(s.meta.pages, 1) {
+          let text = SourcePages.text(s.folder, page: n)
+          if !text.isEmpty { run("INSERT INTO pages VALUES (?, ?, ?)", [s.id, String(n), text.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)]) }
+        }
+      }
+      run("INSERT OR REPLACE INTO meta VALUES ('pages', ?)", [sig])
+      exec("COMMIT;")
+      return true
+    }
+  }
+
+  private func updateConcepts(_ data: DataFolder) -> Bool {
     let sig = Self.signature(data)
     return lock.withLock {
       guard open() != nil else { return false }
@@ -138,6 +190,26 @@ public final class SearchIndex: @unchecked Sendable {
   static func mark(_ s: String, _ q: String) -> String {
     guard let r = s.range(of: q, options: .caseInsensitive) else { return s }
     return s[..<r.lowerBound] + String(SearchHit.open) + s[r] + String(SearchHit.close) + s[r.upperBound...]
+  }
+
+  // 원래 자료의 쪽에서 찾는다 (자료, 쪽 차례). 세 글자보다 짧으면 찾지 않는다 (글자층에 너무 많이 맞는다).
+  public func sourcePages(_ query: String, limit: Int = 400) -> [PageHit] {
+    let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard q.count >= 3 else { return [] }
+    return lock.withLock {
+      guard open() != nil else { return [] }
+      let sql = "SELECT source, page, highlight(pages, 2, char(1), char(2)) FROM pages WHERE pages MATCH ? ORDER BY source, CAST(page AS INTEGER) LIMIT \(limit)"
+      var stmt: OpaquePointer?
+      guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+      defer { sqlite3_finalize(stmt) }
+      sqlite3_bind_text(stmt, 1, "\"" + q.replacingOccurrences(of: "\"", with: "\"\"") + "\"", -1, Self.transient)
+      var hits: [PageHit] = []
+      while sqlite3_step(stmt) == SQLITE_ROW {
+        let text = { (i: Int32) in sqlite3_column_text(stmt, i).map { String(cString: $0) } ?? "" }
+        hits.append(PageHit(source: text(0), page: Int(text(1)) ?? 0, snippet: SearchHit.excerpt(text(2), before: 40, length: 140)))
+      }
+      return hits
+    }
   }
 
   // 영어와 한국어를 함께 찾는다. 세 글자보다 짧으면 FTS 대신 LIKE 로 찾는다.

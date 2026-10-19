@@ -22,6 +22,20 @@ public struct UnitClaim: Sendable, Equatable {
   }
 }
 
+// 주장 id ("u2.c1": 단위 id.주장 id). 한 장 요약과 공식이 고른 주장을 가리킨다 (DECISIONS.md 34).
+extension Concept {
+  public func claim(_ ref: String) -> UnitClaim? {
+    let parts = ref.split(separator: ".", maxSplits: 1).map(String.init)
+    guard parts.count == 2 else { return nil }
+    return units.first { $0.id == parts[0] }?.claims.first { $0.id == parts[1] }
+  }
+
+  // 이 개념의 모든 주장 id 와 글 (단위 차례)
+  public var claimRefs: [(ref: String, claim: UnitClaim)] {
+    units.flatMap { u in u.claims.map { ("\(u.id).\($0.id)", $0) } }
+  }
+}
+
 public struct ConceptUnit: Sendable, Equatable {
   public let id: String
   public let hash: String

@@ -18,7 +18,7 @@ mac/
     Config/                 데이터 폴더, 앱 지원 폴더, 키체인
     Engine/                 작업 종류와 대기열, 작업 관리자, 설정, 지침, 사용량, 환경 점검
     Sources/                자료: 꼬리표, 자료 폴더(meta.yaml, labels.yaml), 자료 목록, 바꾸기, 쪽 나누기, 자료 넣기 작업
-    Library/                엔트리, 개념(concept.yaml), 학습 페이지(page.yaml), 곁 층(layers.yaml), 용어 어휘, 목차, 개념 지도(선수 관계 그래프, 배치, 앞뒤 개념), 관점·레퍼런스, 옮기기(개념, 과목), 뜻 해시
+    Library/                엔트리, 개념(concept.yaml), 학습 페이지(page.yaml), 곁 층(layers.yaml), 용어 어휘, 목차, 개념 지도(선수 관계 그래프, 배치, 앞뒤 개념), 관점·레퍼런스, 옮기기(개념, 과목), 뜻 해시, 단원 개요(UnitDigest), IB command terms 정의, A–Z 묶기
     Learner/                코멘트(comments.jsonl), 요구(directives.jsonl)
     Index/                  SQLite 색인과 검색
     Checks/                 러너 검사: 한글·한자 섞임, 원래 자료가 있어야 통하는 말, 글 속 TeX, KaTeX 파싱, 풀이 계산(Expr)
@@ -51,7 +51,7 @@ xcodebuild -project Jindesk.xcodeproj -scheme Jindesk -configuration Debug -deri
 - 명령줄 모드: `build/dd/Build/Products/Debug/Jindesk.app/Contents/MacOS/Jindesk doctor | intake --data <폴더> --subject … [--follow] <파일>… | continue --data <폴더> [--list] [--only <종류>] | check-figure --vendor <폴더> <조각.html> | migrate --check <폴더나 zip> | backup --out <폴더> | version`. `--follow`와 `continue`는 키체인의 토큰으로 실제 에이전트를 돌린다.
 - 에이전트 작업의 흐름 시험(`PipelineRunTests`)은 가짜 claude(파이썬 스크립트)로 자료 넣기부터 번역까지 돌린다. 지침의 출력 모양을 바꾸면 가짜도 함께 고친다.
 - 실제 학교 자료로 시험할 때는 임시 데이터 폴더(`--data`)에 넣고, 끝나면 `~/Library/Caches/com.mintae.Jindesk/pages/` 에 남은 쪽 이미지를 지운다. 학교 자료는 리포에 넣지 않는다. 시험 자료는 `SampleFiles`(JindeskKitTests)로 만든다.
-- 화면 확인: `Jindesk.app/Contents/MacOS/Jindesk -snapshotDir <폴더> [-snapshotOnly <이름,…>]` (디버그 빌드). 실제 데이터 폴더와 앱 지원 폴더 대신 `<폴더>` 아래를 쓰고, 정해 둔 화면을 PNG 로 찍은 뒤 끝난다. 설정 창은 화면 밖에서 그려지지 않아 화면 위에서 잠깐 보였다 닫힌다.
+- 화면 확인: `Jindesk.app/Contents/MacOS/Jindesk -snapshotDir <폴더> [-snapshotOnly <이름,…>]` (디버그 빌드). 단원 개요는 `unit-overview`이고 `-snapshotUnitSection <summary|formulas|words|mistakes|references|ib>`로 그 절까지 내려 찍는다. 실제 데이터 폴더와 앱 지원 폴더 대신 `<폴더>` 아래를 쓰고, 정해 둔 화면을 PNG 로 찍은 뒤 끝난다. 설정 창은 화면 밖에서 그려지지 않아 화면 위에서 잠깐 보였다 닫힌다.
 - 디버그 빌드도 Developer ID 로 서명한다. 키체인의 토큰 항목에 대한 접근 허용이 서명에 묶이기 때문이다.
 - 데이터 리포: `Jindesk sync`가 바로 커밋하고 올린다. 앱 설정에서 연결한 리포와 폴더만 올린다. 개발 맥은 시험 리포에 연결한다(학생의 실제 리포에 연결하지 않는다).
 

@@ -53,6 +53,8 @@ final class MobileModel {
   // 과목 개념 지도를 열 때 골라 둘 개념 (학습 페이지의 "개념 지도에서 보기")
   var mapFocus: String?
   var showSettings = false
+  // 찾기와 사전에서 고른 용어나 기호 (시트로 보인다, DECISIONS.md 34)
+  var lookup: Lookup?
   // 화면 찍기: 학습 페이지에 넘길 debug 값 (renderer/page.js 의 page.debug)
   var pageDebug: JSONValue?
 
@@ -85,8 +87,12 @@ final class MobileModel {
     library = SourceLibrary.load(data)
     concepts = Dictionary(uniqueKeysWithValues: ConceptStore.subjects(data).map { ($0, ConceptStore.all(data, subject: $0)) })
     syllabi = Dictionary(uniqueKeysWithValues: concepts.keys.compactMap { s in Syllabus.load(data, subject: s).map { (s, $0) } })
-    if let subject, concepts[subject] == nil { self.subject = nil }
-    if let concept, self.concept(concept) == nil, Self.mapSubject(concept).flatMap({ concepts[$0] }) == nil { self.concept = nil }
+    if let subject, concepts[subject] == nil, !subject.hasPrefix("dict:") { self.subject = nil }
+    if let concept, self.concept(concept) == nil, Self.mapSubject(concept).flatMap({ concepts[$0] }) == nil,
+      Self.unitKey(concept).flatMap({ concepts[$0.subject] }) == nil
+    {
+      self.concept = nil
+    }
   }
 
   // 개념이 있는 과목. 이름은 자료의 과목 꼬리표에서 온다.
@@ -282,6 +288,12 @@ final class MobileModel {
       } else if let s = defaults.string(forKey: "openSubject") {
         subject = s
       }
+      // 단원 요약을 연다 (-openUnit "unit:<과목 id>|<단원 키>"), 용어 시트를 띄운다 (-lookupTerm <영어 용어>)
+      if let u = defaults.string(forKey: "openUnit"), let key = Self.unitKey(u) {
+        subject = key.subject
+        concept = u
+      }
+      if let t = defaults.string(forKey: "lookupTerm") { lookup = .term(t) }
       // 원래 자료의 그 쪽을 연다 (-openSource <자료 id>#<쪽>)
       if let text = defaults.string(forKey: "openSource"), let hash = text.firstIndex(of: "#"), let page = Int(text[text.index(after: hash)...]) {
         openSource(String(text[..<hash]), page: page)

@@ -11,7 +11,9 @@ struct RootView: View {
     NavigationSplitView {
       SubjectList()
     } content: {
-      if let subject = model.subject {
+      if model.subject == MobileModel.termsSelection || model.subject == MobileModel.symbolsSelection {
+        DictionaryList(symbols: model.subject == MobileModel.symbolsSelection)
+      } else if let subject = model.subject {
         ConceptList(subject: subject)
       } else {
         ContentUnavailableView("과목을 고릅니다", systemImage: "books.vertical")
@@ -21,6 +23,7 @@ struct RootView: View {
     }
     .sheet(isPresented: $model.showSettings) { SettingsView() }
     .sheet(item: $model.sourcePeek) { SourcePageView(peek: $0) }
+    .sheet(item: $model.lookup) { LookupSheet(lookup: $0) }
     .alert("앱을 업데이트하세요", isPresented: Binding(get: { model.updateNotice != nil }, set: { if !$0 { model.updateNotice = nil } })) {
       Button("확인", role: .cancel) {}
     } message: {
@@ -36,6 +39,8 @@ struct RootView: View {
   @ViewBuilder private var detail: some View {
     if let subject = MobileModel.mapSubject(model.concept) {
       ConceptMapScreen(subject: subject).id(subject)
+    } else if let unit = MobileModel.unitKey(model.concept) {
+      UnitSummaryScreen(subject: unit.subject, key: unit.key).id(model.concept)
     } else if let id = model.concept, let concept = model.concept(id) {
       ConceptPage(concept: concept)
     } else {
@@ -46,7 +51,7 @@ struct RootView: View {
 
 struct SubjectList: View {
   @Environment(MobileModel.self) private var model
-  // 찾기는 다음 판에서 만든다. 이번에는 작동하지 않는 검색바만 둔다 (DECISIONS.md 29).
+  // 찾기: 개념, 용어, 기호 (DECISIONS.md 34). 찾기 칸은 화면 위에 둔다.
   @State private var searchText = ""
 
   var body: some View {
@@ -61,6 +66,8 @@ struct SubjectList: View {
           }
           .padding(.vertical, 4)
         }
+      } else if !searchText.trimmingCharacters(in: .whitespaces).isEmpty {
+        SearchResults(query: searchText.trimmingCharacters(in: .whitespaces))
       } else {
         Section("과목") {
           ForEach(model.subjects, id: \.id) { s in
@@ -71,11 +78,19 @@ struct SubjectList: View {
             .tag(s.id)
           }
         }
+        Section("사전") {
+          LabeledContent("용어", value: "\(model.glossary.terms.count)").tag(MobileModel.termsSelection)
+          LabeledContent("기호", value: "\(model.symbols.count)").tag(MobileModel.symbolsSelection)
+        }
       }
       Section { SyncStatusRow() }
     }
     .navigationTitle("Jindesk")
-    .searchable(text: $searchText, prompt: "개념 찾기")
+    .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "개념·용어·기호 찾기")
+    #if DEBUG
+      // 화면 확인: 찾기 칸에 넣어 둔 채 연다 (-searchText <말>)
+      .onAppear { if let q = UserDefaults.standard.string(forKey: "searchText") { searchText = q } }
+    #endif
     .toolbar {
       ToolbarItem(placement: .topBarTrailing) {
         Button("설정", systemImage: "gearshape") { model.showSettings = true }
@@ -143,6 +158,7 @@ struct ConceptList: View {
           let inItem = concepts.filter { $0.item.map(ItemPath.dir) == ItemPath.dir(entry.item.code) }
           if !inItem.isEmpty {
             Section("\(entry.item.code) \(entry.item.title)") {
+              UnitRow().tag(MobileModel.unitSelection(subject, "item:\(entry.item.code)"))
               ForEach(inItem) { ConceptRow(concept: $0).tag($0.id) }
             }
           }
@@ -150,6 +166,7 @@ struct ConceptList: View {
       }
       ForEach(Self.groups(concepts.filter { $0.item == nil }, prefix: syllabus == nil ? nil : "목차 밖 · "), id: \.name) { group in
         Section(group.name) {
+          UnitRow().tag(MobileModel.unitSelection(subject, "proposed:\(group.concepts.first?.itemProposed ?? "목차 밖")"))
           ForEach(group.concepts) { ConceptRow(concept: $0).tag($0.id) }
         }
       }
@@ -167,6 +184,13 @@ struct ConceptList: View {
       byName[name, default: []].append(c)
     }
     return order.sorted().map { ($0, byName[$0]!) }
+  }
+}
+
+// 단원 묶음의 첫 줄: 단원 요약을 연다 (DECISIONS.md 34)
+struct UnitRow: View {
+  var body: some View {
+    Label("단원 요약", systemImage: "doc.text.below.ecg").foregroundStyle(Color.accentColor)
   }
 }
 

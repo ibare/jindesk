@@ -60,6 +60,43 @@
           let subject = m.concepts.keys.sorted().first
           m.selection = subject.flatMap { m.conceptMap($0, showOthers: false).learningOrder().dropFirst().first }.map { .concept($0) }
         },
+        // 단원 개요: 첫 과목의 첫 단원 (-snapshotUnitSection 으로 아래 절까지 내려 찍는다)
+        Scenario(name: "unit-overview", dark: true) { m in
+          m.phase = .ready
+          m.section = .subjects
+          m.selection = firstUnit(m)
+        },
+        // 모아 보기의 용어와 command term, 찾기 (DECISIONS.md 34)
+        Scenario(name: "collections-terms", dark: true) { m in
+          m.phase = .ready
+          m.section = .collections
+          m.collectionsTab = .terms
+          m.selection = .entry("term:interquartile range")
+        },
+        Scenario(name: "collections-command", dark: true) { m in
+          m.phase = .ready
+          m.section = .collections
+          m.collectionsTab = .commandTerms
+          m.selection = .entry("command:Compare")
+        },
+        Scenario(name: "search-quartile", dark: true) { m in
+          m.phase = .ready
+          m.section = .subjects
+          m.searchText = "quartile"
+          try? await Task.sleep(for: .seconds(2))
+          m.selection = .entry("term:quartile")
+        },
+        // 자료와 나란히 (DECISIONS.md 34): 배우는 순서의 셋째 개념
+        Scenario(name: "side-by-side", dark: true) { m in
+          m.phase = .ready
+          m.section = .subjects
+          let subject = m.concepts.keys.sorted().first
+          m.selection = subject.flatMap { m.conceptMap($0, showOthers: false).learningOrder().dropFirst(2).first }.map { .concept($0) }
+          // 화면이 뜬 뒤에 켠다 (뜰 때의 값으로는 칸을 접지 않는다)
+          try? await Task.sleep(for: .seconds(1))
+          m.sideBySide = true
+          try? await Task.sleep(for: .seconds(2))
+        },
         Scenario(name: "jobs") { m in
           m.phase = .ready
           fakeUsage(m)
@@ -251,6 +288,8 @@
         }
         for w in NSApp.windows where w.isVisible && w.identifier?.rawValue.hasPrefix("settings") == true { w.close() }
         model.showIntake = false
+        model.searchText = ""
+        model.sideBySide = false
         model.regenTarget = nil
         model.snapshotDebug = nil
         model.openAllKorean = false
@@ -272,6 +311,12 @@
       }
       for window in NSApp.windows { window.isRestorable = false }
       NSApp.terminate(nil)
+    }
+
+    // 첫 과목의 첫 단원 (단원 개요)
+    static func firstUnit(_ m: AppModel) -> SubjectSelection? {
+      guard let subject = m.concepts.keys.sorted().first, let c = m.inLearningOrder(m.concepts[subject] ?? []).first else { return nil }
+      return .unit(subject, c.item.map { "item:\($0)" } ?? "proposed:\(c.itemProposed ?? "목차 밖")")
     }
 
     // 개념 지도를 찍을 과목: -snapshotConcept 로 준 개념의 과목, 없으면 개념이 가장 많은 과목

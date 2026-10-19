@@ -88,6 +88,24 @@ public struct EntrySource: Sendable, Equatable {
   }
 }
 
+// 자료에 풀이까지 나온 예제와 그 출처 (DECISIONS.md 38)
+public struct EntryExample: Sendable, Equatable {
+  public let text: String
+  public let src: [String]
+
+  public init(text: String, src: [String]) {
+    self.text = text
+    self.src = src
+  }
+
+  var yaml: YAMLValue { .map(["text": .string(text), "src": .array(src.map(YAMLValue.string))]) }
+
+  init?(yaml: YAMLValue) {
+    guard let text = yaml["text"]?.string else { return nil }
+    self.init(text: text, src: yaml["src"]?.strings ?? [])
+  }
+}
+
 public struct Entry: Sendable, Equatable, Identifiable {
   // entries/ 아래 경로에서 .md 를 뗀 것: <과목 id>/<항목>/<slug>
   public let id: String
@@ -101,7 +119,7 @@ public struct Entry: Sendable, Equatable, Identifiable {
   public let sources: [EntrySource]
   public let claims: [EntryClaim]
   public let symbols: [SymbolDef]
-  public let examples: [String]
+  public let examples: [EntryExample]
   public let misconceptions: [String]
   public let body: String
   public let recorded: String
@@ -111,7 +129,7 @@ public struct Entry: Sendable, Equatable, Identifiable {
 
   public init(
     id: String, subject: String, item: String?, itemProposed: String?, title: String, sources: [EntrySource], claims: [EntryClaim],
-    symbols: [SymbolDef], examples: [String], misconceptions: [String], body: String, recorded: String, provenance: YAMLMap, held: String? = nil
+    symbols: [SymbolDef], examples: [EntryExample], misconceptions: [String], body: String, recorded: String, provenance: YAMLMap, held: String? = nil
   ) {
     self.id = id
     self.subject = subject
@@ -132,8 +150,8 @@ public struct Entry: Sendable, Equatable, Identifiable {
   // 첫 자료 (이 엔트리의 묶음을 정한다)
   public var source: String { sources.first?.source ?? "" }
 
-  // 주장들이 가리키는 쪽
-  public var refs: Set<String> { Set(claims.flatMap(\.src)) }
+  // 주장과 예제가 가리키는 쪽
+  public var refs: Set<String> { Set(claims.flatMap(\.src) + examples.flatMap(\.src)) }
 
   public var frontMatter: YAMLMap {
     var m: YAMLMap = [
@@ -147,7 +165,7 @@ public struct Entry: Sendable, Equatable, Identifiable {
       "sources": .array(sources.map { .map(["source": .string($0.source), "pages": .array($0.pages.map(YAMLValue.int))]) }),
       "claims": .array(claims.map(\.yaml)),
       "symbols": .array(symbols.map(\.yaml)),
-      "examples": .array(examples.map(YAMLValue.string)),
+      "examples": .array(examples.map(\.yaml)),
       "misconceptions": .array(misconceptions.map(YAMLValue.string)),
       "recorded": .string(recorded),
       "provenance": .map(provenance),
@@ -169,7 +187,7 @@ public struct Entry: Sendable, Equatable, Identifiable {
     return Entry(
       id: id, subject: subject, item: d["item"]?.string, itemProposed: d["item_proposed"]?.string, title: title, sources: sources,
       claims: (d["claims"]?.array ?? []).compactMap(EntryClaim.init(yaml:)),
-      symbols: (d["symbols"]?.array ?? []).compactMap(SymbolDef.init(yaml:)), examples: d["examples"]?.strings ?? [],
+      symbols: (d["symbols"]?.array ?? []).compactMap(SymbolDef.init(yaml:)), examples: (d["examples"]?.array ?? []).compactMap(EntryExample.init(yaml:)),
       misconceptions: d["misconceptions"]?.strings ?? [], body: body.trimmingCharacters(in: .whitespacesAndNewlines),
       recorded: d["recorded"]?.string ?? "", provenance: d["provenance"]?.map ?? YAMLMap([]), held: d["held"]?.string)
   }

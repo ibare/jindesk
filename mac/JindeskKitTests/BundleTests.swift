@@ -131,14 +131,14 @@ import Testing
     try t.data.initialize(app: testApp)
     let written = try ConceptCuration.apply(try #require(good.plan), input: input, data: t.data, provenance: ["job": "j"])
     #expect(Set(written[0].occurrences.map(\.entry)) == ["math/unplaced/tree", "math/unplaced/old-tree"])
-    // 붙이지 않은 보류 엔트리의 출처는 쓸 수 없고, 보류 엔트리를 두 곳에 붙이면 틀린다
+    // 보류 엔트리도 여러 개념이 나눠 쓸 수 있지만, 붙이지 않은 보류 엔트리(h02)의 출처는 쓸 수 없다
     let twice = try plan([
       "concepts": [
         ["concept": NSNull(), "slug": "a", "title": "A", "entries": ["e01", "h01"], "units": [unit]],
         ["concept": NSNull(), "slug": "b", "title": "B", "entries": ["h01"], "units": [["id": NSNull(), "text": "x", "claims": [["text": "c", "src": ["20261012-ccccdddd#p6"]]]]]],
       ], "held": [],
     ])
-    #expect(twice.problems.contains { $0.contains("h01") })
+    #expect(!twice.problems.contains { $0.contains("h01") })
     #expect(twice.problems.contains { $0.contains("#p6") })
   }
 }

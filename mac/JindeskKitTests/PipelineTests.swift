@@ -159,6 +159,31 @@ extension URL {
     #expect(SourceReading.check(out: out, sources: [meta(slides, pages: 10), meta(worksheet, pages: 6)], math: nil).problems.contains { $0.contains(worksheet) })
   }
 
+  @Test func 예제도_자료와_쪽을_달아야_한다() throws {
+    let out = TempPlace().root.appending(path: "out")
+    let note: [String: Any] = ["title": "T", "kind": "worksheet", "assessment": false, "skipped_pages": []]
+    try basics(out, sources: [slides: note, worksheet: note])
+    let claim: [String: Any] = ["text": "\\(\\log(ab) = \\log a + \\log b\\)", "source": slides, "pages": [3]]
+    try write(
+      out, "entries/good.json",
+      ["title": "Laws of logarithms", "body": "b", "claims": [claim], "examples": [["text": "\\(\\log 2 + \\log 7 = \\log 14\\)", "source": worksheet, "pages": [1, 2]]]])
+    try write(out, "entries/plain.json", ["title": "Laws again", "body": "b", "claims": [claim], "examples": ["\\(\\log 6 - \\log 3 = \\log 2\\)"]])
+    try write(out, "entries/nopage.json", ["title": "Laws third", "body": "b", "claims": [claim], "examples": [["text": "x", "source": worksheet, "pages": [9]]]])
+    let checked = SourceReading.check(out: out, sources: [meta(slides, pages: 10), meta(worksheet, pages: 2)], math: nil)
+    #expect(checked.entries.map(\.file) == ["good.json"])
+    #expect(Set(checked.rejected.map(\.file)) == ["plain.json", "nopage.json"])
+    let good = try #require(checked.entries.first)
+    // 예제의 쪽도 그 자료의 쪽에 든다
+    #expect(good.pages == [slides: [3], worksheet: [1, 2]])
+    let t = TempPlace()
+    try t.data.initialize(app: testApp)
+    let placed = try SourceReading.place([good], subject: "math", data: t.data, jobID: "j", provenance: [:])
+    #expect(placed[0].examples == [EntryExample(text: "\\(\\log 2 + \\log 7 = \\log 14\\)", src: ["\(worksheet)#p1", "\(worksheet)#p2"])])
+    // 예제의 출처도 엔트리의 출처라 개념 정리가 주장으로 쓸 수 있다
+    #expect(placed[0].refs.contains("\(worksheet)#p2"))
+    #expect(try Entry.parse(try String(contentsOf: t.data.entryFile(placed[0].id), encoding: .utf8)) == placed[0])
+  }
+
   @Test func 시험에_떨어진_엔트리는_버리지_않고_보류로_넣는다() throws {
     let t = TempPlace()
     try t.data.initialize(app: testApp)
@@ -296,6 +321,36 @@ extension URL {
 }
 
 extension CurationCheckTests {
+  // 엔트리 하나를 여러 개념이 나눠 쓴다 (DECISIONS.md 38)
+  @Test func 엔트리_하나를_여러_개념이_나눠_쓰고_빠진_주장은_부드럽게_알린다() throws {
+    let big = Entry(
+      id: "math/unplaced/logs", subject: "math", item: nil, itemProposed: "Logarithms", title: "Logarithms", sources: [EntrySource(source: "20261017-aaaabbbb", pages: [1, 2, 3])],
+      claims: [EntryClaim(text: "definition", src: ["20261017-aaaabbbb#p1"]), EntryClaim(text: "product law", src: ["20261017-aaaabbbb#p2"]), EntryClaim(text: "change of base", src: ["20261017-aaaabbbb#p3"])],
+      symbols: [], examples: [], misconceptions: [], body: "b", recorded: "", provenance: YAMLMap([]))
+    let input = ConceptCuration.Input(subject: "math", entries: [("e01", big)], concepts: [], conceptHashes: [:])
+    func unit(_ text: String, _ page: Int) -> [String: Any] { ["id": NSNull(), "text": text, "claims": [["text": text, "src": ["20261017-aaaabbbb#p\(page)"]]]] }
+    let split = try plan([
+      "concepts": [
+        ["concept": NSNull(), "slug": "definition-of-a-logarithm", "title": "Definition of a logarithm", "entries": ["e01"], "units": [unit("A logarithm is an index.", 1)]],
+        ["concept": NSNull(), "slug": "laws-of-logarithms", "title": "Laws of logarithms", "entries": ["e01"], "units": [unit("The product law.", 2)]],
+      ], "held": [],
+    ])
+    let c = ConceptCuration.check(out: split, input: input, math: nil)
+    #expect(c.problems.isEmpty, "\(c.problems)")
+    // 바꾸는 밑 공식(3쪽)이 어디에도 남지 않았다: 실패가 아니라 부드러운 문제다
+    #expect(c.soft.count == 1 && c.soft[0].contains("change of base"))
+    let t = TempPlace()
+    try t.data.initialize(app: testApp)
+    let written = try ConceptCuration.apply(try #require(c.plan), input: input, data: t.data, provenance: ["job": "j"])
+    #expect(written.allSatisfy { $0.occurrences.map(\.entry) == ["math/unplaced/logs"] })
+    // 개념과 보류에 함께 두면 틀린다
+    let both = try plan([
+      "concepts": [["concept": NSNull(), "slug": "a", "title": "A", "entries": ["e01"], "units": [unit("x", 1)]]],
+      "held": [["entry": "e01", "reason": "일부만 개념이다"]],
+    ])
+    #expect(ConceptCuration.check(out: both, input: input, math: nil).problems.contains { $0.contains("개념과 보류에 함께") })
+  }
+
   @Test func 너무_커진_개념을_나누면_옮긴_단위가_원래_출처를_쓰고_출현_목록이_따라간다() throws {
     let t = TempPlace()
     try t.data.initialize(app: testApp)

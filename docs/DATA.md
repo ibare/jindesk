@@ -302,7 +302,8 @@ claims:
   - { text: "horizontal velocity constant without air resistance", src: ["20260903-3fa2c1d0#p12"] }
 symbols:
   - { symbol: "g", meaning: "acceleration of free fall", unit: "m s^-2" }
-examples: []
+examples:
+  - { text: "A ball thrown horizontally at 12 m/s keeps a horizontal velocity of 12 m/s until it lands.", src: ["20260903-91b2c3d4#p2"] }
 misconceptions: ["The velocity is not zero at the highest point; only its vertical component is."]
 recorded: "2026-09-03T18:10:00+09:00"
 provenance: { job: "20260903-1801-read-kinematics-slides", instructions: { kind: "source-reading", version: "0.1", commit: "…", dirty: false }, model: "claude-opus-5-5" }
@@ -311,7 +312,7 @@ provenance: { job: "20260903-1801-read-kinematics-slides", instructions: { kind:
 Without air resistance, no force acts horizontally …
 ```
 
-같은 경로가 이미 있으면 `<slug>--<작업 id>.md`로 나란히 둔다. 엔트리 id 는 `entries/` 아래 경로에서 `.md`를 뗀 것이다. 엔트리는 묶음의 여러 자료에 걸칠 수 있고, `sources`는 자료마다 이 엔트리의 내용이 나온 쪽이다.
+같은 경로가 이미 있으면 `<slug>--<작업 id>.md`로 나란히 둔다. 엔트리 id 는 `entries/` 아래 경로에서 `.md`를 뗀 것이다. 엔트리는 묶음의 여러 자료에 걸칠 수 있고, `sources`는 자료마다 이 엔트리의 내용이 나온 쪽이다. 주장처럼 예제도 출처(`src`)를 단다(`DECISIONS.md` 38). 엔트리 하나를 여러 개념이 나눠 쓸 수 있고, 그때 그 엔트리는 그 개념들의 출현 목록에 모두 든다.
 
 **보류.** 개념이 되지 못한 엔트리는 보류로 남는다(`DECISIONS.md` 35). 개념 정리가 보류한 것은 그 작업의 `records/concept-curation/<작업 id>/plan.json`의 `held`에 까닭과 함께 남는다. 자료 읽기에서 학생 독자 시험에 고쳐 써도 떨어진 엔트리는 머리말에 `held: "<까닭>"`을 달고 들어간다. 보류된 엔트리는 그 과목의 다음 정리마다 까닭과 함께 다시 넘어가고, 개념에 붙으면(그 개념의 출현 목록에 들면) 보류가 풀린다.
 

@@ -116,11 +116,13 @@ public enum ConceptCuration {
     await ctx.setPhase("checking")
     let math = ctx.config.katex.flatMap(MathChecker.init(katex:))
     var checked = check(out: dirs.out, input: input, math: math)
-    if !checked.problems.isEmpty {
-      await ctx.log(.warn, "검사에서 \(checked.problems.count)건이 나와 고쳐 쓰게 합니다")
-      for p in checked.problems.prefix(20) { await ctx.log(.warn, p) }
+    // 부드러운 검사(빠진 주장)도 한 번 고쳐 쓰게 한다. 그래도 남으면 기록에만 남긴다 (DECISIONS.md 38)
+    if !checked.problems.isEmpty || !checked.soft.isEmpty {
+      let all = checked.problems + checked.soft
+      await ctx.log(.warn, "검사에서 \(all.count)건이 나와 고쳐 쓰게 합니다")
+      for p in all.prefix(20) { await ctx.log(.warn, p) }
       await ctx.setPhase("fixing")
-      try await AgentStep.fix(options, session: result.sessionID, problems: checked.problems, ctx: ctx, label: "개념 정리", events: "curate-fix")
+      try await AgentStep.fix(options, session: result.sessionID, problems: all, ctx: ctx, label: "개념 정리", events: "curate-fix")
       await ctx.setPhase("checking")
       checked = check(out: dirs.out, input: input, math: math)
     }
@@ -152,6 +154,11 @@ public enum ConceptCuration {
       readerWarnings = failed.sorted { $0.key < $1.key }.map { "학생 독자 시험 실패: \($0.key) — \($0.value.first ?? "")" }
       readerWarnings += gaps.map { "학습 목표 시험 실패: \($0)" }
       for w in readerWarnings { await ctx.log(.warn, w) }
+    }
+    // 고쳐 써도 남은 빠진 주장은 기록에 남긴다
+    if !checked.soft.isEmpty {
+      readerWarnings += checked.soft
+      for w in checked.soft { await ctx.log(.warn, w) }
     }
 
     await ctx.setPhase("finalizing")
@@ -335,6 +342,8 @@ public enum ConceptCuration {
   struct Checked: Sendable {
     var plan: Plan?
     var problems: [String] = []
+    // 고쳐 쓰게 하되 정리를 실패시키지 않는 문제: 엔트리의 주장이 그 엔트리를 쓰는 개념들에 남지 않았다
+    var soft: [String] = []
   }
 
   static func check(out: URL, input: Input, math: MathChecker?) -> Checked {
@@ -350,7 +359,9 @@ public enum ConceptCuration {
     let heldKeys = Set(input.held.map(\.key))
     let conceptByKey = Dictionary(input.concepts.map { ($0.key, $0.concept) }, uniquingKeysWith: { a, _ in a })
     let entryByKey = input.entryByKey
+    // 엔트리 키 → 그 엔트리를 쓰는 개념 수. 엔트리 하나를 여러 개념이 나눠 쓸 수 있다 (DECISIONS.md 38)
     var placedEntries: [String: Int] = [:]
+    var heldEntries: Set<String> = []
     var usedConcepts: Set<String> = []
     // 이미 있는 개념들의 출처. 너무 커진 개념을 나눌 때 옮긴 단위가 원래 출처를 그대로 쓴다.
     let existingRefs = input.concepts.reduce(into: Set<String>()) { $0.formUnion($1.concept.refs) }
@@ -467,21 +478,37 @@ public enum ConceptCuration {
         continue
       }
       c.problems += TextChecks.recordProblems(reason, field: "held \(e)")
-      placedEntries[e, default: 0] += 1
+      heldEntries.insert(e)
       held.append((e, reason))
     }
     for key in entryKeys.sorted() {
-      switch placedEntries[key] ?? 0 {
-      case 0: c.problems.append("엔트리 \(key) 가 어느 개념에도, 보류에도 없습니다")
-      case 1: break
-      default: c.problems.append("엔트리 \(key) 가 두 곳 이상에 들어갔습니다")
-      }
+      let used = placedEntries[key] ?? 0
+      if used == 0 && !heldEntries.contains(key) { c.problems.append("엔트리 \(key) 가 어느 개념에도, 보류에도 없습니다") }
+      if used > 0 && heldEntries.contains(key) { c.problems.append("엔트리 \(key) 가 개념과 보류에 함께 들어갔습니다. 개념에 쓰면 보류에서 뺀다") }
     }
-    for key in heldKeys.sorted() where (placedEntries[key] ?? 0) > 1 {
-      c.problems.append("보류된 엔트리 \(key) 가 개념 두 곳 이상에 들어갔습니다")
+    if c.problems.isEmpty {
+      c.plan = Plan(concepts: concepts, held: held)
+      c.soft = missingClaims(concepts, entryByKey: entryByKey)
     }
-    if c.problems.isEmpty { c.plan = Plan(concepts: concepts, held: held) }
     return c
+  }
+
+  // 엔트리의 주장 가운데 그 엔트리를 쓰는 개념들의 단위 어디에도 출처가 남지 않은 것 (DECISIONS.md 38)
+  static func missingClaims(_ concepts: [PlannedConcept], entryByKey: [String: Entry]) -> [String] {
+    var cited: [String: Set<String>] = [:]
+    for p in concepts {
+      let refs = Set(p.units.flatMap { $0.claims.flatMap(\.src) })
+      for e in p.entries { cited[e, default: []].formUnion(refs) }
+    }
+    var out: [String] = []
+    for (key, refs) in cited.sorted(by: { $0.key < $1.key }) {
+      guard let entry = entryByKey[key] else { continue }
+      let missing = entry.claims.filter { !$0.src.isEmpty && Set($0.src).isDisjoint(with: refs) }
+      guard !missing.isEmpty else { continue }
+      let shown = missing.prefix(3).map { "\"\($0.text.prefix(60))\"" }.joined(separator: ", ")
+      out.append("엔트리 \(key) (\(entry.title)) 의 주장 \(missing.count)개가 이 엔트리를 쓰는 개념의 단위에 출처로 남지 않았습니다: \(shown)")
+    }
+    return out
   }
 
   // MARK: - 반영

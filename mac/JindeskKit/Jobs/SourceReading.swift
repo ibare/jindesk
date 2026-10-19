@@ -260,6 +260,13 @@ public enum SourceReading {
     let conditions: [String]
   }
 
+  // 예제와 그 출처 (DECISIONS.md 38)
+  struct DraftExample: Sendable {
+    let text: String
+    let source: String
+    let pages: [Int]
+  }
+
   struct Draft: Sendable {
     let file: String
     let slug: String
@@ -268,7 +275,7 @@ public enum SourceReading {
     let body: String
     let claims: [DraftClaim]
     let symbols: [SymbolDef]
-    let examples: [String]
+    let examples: [DraftExample]
     let misconceptions: [String]
     // 자료 id → 쪽
     let pages: [String: [Int]]
@@ -387,7 +394,22 @@ public enum SourceReading {
     }
     if claims.isEmpty { problems.append("claims 가 없습니다. 주장마다 자료와 쪽을 단다") }
     let symbols = AgentJSON.symbols(v["symbols"])
-    let examples = AgentJSON.strings(v["examples"])
+    // 예제도 주장처럼 자료와 쪽을 단다
+    var examples: [DraftExample] = []
+    for (i, raw) in (v["examples"]?.arrayValue ?? []).enumerated() {
+      guard let text = AgentJSON.string(raw["text"]) else {
+        problems.append("examples[\(i)]: { text, source, pages } 모양으로 쓴다 (예제마다 자료와 쪽을 단다)")
+        continue
+      }
+      guard let source = AgentJSON.string(raw["source"]) ?? only, pageCount[source] != nil else {
+        problems.append("examples[\(i)]: 읽을 자료 표에 있는 자료 id(source)를 단다")
+        continue
+      }
+      let ps = AgentJSON.ints(raw["pages"])
+      if ps.isEmpty { problems.append("examples[\(i)]: 출처 쪽(pages)이 없습니다") }
+      for p in ps where !valid(source, p) { problems.append("examples[\(i)]: 없는 쪽입니다 (\(source) \(p))") }
+      examples.append(DraftExample(text: text, source: source, pages: ps))
+    }
     let misconceptions = AgentJSON.strings(v["misconceptions"])
     let item = AgentJSON.string(v["item"])
 
@@ -399,7 +421,7 @@ public enum SourceReading {
       for cond in c.conditions { english.append(("claims[\(i)].conditions", cond)) }
     }
     for s in symbols { english.append(("symbols \(s.symbol)", s.meaning)) }
-    for (i, e) in examples.enumerated() { english.append(("examples[\(i)]", e)) }
+    for (i, e) in examples.enumerated() { english.append(("examples[\(i)]", e.text)) }
     for (i, m) in misconceptions.enumerated() { english.append(("misconceptions[\(i)]", m)) }
     if let item { english.append(("item", item)) }
     for (field, text) in english {
@@ -418,9 +440,10 @@ public enum SourceReading {
       pages[only, default: []].formUnion(AgentJSON.ints(v["pages"]).filter { valid(only, $0) })
     }
     for c in claims { pages[c.source, default: []].formUnion(c.pages) }
-    // 자료의 차례: 주장에 처음 나온 차례
+    for e in examples { pages[e.source, default: []].formUnion(e.pages) }
+    // 자료의 차례: 주장에 처음 나온 차례, 그다음 예제
     var order: [String] = []
-    for c in claims where !order.contains(c.source) { order.append(c.source) }
+    for s in claims.map(\.source) + examples.map(\.source) where !order.contains(s) { order.append(s) }
     for s in metas.map(\.id) where pages[s] != nil && !order.contains(s) { order.append(s) }
     return (
       Draft(
@@ -447,7 +470,8 @@ public enum SourceReading {
             id: id, subject: subject, item: item?.code, itemProposed: item == nil ? d.item : nil, title: d.title,
             sources: d.sources.map { EntrySource(source: $0, pages: d.pages[$0] ?? []) },
             claims: d.claims.map { c in EntryClaim(text: c.text, src: c.pages.map { SourceRef.make(c.source, page: $0) }, conditions: c.conditions) },
-            symbols: d.symbols, examples: d.examples, misconceptions: d.misconceptions, body: d.body, recorded: recorded, provenance: provenance,
+            symbols: d.symbols, examples: d.examples.map { e in EntryExample(text: e.text, src: e.pages.map { SourceRef.make(e.source, page: $0) }) },
+            misconceptions: d.misconceptions, body: d.body, recorded: recorded, provenance: provenance,
             held: held[d.file]))
       }
       for e in entries { try FileOps.writeNew(e.markdown, to: data.entryFile(e.id)) }

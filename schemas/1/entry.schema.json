@@ -125,8 +125,25 @@
     },
     "examples": {
       "type": "array",
+      "description": "자료에 풀이까지 나온 예제와 그 출처 (DECISIONS.md 38)",
       "items": {
-        "type": "string"
+        "type": "object",
+        "required": [
+          "text",
+          "src"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "src": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
       }
     },
     "misconceptions": {

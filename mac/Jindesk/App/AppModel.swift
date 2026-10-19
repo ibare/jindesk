@@ -364,7 +364,6 @@ final class AppModel {
       case .current:
         break
       }
-      try SchemaFile.noteOpened(data, by: app)
     } catch {
       self.data = data
       phase = .migrationFailed(error.localizedDescription)

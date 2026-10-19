@@ -78,7 +78,8 @@ xcodebuild -project JindeskMobile.xcodeproj -scheme JindeskMobile -destination '
 
 - 코드 주석, 커밋 메시지, 화면 글은 한국어로 쓴다. 학습 내용(학습 페이지의 글)만 영어다.
 - 이 리포는 공개다. 학생의 자료, 기록, 이름, 학교 이름을 넣지 않는다. 시험 데이터도 지어낸 것만 쓴다.
-- 출시 전에는 스키마 버전과 파일의 판(`v`)이 모두 1 이다. 데이터 모양을 바꾸면 `schemas/1/`과 코드를 그 모양으로 고치고, 마이그레이션 단계나 옛 모양을 읽는 코드를 두지 않는다(`docs/DECISIONS.md` 36). 출시 후 관리자가 판을 올리기로 정하면 그때부터 `CurrentSchema.version`을 올리고, `schemas/<새 버전>/`, `MigrationPlan.steps`의 단계, 시험을 함께 더한다(`docs/MIGRATION.md`).
+- 0.1.1 로 출시했다(`docs/DECISIONS.md` 42). 데이터 스펙(파일과 필드의 추가, 삭제, 모양)을 바꾸면 무조건 `CurrentSchema.version`을 올리고, `schemas/<새 버전>/`, `MigrationPlan.steps`의 단계, 시험을 함께 더한다(`docs/MIGRATION.md`). 판을 올리면 폰 앱도 다시 설치해야 하니 관리자에게 알린다. 스펙은 그대로 두고 앱이 언제 무엇을 읽고 쓰는지만 바꾸면 판을 올리지 않는다.
+- 데이터를 열 수 있는지는 스키마 버전으로만 정한다. 앱 판이나 빌드 번호로 막지 않는다. 열 때마다 맥마다 다른 값을 데이터 폴더에 고쳐 적지 않는다. 열기만 해도 커밋이 생겨 쓰는 맥과 기록이 갈라진다.
 - 데이터 폴더의 YAML 은 `YAML.stringify`로만 쓰고 `FileOps.writeAtomic`으로 저장한다. JSONL 은 `FileOps.appendLine`으로 덧붙이기만 한다.
 - 작업을 더하면 `JobKind.withInstructions`와 `jobs/<종류>/INSTRUCTIONS.md`를 함께 더한다.
 - `ios/project.yml`이 함께 빌드하는 `mac/JindeskKit/` 파일을 고치면 iOS 빌드도 확인한다. 학습 페이지가 새 파일을 읽게 되면 폰 앱이 받는 경로(`MOBILE.md`의 표)도 고친다.

@@ -78,9 +78,6 @@ import Testing
     let before = try t.read("meta/schema.yaml")
     try t.data.initialize(app: AppVersion(app: "9", build: "9"))
     #expect(try t.read("meta/schema.yaml") == before)
-    // 연 앱 판이 바뀌었을 때만 적는다
-    try SchemaFile.noteOpened(t.data, by: AppVersion(app: "0.2.0", build: "2"))
-    #expect(try SchemaFile.read(t.data).lastOpenedBy.app == "0.2.0")
   }
 
   @Test func 잠금은_한_곳만_잡고_프로세스_id_를_적는다() throws {

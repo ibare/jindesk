@@ -81,6 +81,28 @@ enum SubjectSelection: Hashable {
   case bundle(String)
 }
 
+// 데이터 폴더에서 다시 읽은 것. 주 스레드 밖에서 읽고 주 스레드에서 반영한다.
+struct LibrarySnapshot: Sendable {
+  var library: SourceLibrary
+  var bundles: [SourceBundle]
+  var concepts: [String: [Concept]]
+  var syllabi: [String: Syllabus]
+  var readSources: [String: [String]]
+  // 남은 일과 실행 기록 (사용자가 한 일 뒤 바로 읽을 때는 읽지 않는다)
+  var pending: [PendingWork]?
+  var history: [RunRecord]?
+
+  static func load(_ data: DataFolder) -> LibrarySnapshot {
+    let library = SourceLibrary.load(data)
+    var concepts: [String: [Concept]] = [:]
+    for subject in ConceptStore.subjects(data) { concepts[subject] = ConceptStore.all(data, subject: subject) }
+    var syllabi: [String: Syllabus] = [:]
+    for s in library.subjects { if let y = Syllabus.load(data, subject: s.id) { syllabi[s.id] = y } }
+    return LibrarySnapshot(
+      library: library, bundles: BundleStore.all(data, library: library), concepts: concepts, syllabi: syllabi, readSources: SourceReading.readSources(data))
+  }
+}
+
 enum ReadingState: Equatable {
   case unread, queued, read
   case reading(String)
@@ -172,6 +194,16 @@ final class AppModel {
   private(set) var bucket: SourceFiles.Outcome?
   private(set) var bucketSyncing = false
   @ObservationIgnored private var bucketAgain = false
+  // 다시 읽기: 주 스레드 밖에서 읽는 중인지, 그동안 또 읽을 일이 생겼는지, 사용자가 한 일 뒤 바로 읽은 차례
+  @ObservationIgnored private var reloading = false
+  @ObservationIgnored private var reloadAgain = false
+  @ObservationIgnored private var reloadGeneration = 0
+  // 다시 읽은 것을 반영할 때마다 올린다 (학습 페이지와 단원 개요를 다시 만드는 기준)
+  private(set) var dataVersion = 0
+  // 화면을 다시 그릴 때마다 디스크를 읽지 않도록 읽어 둔 것. 파일의 수정 시각이나 판이 바뀌면 다시 읽는다.
+  @ObservationIgnored private var pageStates: [String: (stamp: String, state: PageState)] = [:]
+  @ObservationIgnored private var pageJSONs: [String: (key: String, json: String)] = [:]
+  @ObservationIgnored private var digests: [String: (key: String, digest: UnitDigest)] = [:]
   // 다음 커밋에 담을 까닭 (몇 초 모았다가 한 번에 커밋한다)
   @ObservationIgnored private var syncReasons: [String] = []
   @ObservationIgnored private var syncWait: Task<Void, Never>?
@@ -362,31 +394,66 @@ final class AppModel {
     await open(data, creating: false)
   }
 
-  // 작업이 시작하거나 끝날 때: 잠자기 막기, 자료 목록 다시 읽기, 기다리던 업데이트 설치
+  // 작업이 시작하거나 끝날 때: 잠자기 막기, 자료 목록 다시 읽기(주 스레드 밖), 기다리던 업데이트 설치
   func jobsChanged() {
     commentsVersion += 1
     sleepGuard.update(active: !(jobs?.active.isEmpty ?? true) || backupStatus != nil)
-    if let data { history = RunHistory.load(folders, data: data) }
-    reloadLibrary()
+    reloadInBackground()
     updater?.installIfIdle()
   }
 
+  // 사용자가 한 일 뒤: 목록은 바로 다시 읽고(가볍다), 남은 일과 실행 기록은 주 스레드 밖에서 다시 읽는다
   func reloadLibrary() {
     guard let data else { return }
-    let fresh = SourceLibrary.load(data)
-    if fresh != library { library = fresh }
-    let groups = BundleStore.all(data, library: fresh)
-    if groups != bundles { bundles = groups }
-    var byID: [String: [Concept]] = [:]
-    for subject in ConceptStore.subjects(data) { byID[subject] = ConceptStore.all(data, subject: subject) }
-    if byID != concepts { concepts = byID }
-    var syl: [String: Syllabus] = [:]
-    for s in fresh.subjects { if let y = Syllabus.load(data, subject: s.id) { syl[s.id] = y } }
-    if syl != syllabi { syllabi = syl }
-    let read = SourceReading.readSources(data)
-    if read != readSources { readSources = read }
-    let pending = Pipeline.pending(data, instructions: AppPaths.instructions)
-    if pending != pendingWork { pendingWork = pending }
+    reloadGeneration += 1
+    apply(LibrarySnapshot.load(data))
+    reloadInBackground()
+  }
+
+  // 모두 주 스레드 밖에서 다시 읽는다. 남은 일 계산은 데이터가 늘수록 무거워져 주 스레드에서 하면 화면이 멈춘다.
+  // 읽는 동안 또 부르면 끝난 뒤 한 번 더 읽는다. 읽는 사이 사용자가 한 일로 바로 읽었으면 이번 것은 버리고 다시 읽는다.
+  func reloadInBackground() {
+    guard let data else { return }
+    if reloading {
+      reloadAgain = true
+      return
+    }
+    reloading = true
+    let generation = reloadGeneration
+    let folders = folders
+    let instructions = AppPaths.instructions
+    Task { [weak self] in
+      let loaded = await Task.detached(priority: .utility) {
+        var s = LibrarySnapshot.load(data)
+        s.pending = Pipeline.pending(data, instructions: instructions)
+        s.history = RunHistory.load(folders, data: data)
+        return s
+      }.value
+      guard let self else { return }
+      self.reloading = false
+      if generation == self.reloadGeneration, self.data?.url == data.url {
+        self.apply(loaded)
+      } else {
+        self.reloadAgain = true
+      }
+      if self.reloadAgain {
+        self.reloadAgain = false
+        self.reloadInBackground()
+      }
+    }
+  }
+
+  // 다시 읽은 것을 반영한다. 바뀐 것만 바꿔 그것을 보는 화면만 다시 그린다.
+  private func apply(_ s: LibrarySnapshot) {
+    if s.library != library { library = s.library }
+    if s.bundles != bundles { bundles = s.bundles }
+    if s.concepts != concepts { concepts = s.concepts }
+    if s.syllabi != syllabi { syllabi = s.syllabi }
+    if s.readSources != readSources { readSources = s.readSources }
+    if let pending = s.pending, pending != pendingWork { pendingWork = pending }
+    if let history = s.history { self.history = history }
+    dataVersion += 1
+    guard s.pending != nil, let data else { return }
     let index = searchIndex
     Task.detached { [weak self] in
       if index.update(data) { await self?.runSearch() }
@@ -439,17 +506,34 @@ final class AppModel {
   }
 
   // 렌더러에 넘길 페이지 (JSON 글)
+  // 학습 페이지에 넘길 JSON. 화면이 다시 그려질 때마다 만들지 않고, 코멘트·다시 읽기의 판이나 개념의 파일이 바뀔 때만 다시 만든다.
   func pageJSON(_ concept: Concept) -> String {
     guard let data else { return "{}" }
-    _ = commentsVersion
+    let folder = ConceptFolder(concept.cid, in: data)
+    let key = "\(commentsVersion)|\(dataVersion)|" + FileOps.stamp([folder.concept, folder.page, folder.layers])
+    let debug = openAllKorean || scrollToFigure || snapshotDebug != nil
+    if !debug, let cached = pageJSONs[concept.id], cached.key == key { return cached.json }
     var json = PageComposer.json(PageComposer.load(data, concept: concept, library: library, all: concepts.values.flatMap { $0 }))
-    if openAllKorean || scrollToFigure || snapshotDebug != nil, case .object(var o) = json {
+    if debug, case .object(var o) = json {
       if openAllKorean { o["openAll"] = .bool(true) }
       if scrollToFigure { o["scrollToFigure"] = .bool(true) }
       if let snapshotDebug { o["debug"] = snapshotDebug }
       json = .object(o)
     }
-    return JSONText.stringify(YAMLValue(json: json))
+    let text = JSONText.stringify(YAMLValue(json: json))
+    if !debug { pageJSONs[concept.id] = (key, text) }
+    return text
+  }
+
+  // 단원 개요의 내용. 다시 읽기를 반영하거나 코멘트가 바뀔 때만 다시 만든다.
+  func unitDigest(_ subject: String, _ key: String, _ unit: UnitContents) -> UnitDigest? {
+    guard let data else { return nil }
+    let stamp = "\(commentsVersion)|\(dataVersion)|" + unit.concepts.map(\.id).joined(separator: ",")
+    let id = "\(subject)|\(key)"
+    if let cached = digests[id], cached.key == stamp { return cached.digest }
+    let digest = UnitDigest.make(data, concepts: unit.concepts, inquiry: unit.inquiry)
+    digests[id] = (stamp, digest)
+    return digest
   }
 
   // 학습 페이지를 한국어를 모두 펼친 채로 연다 (화면 찍기)
@@ -482,15 +566,29 @@ final class AppModel {
     var checks = 0
   }
 
-  // 개념 줄에 보일 페이지 상태: 한국어 제목, 페이지가 없거나 한국어가 덜 된 것, 새로 만든 것, 확인 문제 수
+  // 개념 줄에 보일 페이지 상태: 한국어 제목, 페이지가 없거나 한국어가 덜 된 것, 새로 만든 것, 확인 문제 수.
+  // 목록의 줄마다 불리므로 page.yaml 과 layers.yaml 의 수정 시각이 그대로면 읽어 둔 것을 쓴다.
   func pageState(_ concept: Concept) -> PageState {
     guard let data else { return PageState() }
     let folder = ConceptFolder(concept.cid, in: data)
-    guard let page = Page.load(folder) else { return PageState(note: "페이지 만드는 중", isNew: concept.isNew()) }
+    let stamp = FileOps.stamp([folder.page, folder.layers])
+    var state: PageState
+    if let cached = pageStates[concept.id], cached.stamp == stamp {
+      state = cached.state
+    } else {
+      state = Self.readPageState(folder)
+      pageStates[concept.id] = (stamp, state)
+    }
+    state.isNew = concept.isNew()
+    return state
+  }
+
+  private static func readPageState(_ folder: ConceptFolder) -> PageState {
+    guard let page = Page.load(folder) else { return PageState(note: "페이지 만드는 중") }
     let missing = Translation.targets(page, layers: Layers.load(folder)).count
     let job = page.provenance["job"]?.string ?? ""
     return PageState(
-      titleKo: page.titleKo, note: missing > 0 ? "한국어 \(missing)곳 남음" : nil, hasPage: true, isNew: concept.isNew(), madeAt: Self.jobTime(job),
+      titleKo: page.titleKo, note: missing > 0 ? "한국어 \(missing)곳 남음" : nil, hasPage: true, madeAt: jobTime(job),
       checks: page.units.filter { $0.kind == .check }.count)
   }
 

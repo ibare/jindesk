@@ -22,11 +22,25 @@ public enum ConceptCuration {
   public static func pending(_ data: DataFolder, bundle: SourceBundle) -> [Entry] {
     let library = SourceLibrary.load(data)
     guard let subject = BundleStore.subject(bundle, library: library) else { return [] }
+    return pending(bundle: bundle, in: SubjectEntries(data, subject: subject))
+  }
+
+  public static func pending(bundle: SourceBundle, in subject: SubjectEntries) -> [Entry] {
     let members = Set(bundle.sources)
-    let done = ConceptStore.curatedEntries(ConceptStore.all(data, subject: subject)).union(heldReasons(data, subject: subject).keys)
     let order = Dictionary(bundle.sources.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
-    return EntryStore.all(data, subject: subject).filter { members.contains($0.source) && !done.contains($0.id) }.sorted {
+    return subject.entries.filter { members.contains($0.source) && !subject.done.contains($0.id) }.sorted {
       (order[$0.source] ?? 0, $0.id) < (order[$1.source] ?? 0, $1.id)
+    }
+  }
+
+  // 과목의 엔트리와, 이미 개념이나 보류에 든 엔트리 id. 묶음마다 다시 읽지 않도록 과목마다 한 번 읽어 둔다.
+  public struct SubjectEntries: Sendable {
+    public let entries: [Entry]
+    public let done: Set<String>
+
+    public init(_ data: DataFolder, subject: String) {
+      done = ConceptStore.curatedEntries(ConceptStore.all(data, subject: subject)).union(heldReasons(data, subject: subject).keys)
+      entries = EntryStore.all(data, subject: subject)
     }
   }
 

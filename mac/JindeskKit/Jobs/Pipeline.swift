@@ -20,13 +20,19 @@ public enum Pipeline {
     let bundles = BundleStore.all(data, library: library)
     var busySubjects: Set<String> = []
     var curation: [PendingWork] = []
+    // 과목의 엔트리와 개념은 과목마다 한 번만 읽어 모든 묶음에 나눠 쓴다 (묶음마다 읽으면 묶음 수만큼 늘어난다)
+    var entries: [String: ConceptCuration.SubjectEntries] = [:]
     for b in bundles.reversed() {
       guard let subject = BundleStore.subject(b, library: library) else { continue }
       let label = b.title ?? b.sources.first.flatMap { library.source($0)?.meta.original.name } ?? b.id
       if b.sources.contains(where: { read[$0] == nil }) {
         out.append(PendingWork(kind: .sourceReading, target: b.id, label: label))
         busySubjects.insert(subject)
-      } else if !ConceptCuration.pending(data, bundle: b).isEmpty {
+        continue
+      }
+      let inSubject = entries[subject] ?? ConceptCuration.SubjectEntries(data, subject: subject)
+      entries[subject] = inSubject
+      if !ConceptCuration.pending(bundle: b, in: inSubject).isEmpty {
         curation.append(PendingWork(kind: .conceptCuration, target: b.id, label: label))
         busySubjects.insert(subject)
       }

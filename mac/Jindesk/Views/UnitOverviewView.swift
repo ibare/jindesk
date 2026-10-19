@@ -26,8 +26,7 @@ struct UnitOverviewView: View {
 
   var body: some View {
     let unit = model.unit(subject, key)
-    if let data = model.data, !unit.concepts.isEmpty {
-      let digest = UnitDigest.make(data, concepts: unit.concepts, inquiry: unit.inquiry)
+    if !unit.concepts.isEmpty, let digest = model.unitDigest(subject, key, unit) {
       ScrollViewReader { proxy in
         ScrollView {
           UnitDigestBody(subject: subject, title: unit.title, digest: digest) { section in withAnimation { proxy.scrollTo(section, anchor: .top) } }

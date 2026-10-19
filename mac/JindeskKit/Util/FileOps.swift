@@ -106,6 +106,15 @@ public enum FileOps {
     try? String(contentsOf: url, encoding: .utf8)
   }
 
+  // 파일들의 수정 시각 (없는 파일은 -). 읽어 둔 것을 다시 읽어야 하는지 볼 때 쓴다
+  public static func stamp(_ urls: [URL]) -> String {
+    urls.map { url in
+      var s = stat()
+      guard stat(url.path, &s) == 0 else { return "-" }
+      return "\(s.st_mtimespec.tv_sec).\(s.st_mtimespec.tv_nsec)"
+    }.joined(separator: "|")
+  }
+
   public static func exists(_ url: URL) -> Bool {
     FileManager.default.fileExists(atPath: url.path)
   }

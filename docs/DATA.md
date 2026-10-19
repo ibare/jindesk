@@ -240,7 +240,7 @@ last_opened_by: { app: "0.4.0", build: "41" }
 history: []
 ```
 
-출시 전에는 스키마가 1 이다(`MIGRATION.md`의 출시 전). `history`에는 출시 후 마이그레이션할 때마다 `{ from, to, app, at, kind, backup }` 한 줄이 쌓인다.
+출시 전에는 스키마가 1 이다(`MIGRATION.md`의 출시 전). `history`에는 출시 후 마이그레이션할 때마다 `{ from, to, app, at, kind, backup }` 한 줄이 쌓인다. `last_opened_by`는 폴더를 만들 때 적는다. 0.1.1 은 열 때마다 고쳐 적었지만, 판이 다른 맥이 열기만 해도 커밋이 생겨 이제 고치지 않는다(`DECISIONS.md` 42).
 
 `sources/20260903-3fa2c1d0/meta.yaml` (받을 때 정해진 사실. 고치지 않는다)
 

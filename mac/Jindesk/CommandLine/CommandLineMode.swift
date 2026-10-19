@@ -63,7 +63,7 @@ enum CommandLineMode {
   // 에이전트 작업의 설정 (화면의 설정과 같다). 그림 검사기는 화면 밖 웹 보기를 쓴다.
   static func agentConfig(_ folder: DataFolder) async throws -> RunnerConfig {
     var config = try await ConfigLoader.load(
-      settings: AdminSettings.load(AppPaths.defaults), data: folder, guardHelper: AppPaths.guardHelper, instructions: AppPaths.instructions,
+      settings: RunSettings.load(AppPaths.defaults), data: folder, guardHelper: AppPaths.guardHelper, instructions: AppPaths.instructions,
       katex: AppPaths.katex)
     config.figureChecker = WebFigureChecker(renderer: AppPaths.renderer)
     return config
@@ -147,7 +147,7 @@ struct DoctorCommand: AsyncParsableCommand {
     output.line("실행 파일: \(AppPaths.executable.path)")
     let input = await Doctor.Input(
       guardHelper: AppPaths.guardHelper, instructions: AppPaths.instructions, schemas: AppPaths.schemas, data: CommandLineMode.dataFolder(data),
-      folders: .standard(), claudePath: AdminSettings.load(AppPaths.defaults).claudePath, app: AppPaths.version, repo: RepoLinkStore.load(), bucket: BucketLinkStore.load())
+      folders: .standard(), claudePath: RunSettings.load(AppPaths.defaults).claudePath, app: AppPaths.version, repo: RepoLinkStore.load(), bucket: BucketLinkStore.load())
     let items = await Doctor.run(input)
     for item in items {
       let mark = switch item.status {
@@ -183,7 +183,7 @@ struct IntakeCommand: AsyncParsableCommand {
       files: files.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }, labels: SourceLabels(grade: grade, subject: subject, level: level),
       memo: memo, syllabusBasis: syllabusBasis)
     let jobs = CommandLineMode.manager(folder)
-    let settings = AdminSettings.load(AppPaths.defaults)
+    let settings = RunSettings.load(AppPaths.defaults)
     let config =
       follow
       ? try await CommandLineMode.agentConfig(folder)
@@ -381,7 +381,7 @@ struct SyncCommand: AsyncParsableCommand {
   func run() async throws {
     guard let folder = CommandLineMode.dataFolder(data), folder.isInitialized else { throw ValidationError("Jindesk 데이터 폴더를 찾지 못했습니다") }
     guard let link = RepoLinkStore.load() else {
-      print("데이터 리포를 연결하지 않았습니다. 앱의 관리자 설정에서 연결합니다 (SETUP.md 의 데이터 리포)")
+      print("데이터 리포를 연결하지 않았습니다. 앱의 설정에서 연결합니다 (SETUP.md 의 데이터 리포)")
       throw ExitCode(1)
     }
     guard link.owns(folder) else {

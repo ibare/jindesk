@@ -26,9 +26,9 @@ struct JindeskApp: App {
       AppCommands(model: model)
     }
 
-    // 관리자 설정: 학생 화면에서는 감춘다. 앱 메뉴에서 ⌥ 키를 누른 채 열어야 보인다.
-    Window("관리자 설정", id: "admin") {
-      AdminSettingsView()
+    // 설정: 앱 메뉴의 "설정…"(⌘,)으로 연다 (DECISIONS.md 33)
+    Window("설정", id: "settings") {
+      SettingsView()
         .environment(model)
         .frame(minWidth: 640, minHeight: 520)
     }
@@ -52,7 +52,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     guard self.model == nil else { return }
     self.model = model
     model.updater = UpdateController(model: model)
-    AdminMenu.install()
     await model.start()
     #if DEBUG
       if let directory = SnapshotDriver.directory { await SnapshotDriver.run(model, to: directory) }
@@ -74,9 +73,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
-  // 메인 창과 관리자 설정 창을 연다 (SwiftUI 의 openWindow 를 화면이 넘겨준다)
+  // 메인 창과 설정 창을 연다 (SwiftUI 의 openWindow 를 화면이 넘겨준다)
   @MainActor static var openMainWindow: (() -> Void)?
-  @MainActor static var openAdminWindow: (() -> Void)?
+  @MainActor static var openSettingsWindow: (() -> Void)?
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
@@ -101,40 +100,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 }
 
-// 관리자 설정 메뉴 항목은 ⌥ 키를 누른 채 메뉴를 열 때만 보인다 (SETUP.md)
-@MainActor
-enum AdminMenu {
-  static let title = "관리자 설정…"
-  private static var installed = false
-
-  static func install() {
-    guard !installed else { return }
-    installed = true
-    NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { _ in
-      MainActor.assumeIsolated { refresh() }
-    }
-    refresh()
-  }
-
-  static func refresh() {
-    let reveal = NSEvent.modifierFlags.contains(.option)
-    for item in NSApp.mainMenu?.items ?? [] {
-      for sub in item.submenu?.items ?? [] where sub.title == title { sub.isHidden = !reveal }
-    }
-  }
-}
-
 struct AppCommands: Commands {
   let model: AppModel
   @Environment(\.openWindow) private var openWindow
 
   var body: some Commands {
-    CommandGroup(after: .appSettings) {
-      Button(AdminMenu.title) {
-        openWindow(id: "admin")
+    CommandGroup(replacing: .appSettings) {
+      Button("설정…") {
+        openWindow(id: "settings")
         NSApp.activate()
       }
-      .keyboardShortcut(",", modifiers: [.command, .option])
+      .keyboardShortcut(",", modifiers: .command)
     }
     CommandGroup(replacing: .newItem) {}
     CommandGroup(after: .newItem) {
@@ -235,7 +211,7 @@ struct WindowOpenerBridge: View {
   var body: some View {
     Color.clear.onAppear {
       AppDelegate.openMainWindow = { openWindow(id: "main") }
-      AppDelegate.openAdminWindow = { openWindow(id: "admin") }
+      AppDelegate.openSettingsWindow = { openWindow(id: "settings") }
     }
   }
 }

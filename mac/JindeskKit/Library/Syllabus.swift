@@ -1,5 +1,5 @@
 // 강의 계획 목차 (syllabus/<과목 id>.yaml). 목차 만들기가 근거 문서(과목 가이드, MYP 단원 안내)에서 만든다.
-// 처음 만든 목차는 확인 전(confirmed: null)이고, 관리자가 화면에서 확인한다.
+// 처음 만든 목차는 확인 전(confirmed: null)이고, 화면에서 확인한다.
 import Foundation
 
 // MYP 단원 안내에서 뽑는 것

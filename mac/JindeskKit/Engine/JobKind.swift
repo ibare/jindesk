@@ -90,7 +90,7 @@ public enum JobLane: String, CaseIterable, Sendable {
     }
   }
 
-  // 관리자 설정으로 함께 도는 수를 바꿀 수 있는 대기열
+  // 설정으로 함께 도는 수를 바꿀 수 있는 대기열
   public var adjustable: Bool { self == .sources || self == .conversation }
 
   // 자리를 줄 차례 (작을수록 먼저)

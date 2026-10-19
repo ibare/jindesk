@@ -19,7 +19,7 @@
       directory.map { AppFolders(support: $0.appending(path: "support"), cache: $0.appending(path: "cache")) }
     }
 
-    enum Target { case main, admin, sheet }
+    enum Target { case main, settings, sheet }
 
     struct Scenario {
       let name: String
@@ -205,19 +205,19 @@
           $0.phase = .migrationFailed(MigrationFailure(issues: ["learner/comments.jsonl: 줄 수가 12 → 11 로 바뀌었습니다", "records/runs/2026-10.jsonl: 기록이 바뀌었습니다"]).localizedDescription)
         },
         Scenario(name: "newer-data", dark: true) { $0.phase = .newerData(3) },
-        Scenario(name: "admin-run", target: .admin) { m in
+        Scenario(name: "settings-run", target: .settings) { m in
           m.phase = .ready
-          m.adminTab = .run
-          AppDelegate.openAdminWindow?()
+          m.settingsTab = .run
+          AppDelegate.openSettingsWindow?()
         },
-        Scenario(name: "admin-doctor", target: .admin) { m in
+        Scenario(name: "settings-doctor", target: .settings) { m in
           await m.runDoctor()
-          m.adminTab = .doctor
-          AppDelegate.openAdminWindow?()
+          m.settingsTab = .doctor
+          AppDelegate.openSettingsWindow?()
         },
-        Scenario(name: "admin-data", dark: true, target: .admin) { m in
-          m.adminTab = .data
-          AppDelegate.openAdminWindow?()
+        Scenario(name: "settings-data", dark: true, target: .settings) { m in
+          m.settingsTab = .data
+          AppDelegate.openSettingsWindow?()
         },
       ]
     }
@@ -236,8 +236,8 @@
         await scenario.prepare(model)
         // 새로 연 창은 한 번 그려진 뒤에 옮긴다 (그리기 전에 옮기면 빈 창이 찍힌다)
         try? await Task.sleep(for: .milliseconds(scenario.target == .main ? 500 : 2000))
-        // 창 위치는 화면 가까이로 당겨져 겹칠 수 있다. 관리자 창을 찍을 때는 메인 창을 잠시 내린다.
-        let hidden = scenario.target == .admin ? NSApp.windows.filter { $0.isVisible && AppDelegate.isMainWindow($0) } : []
+        // 창 위치는 화면 가까이로 당겨져 겹칠 수 있다. 설정 창을 찍을 때는 메인 창을 잠시 내린다.
+        let hidden = scenario.target == .settings ? NSApp.windows.filter { $0.isVisible && AppDelegate.isMainWindow($0) } : []
         for window in hidden { window.orderOut(nil) }
         defer { for window in hidden { window.orderFront(nil) } }
         if scenario.target != .sheet { moveOffscreen() }
@@ -249,16 +249,16 @@
         } catch {
           log.append("실패: \(scenario.name) — \(error.localizedDescription)")
         }
-        for w in NSApp.windows where w.isVisible && w.identifier?.rawValue.hasPrefix("admin") == true { w.close() }
+        for w in NSApp.windows where w.isVisible && w.identifier?.rawValue.hasPrefix("settings") == true { w.close() }
         model.showIntake = false
         model.regenTarget = nil
         model.snapshotDebug = nil
         model.openAllKorean = false
         model.scrollToFigure = false
       }
-      // 관리자 설정 메뉴 항목은 ⌥ 없이 열면 숨어 있어야 한다
-      let adminItems = (NSApp.mainMenu?.items ?? []).flatMap { $0.submenu?.items ?? [] }.filter { $0.title == AdminMenu.title }
-      log.append("관리자 메뉴: \(adminItems.count)개 · 숨김 \(adminItems.map(\.isHidden))")
+      // 설정 메뉴 항목은 하나이고 숨지 않는다 (DECISIONS.md 33)
+      let settingsItems = (NSApp.mainMenu?.items ?? []).flatMap { $0.submenu?.items ?? [] }.filter { $0.title == "설정…" }
+      log.append("설정 메뉴: \(settingsItems.count)개 · 숨김 \(settingsItems.map(\.isHidden))")
       if let jobs = model.jobs {
         jobs.cancel()
         for _ in 0..<50 where jobs.isBusy { try? await Task.sleep(for: .milliseconds(100)) }
@@ -290,10 +290,10 @@
     // 화면 밖으로 옮긴다. 사용자가 보는 화면을 가리지 않게 한다.
     static func moveOffscreen() {
       if UserDefaults.standard.bool(forKey: "snapshotStay") { return }
-      // 관리자 창(Form)은 화면 밖으로 옮기면 내용이 그려지지 않는다. 그 창은 화면 위에 둔 채 찍는다 (몇 초 보였다 닫힌다).
+      // 설정 창(Form)은 화면 밖으로 옮기면 내용이 그려지지 않는다. 그 창은 화면 위에 둔 채 찍는다 (몇 초 보였다 닫힌다).
       for window in NSApp.windows where window.isVisible && window.frame.width > 300 {
         window.isRestorable = false
-        guard window.identifier?.rawValue.hasPrefix("admin") != true else { continue }
+        guard window.identifier?.rawValue.hasPrefix("settings") != true else { continue }
         window.setFrame(NSRect(x: -6000, y: 200, width: 1200, height: 760), display: true)
       }
     }
@@ -345,7 +345,7 @@
       let found: NSWindow? =
         switch target {
         case .main: NSApp.windows.first { $0.isVisible && AppDelegate.isMainWindow($0) }
-        case .admin: NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue.hasPrefix("admin") == true }
+        case .settings: NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue.hasPrefix("settings") == true }
         case .sheet: NSApp.windows.first { $0.isVisible && AppDelegate.isMainWindow($0) }?.attachedSheet
         }
       guard let window = found else { throw RequestError("찍을 창이 없습니다") }

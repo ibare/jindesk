@@ -22,7 +22,7 @@ struct RepoSetupView: View {
   }
 }
 
-// 리포 주소, 쓰기 토큰, 로컬 위치를 넣고 연결한다. 처음 켤 때와 관리자 설정의 "리포 바꾸기"에서 쓴다.
+// 리포 주소, 쓰기 토큰, 로컬 위치를 넣고 연결한다. 처음 켤 때와 설정의 "리포 바꾸기"에서 쓴다.
 struct RepoConnectForm: View {
   @Environment(AppModel.self) private var model
   let suggestedPath: String

@@ -9,7 +9,7 @@
 - 데이터 폴더 고르기와 iCloud 경고, 캐시와 앱 지원 폴더, 데이터 폴더 잠금.
 - `meta/schema.yaml`, 마이그레이션 실행기 뼈대(백업, 사본, 검증, 바꿔 끼우기, 이어 하기), `jindesk migrate --check`.
 - Sparkle 연결, 작업 중 설치 미루기, `mac/scripts/release.sh`.
-- 환경 점검(`doctor`), 관리자 설정, 키체인 토큰.
+- 환경 점검(`doctor`), 설정, 키체인 토큰.
 - 백업 만들기.
 - 화면 찍기(Assayer 의 SnapshotDriver).
 - **끝나는 기준.** `release.sh --dry-run`이 통과한다(시험, Release 빌드, Developer ID 서명과 내보내기).

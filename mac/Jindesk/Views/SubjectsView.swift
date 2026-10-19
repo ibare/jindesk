@@ -145,7 +145,7 @@ struct SyllabusItemRow: View {
   }
 }
 
-// 처음 만든 목차는 관리자가 확인한다
+// 처음 만든 목차는 화면에서 확인한다
 struct SyllabusConfirmRow: View {
   @Environment(AppModel.self) private var model
   let subject: String

@@ -623,7 +623,7 @@ public enum Regen {
       reply = "두 에이전트가 따로 자료와 대조해 원래 글이 맞다고 판단했습니다. 바꾸지 않았습니다.\n\n" + a.reason + "\n\n" + b.reason
       status = .kept
     } else {
-      reply = "두 판단이 달라 바꾸지 않았습니다. 관리자가 판단합니다.\n\n1차: " + a.reason + "\n\n2차: " + b.reason
+      reply = "두 판단이 달라 바꾸지 않았습니다.\n\n1차: " + a.reason + "\n\n2차: " + b.reason
       status = .failed
     }
     reply = PageComposer.readableRefs(reply, library: SourceLibrary.load(ctx.data))

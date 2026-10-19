@@ -94,12 +94,12 @@ final class AppModel {
   private(set) var notes: [String] = []
   private(set) var doctor: [CheckItem] = []
   private(set) var doctorRunning = false
-  private(set) var admin: AdminSettings
+  private(set) var runSettings: RunSettings
   private(set) var tokenSaved = ClaudeToken.exists
   var section: SidebarSection = .today
   // 작업 화면에서 고른 작업 (상태 막대를 누르면 그 작업을 연다)
   var selectedJob: String?
-  var adminTab: AdminTab = .run
+  var settingsTab: SettingsTab = .run
   // 백업을 만드는 중이면 그 안내
   private(set) var backupStatus: String?
   private(set) var lastBackup: URL?
@@ -152,7 +152,7 @@ final class AppModel {
 
   init(folders: AppFolders = .standard()) {
     self.folders = folders
-    admin = AdminSettings.load(AppPaths.defaults)
+    runSettings = RunSettings.load(AppPaths.defaults)
   }
 
   var isBusy: Bool { (jobs?.isBusy ?? false) || backupStatus != nil }
@@ -201,7 +201,7 @@ final class AppModel {
     FileOps.list(data.url.deletingLastPathComponent()).contains { $0.hasPrefix(".Jindesk-before-") }
   }
 
-  // 데이터 리포를 연결하고 그 클론을 데이터 폴더로 연다 (처음 켤 때, 관리자 설정의 리포 바꾸기).
+  // 데이터 리포를 연결하고 그 클론을 데이터 폴더로 연다 (처음 켤 때, 설정의 리포 바꾸기).
   // 빈 리포면 데이터 폴더를 새로 만들어 첫 커밋을 올리고, Jindesk 리포면 클론한다. 이전 리포와 그 폴더는 건드리지 않는다.
   // 실패하면 그 까닭을 돌려준다.
   func connect(url: String, token: String, path: String) async -> String? {
@@ -301,7 +301,7 @@ final class AppModel {
     self.data = data
     reloadLibrary()
     let manager = JobManager(data: data, folders: folders)
-    apply(admin, to: manager)
+    apply(runSettings, to: manager)
     manager.onFinish = { [weak self] s in
       self?.jobsChanged()
       // 넣은 자료의 원본과 쪽 이미지를 자료 버킷에 올린다
@@ -604,10 +604,10 @@ final class AppModel {
   // 코멘트가 바뀌면 올린다 (학습 페이지를 다시 그리는 기준)
   private(set) var commentsVersion = 0
 
-  // 처음 만든 목차를 확인한다 (관리자)
+  // 처음 만든 목차를 확인한다
   func confirmSyllabus(_ subject: String) throws {
     guard let data, var s = Syllabus.load(data, subject: subject) else { return }
-    s.confirmed = (by: "관리자", at: Clock.isoLocal())
+    s.confirmed = (by: "사람", at: Clock.isoLocal())
     try s.write(data)
     reloadLibrary()
     scheduleSync("목차 확인 · \(subject)")
@@ -639,7 +639,7 @@ final class AppModel {
   func agentConfig() async throws -> RunnerConfig {
     guard let data else { throw RequestError("데이터 폴더가 열려 있지 않습니다") }
     var config = try await ConfigLoader.load(
-      settings: admin, data: data, guardHelper: AppPaths.guardHelper, instructions: AppPaths.instructions, katex: AppPaths.katex)
+      settings: runSettings, data: data, guardHelper: AppPaths.guardHelper, instructions: AppPaths.instructions, katex: AppPaths.katex)
     config.figureChecker = WebFigureChecker(renderer: AppPaths.renderer)
     return config
   }
@@ -652,7 +652,7 @@ final class AppModel {
     if let agent = try? await agentConfig() {
       config = agent
     } else {
-      config = await ConfigLoader.loadForRunner(settings: admin, guardHelper: AppPaths.guardHelper, instructions: AppPaths.instructions)
+      config = await ConfigLoader.loadForRunner(settings: runSettings, guardHelper: AppPaths.guardHelper, instructions: AppPaths.instructions)
     }
     try await jobs.submit(config: config) { try SourceIntake.prepare(request, $0) }
   }
@@ -704,7 +704,7 @@ final class AppModel {
     doctorRunning = true
     let input = Doctor.Input(
       guardHelper: AppPaths.guardHelper, instructions: AppPaths.instructions, schemas: AppPaths.schemas, data: data, folders: folders,
-      claudePath: admin.claudePath, app: app, repo: repoLink, bucket: bucketLink)
+      claudePath: runSettings.claudePath, app: app, repo: repoLink, bucket: bucketLink)
     doctor = await Doctor.run(input)
     tokenSaved = ClaudeToken.exists
     doctorRunning = false
@@ -780,7 +780,7 @@ final class AppModel {
     return GCSClient(bucket: link.name, key: key)
   }
 
-  // 버킷 이름과 쓰기용 키를 저장하고 맞춘다 (관리자 설정)
+  // 버킷 이름과 쓰기용 키를 저장하고 맞춘다 (설정)
   func saveBucket(name: String, accessID: String, secret: String) throws {
     let link = BucketLink(name: name)
     guard !link.name.isEmpty else { throw RequestError("버킷 이름을 넣습니다") }
@@ -825,15 +825,15 @@ final class AppModel {
     return repoPullProblem
   }
 
-  // MARK: - 관리자 설정
+  // MARK: - 설정
 
-  func saveAdmin(_ settings: AdminSettings) {
-    admin = settings
+  func saveRunSettings(_ settings: RunSettings) {
+    runSettings = settings
     settings.save(AppPaths.defaults)
     if let jobs { apply(settings, to: jobs) }
   }
 
-  private func apply(_ settings: AdminSettings, to manager: JobManager) {
+  private func apply(_ settings: RunSettings, to manager: JobManager) {
     manager.holdAtPercent = settings.resolvedHoldAtPercent
     for lane in JobLane.allCases where lane.adjustable { manager.setLimit(lane, settings.limit(lane)) }
   }

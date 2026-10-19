@@ -51,7 +51,7 @@ xcodebuild -project Jindesk.xcodeproj -scheme Jindesk -configuration Debug -deri
 - 명령줄 모드: `build/dd/Build/Products/Debug/Jindesk.app/Contents/MacOS/Jindesk doctor | intake --data <폴더> --subject … [--follow] <파일>… | continue --data <폴더> [--list] [--only <종류>] | check-figure --vendor <폴더> <조각.html> | migrate --check <폴더나 zip> | backup --out <폴더> | version`. `--follow`와 `continue`는 키체인의 토큰으로 실제 에이전트를 돌린다.
 - 에이전트 작업의 흐름 시험(`PipelineRunTests`)은 가짜 claude(파이썬 스크립트)로 자료 넣기부터 번역까지 돌린다. 지침의 출력 모양을 바꾸면 가짜도 함께 고친다.
 - 실제 학교 자료로 시험할 때는 임시 데이터 폴더(`--data`)에 넣고, 끝나면 `~/Library/Caches/com.mintae.Jindesk/pages/` 에 남은 쪽 이미지를 지운다. 학교 자료는 리포에 넣지 않는다. 시험 자료는 `SampleFiles`(JindeskKitTests)로 만든다.
-- 화면 확인: `Jindesk.app/Contents/MacOS/Jindesk -snapshotDir <폴더> [-snapshotOnly <이름,…>]` (디버그 빌드). 실제 데이터 폴더와 앱 지원 폴더 대신 `<폴더>` 아래를 쓰고, 정해 둔 화면을 PNG 로 찍은 뒤 끝난다. 관리자 설정 창은 화면 밖에서 그려지지 않아 화면 위에서 잠깐 보였다 닫힌다.
+- 화면 확인: `Jindesk.app/Contents/MacOS/Jindesk -snapshotDir <폴더> [-snapshotOnly <이름,…>]` (디버그 빌드). 실제 데이터 폴더와 앱 지원 폴더 대신 `<폴더>` 아래를 쓰고, 정해 둔 화면을 PNG 로 찍은 뒤 끝난다. 설정 창은 화면 밖에서 그려지지 않아 화면 위에서 잠깐 보였다 닫힌다.
 - 디버그 빌드도 Developer ID 로 서명한다. 키체인의 토큰 항목에 대한 접근 허용이 서명에 묶이기 때문이다.
 - 데이터 리포: `Jindesk sync`가 바로 커밋하고 올린다. 앱 설정에서 연결한 리포와 폴더만 올린다. 개발 맥은 시험 리포에 연결한다(학생의 실제 리포에 연결하지 않는다).
 

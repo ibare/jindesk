@@ -242,7 +242,7 @@ public enum DataRepo {
       let staged = try await g.run(["diff", "--cached", "--quiet"])
       if staged.termination == .exited(1) {
         var args = ["commit", "-q", "--no-verify", "-m", message]
-        // 관리자가 작성자를 정해 두지 않았으면 앱 이름으로 쓴다
+        // 이 맥의 git 에 작성자가 없으면 앱 이름으로 쓴다
         if try await g.run(["config", "user.email"]).trimmed.isEmpty { args = ["-c", "user.name=Jindesk", "-c", "user.email=jindesk@invalid"] + args }
         _ = try await g.check(args)
         outcome.commit = try await g.check(["rev-parse", "HEAD"])

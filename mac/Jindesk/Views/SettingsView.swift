@@ -1,22 +1,22 @@
 import JindeskKit
 import SwiftUI
 
-// 관리자 설정: 토큰, 모델과 상한, 동시 실행 수, 환경 점검, 데이터 폴더, 데이터 리포, 업데이트. 학생 화면에서는 감춘다.
-struct AdminSettingsView: View {
+// 설정: 토큰, 모델과 상한, 동시 실행 수, 환경 점검, 데이터 폴더, 데이터 리포, 자료 버킷, 업데이트 (DECISIONS.md 33).
+struct SettingsView: View {
   @Environment(AppModel.self) private var model
 
   var body: some View {
     @Bindable var model = model
-    TabView(selection: $model.adminTab) {
-      Tab("계정과 실행", systemImage: "key", value: AdminTab.run) { RunSettingsPane() }
-      Tab("환경 점검", systemImage: "stethoscope", value: AdminTab.doctor) { DoctorPane() }
-      Tab("데이터와 업데이트", systemImage: "externaldrive", value: AdminTab.data) { DataPane() }
+    TabView(selection: $model.settingsTab) {
+      Tab("계정과 실행", systemImage: "key", value: SettingsTab.run) { RunSettingsPane() }
+      Tab("환경 점검", systemImage: "stethoscope", value: SettingsTab.doctor) { DoctorPane() }
+      Tab("데이터와 업데이트", systemImage: "externaldrive", value: SettingsTab.data) { DataPane() }
     }
     .padding(16)
   }
 }
 
-enum AdminTab: Hashable {
+enum SettingsTab: Hashable {
   case run, doctor, data
 }
 
@@ -24,7 +24,7 @@ struct RunSettingsPane: View {
   @Environment(AppModel.self) private var model
   @State private var token = ""
   @State private var tokenMessage: String?
-  @State private var draft = AdminSettings()
+  @State private var draft = RunSettings()
   @State private var loaded = false
 
   var body: some View {
@@ -60,13 +60,13 @@ struct RunSettingsPane: View {
       Section("실행") {
         TextField("모델", text: optionalText(\.model), prompt: Text(RunnerConfig.defaultModel))
         Picker("effort", selection: $draft.effort) {
-          Text("기본 (\(AdminSettings.defaults.effort.rawValue))").tag(Effort?.none)
+          Text("기본 (\(RunSettings.defaults.effort.rawValue))").tag(Effort?.none)
           ForEach(Effort.allCases, id: \.self) { Text($0.rawValue).tag(Effort?.some($0)) }
         }
-        TextField("최대 턴", value: $draft.maxTurns, format: .number, prompt: Text("\(AdminSettings.defaults.maxTurns)"))
-        TextField("예산 (USD, 추정)", value: $draft.maxBudgetUSD, format: .number, prompt: Text("\(Int(AdminSettings.defaults.maxBudgetUSD))"))
-        TextField("시간 상한 (분, 깨어 있던 시간)", value: $draft.timeoutMinutes, format: .number, prompt: Text("\(Int(AdminSettings.defaults.timeoutMinutes))"))
-        TextField("사용량 미루기 기준 (5시간 %, 0 이면 미루지 않음)", value: $draft.holdAtPercent, format: .number, prompt: Text("\(AdminSettings.defaults.holdAtPercent)"))
+        TextField("최대 턴", value: $draft.maxTurns, format: .number, prompt: Text("\(RunSettings.defaults.maxTurns)"))
+        TextField("예산 (USD, 추정)", value: $draft.maxBudgetUSD, format: .number, prompt: Text("\(Int(RunSettings.defaults.maxBudgetUSD))"))
+        TextField("시간 상한 (분, 깨어 있던 시간)", value: $draft.timeoutMinutes, format: .number, prompt: Text("\(Int(RunSettings.defaults.timeoutMinutes))"))
+        TextField("사용량 미루기 기준 (5시간 %, 0 이면 미루지 않음)", value: $draft.holdAtPercent, format: .number, prompt: Text("\(RunSettings.defaults.holdAtPercent)"))
         TextField("claude 경로 (비우면 찾은 위치)", text: optionalText(\.claudePath), prompt: Text("~/.local/bin/claude"))
       }
       Section("함께 도는 작업 수") {
@@ -76,19 +76,19 @@ struct RunSettingsPane: View {
       }
       HStack {
         Spacer()
-        Button("되돌리기") { draft = model.admin }.disabled(draft == model.admin)
-        Button("저장") { model.saveAdmin(draft) }.keyboardShortcut(.defaultAction).disabled(draft == model.admin)
+        Button("되돌리기") { draft = model.runSettings }.disabled(draft == model.runSettings)
+        Button("저장") { model.saveRunSettings(draft) }.keyboardShortcut(.defaultAction).disabled(draft == model.runSettings)
       }
     }
     .formStyle(.grouped)
     .onAppear {
       guard !loaded else { return }
-      draft = model.admin
+      draft = model.runSettings
       loaded = true
     }
   }
 
-  private func optionalText(_ key: WritableKeyPath<AdminSettings, String?>) -> Binding<String> {
+  private func optionalText(_ key: WritableKeyPath<RunSettings, String?>) -> Binding<String> {
     Binding(get: { draft[keyPath: key] ?? "" }, set: { draft[keyPath: key] = $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 })
   }
 

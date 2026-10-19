@@ -166,7 +166,7 @@ struct StatusFooter: View {
         EmptyView()
       }
       if !model.doctorFailures.isEmpty {
-        Label("준비가 덜 된 것이 있습니다. 관리자에게 알려 주세요.", systemImage: "exclamationmark.triangle")
+        Label("준비가 덜 된 것이 있습니다. 설정의 환경 점검에서 봅니다.", systemImage: "exclamationmark.triangle")
           .font(.caption).foregroundStyle(.orange)
       }
       // 데이터 리포에 올리지 못했거나 받지 못했다 (DATA.md 의 데이터 리포)

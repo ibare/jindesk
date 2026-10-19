@@ -18,7 +18,7 @@ struct RootView: View {
     case .newerData(let version):
       StatusScreen(
         icon: "arrow.down.circle", title: "이 데이터는 더 새 판의 Jindesk 가 만들었습니다",
-        detail: "데이터의 스키마는 \(version), 이 앱은 \(CurrentSchema.version) 입니다. 앱을 업데이트합니다. 업데이트가 오지 않으면 관리자에게 알려 주세요.",
+        detail: "데이터의 스키마는 \(version), 이 앱은 \(CurrentSchema.version) 입니다. 앱을 업데이트합니다.",
         busy: false)
     case .unusable(let message):
       StatusScreen(icon: "exclamationmark.triangle", title: "데이터 폴더를 열 수 없습니다", detail: message, busy: false)
@@ -68,7 +68,7 @@ struct MigrationFailedView: View {
           NSWorkspace.shared.open(URL(string: "https://github.com/ibare/jindesk/releases")!)
         }
       }
-      Text("이전 판 앱은 릴리즈 페이지에서 받을 수 있습니다. 관리자에게 알려 주세요.").font(.callout).foregroundStyle(.secondary)
+      Text("이전 판 앱은 릴리즈 페이지에서 받을 수 있습니다.").font(.callout).foregroundStyle(.secondary)
     }
     .padding(40)
     .frame(maxWidth: .infinity, maxHeight: .infinity)

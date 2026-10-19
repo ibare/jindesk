@@ -20,7 +20,7 @@ public struct ToolPaths: Sendable, Equatable {
   }
 
   public func requireClaude() throws -> String {
-    guard let claude else { throw RequestError("claude 를 찾지 못했습니다. 관리자 설정에서 위치를 지정하세요.") }
+    guard let claude else { throw RequestError("claude 를 찾지 못했습니다. 설정에서 위치를 지정하세요.") }
     return claude
   }
 }
@@ -70,8 +70,8 @@ public struct RunnerConfig: Sendable {
   public var timeoutMinutes: Double { Double(timeout.components.seconds) / 60 }
 }
 
-// 관리자 설정. 앱 설정(UserDefaults)에 둔다. 학생 화면에는 보이지 않는다. 비어 있는 값은 기본값을 쓴다.
-public struct AdminSettings: Sendable, Equatable {
+// 실행 설정 (설정 창의 "계정과 실행"). 앱 설정(UserDefaults)에 둔다. 비어 있는 값은 기본값을 쓴다.
+public struct RunSettings: Sendable, Equatable {
   public var model: String?
   public var effort: Effort?
   public var maxTurns: Int?
@@ -108,13 +108,14 @@ public struct AdminSettings: Sendable, Equatable {
 
   public func limit(_ lane: JobLane) -> Int { laneLimits[lane.rawValue] ?? lane.defaultLimit }
 
+  // 저장 키는 예전 이름(admin.)을 그대로 쓴다. 바꾸면 이미 저장한 설정을 잃는다.
   static let keys = (
     model: "admin.model", effort: "admin.effort", maxTurns: "admin.maxTurns", budget: "admin.maxBudgetUSD", timeout: "admin.timeoutMinutes",
     hold: "admin.holdAtPercent", lanes: "admin.laneLimits", claude: "admin.claudePath"
   )
 
-  public static func load(_ defaults: UserDefaults = .standard) -> AdminSettings {
-    AdminSettings(
+  public static func load(_ defaults: UserDefaults = .standard) -> RunSettings {
+    RunSettings(
       model: defaults.string(forKey: keys.model)?.nilIfBlank,
       effort: defaults.string(forKey: keys.effort).flatMap(Effort.init(rawValue:)),
       maxTurns: defaults.object(forKey: keys.maxTurns) as? Int,
@@ -145,7 +146,7 @@ public enum ConfigLoader {
   }
 
   // 에이전트를 띄우지 않는 작업(자료 넣기)의 설정. 토큰과 claude 가 없어도 된다.
-  public static func loadForRunner(settings: AdminSettings, guardHelper: String, instructions: InstructionSource) async -> RunnerConfig {
+  public static func loadForRunner(settings: RunSettings, guardHelper: String, instructions: InstructionSource) async -> RunnerConfig {
     var found = ToolPaths(await ToolLocator.locateAll())
     if let path = settings.claudePath { found.claude = path }
     let base = ChildEnvironment.base(toolDirectories: ToolLocator.commonDirectories())
@@ -153,11 +154,11 @@ public enum ConfigLoader {
   }
 
   // 작업을 넣기 직전에 부른다. 토큰이 없거나 claude 가 너무 오래됐으면 작업을 시작하지 않는다.
-  public static func load(settings: AdminSettings, data: DataFolder, guardHelper: String, instructions: InstructionSource, katex: URL? = nil) async throws
+  public static func load(settings: RunSettings, data: DataFolder, guardHelper: String, instructions: InstructionSource, katex: URL? = nil) async throws
     -> RunnerConfig
   {
     guard let token = try? ClaudeToken.read() else {
-      throw Missing(message: "Claude 토큰이 키체인에 없습니다. 관리자 설정에서 넣거나 SETUP.md 의 방법으로 넣으세요.")
+      throw Missing(message: "Claude 토큰이 키체인에 없습니다. 설정에서 넣거나 SETUP.md 의 방법으로 넣으세요.")
     }
 
     var found = ToolPaths(await ToolLocator.locateAll())
@@ -177,7 +178,7 @@ public enum ConfigLoader {
       )
     }
 
-    let d = AdminSettings.defaults
+    let d = RunSettings.defaults
     return RunnerConfig(
       claudeToken: token,
       model: settings.model ?? RunnerConfig.defaultModel,

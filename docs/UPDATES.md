@@ -42,7 +42,12 @@
 
 관리자 맥에서 돈다. 실행 중인 Jindesk 작업과 상관없다(학생 맥이 아니다).
 
-브랜치는 `CLAUDE.md`의 브랜치와 PR 을 따른다. 판 번호(`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`)를 올리는 PR 을 `develop`에 넣고, `develop` → `main` PR 을 머지 커밋으로 머지한 뒤, `main`을 받아 그 커밋에서 스크립트를 돌린다.
+브랜치는 `CLAUDE.md`의 브랜치와 PR 을 따른다.
+
+1. 판 번호(`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`)를 올리는 PR 을 `develop`에 넣는다.
+2. `develop`에서 `release.sh --dry-run`(스키마가 바뀌었으면 `--check-backup`도)을 돌린다. 지난 릴리즈, 빌드 번호, 스키마와 마이그레이션, 시험, 빌드와 서명 확인이 모두 여기서 돈다(git 확인만 건너뛴다). 그래서 실패를 `main`에 넣기 전에 잡는다. 실패한 채 `main`에 넣으면 `main`에 릴리즈되지 않은 커밋이 남는다.
+3. `develop` → `main` PR 을 머지 커밋으로 머지한다.
+4. `main`을 받아 그 커밋에서 스크립트를 돌린다.
 
 ```sh
 mac/scripts/release.sh --notes <릴리즈 노트.md> [--check-backup <학생 백업 폴더나 zip>]

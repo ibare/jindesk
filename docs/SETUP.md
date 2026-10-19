@@ -4,7 +4,7 @@
 
 ## 필요한 것
 
-- 배포 대상 이상의 macOS. 버전은 정하지 않았다(`DECISIONS.md`).
+- macOS 26 이상(배포 대상 26.0). 학생 맥은 26.5.1 이다.
 - Claude Code 2.1.295 이상. 외부 호출 검사 훅의 `"onFailure": "block"` 때문이다.
 - 토큰을 낼 Claude 구독 계정.
 - Keynote. PPT 를 PDF 로 바꾼다. 없으면 LibreOffice 를 쓴다.

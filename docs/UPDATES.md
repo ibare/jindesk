@@ -59,7 +59,8 @@ mac/scripts/release.sh --dry-run    # 빌드와 서명 확인까지만
    - 학생 백업 사본으로 `jindesk migrate --check`가 통과했다(`MIGRATION.md`). 지난 릴리즈보다 스키마가 바뀌었으면 `--check-backup` 없이는 멈춘다.
    - 지금 커밋이 GitHub 에 올라가 있다. 릴리즈 태그가 그 커밋을 가리킨다.
 2. **빌드.** `xcodegen generate` 후 `xcodebuild archive`와 Developer ID 내보내기를 한다.
-3. **공증.** `ditto -c -k --keepParent`로 압축하고 `xcrun notarytool submit … --keychain-profile <프로필> --wait`, `xcrun stapler staple Jindesk.app`을 한다. 스테이플한 앱을 다시 압축해 `Jindesk-<판>.zip`을 만든다.
+3. **공증.** `ditto -c -k --keepParent --norsrc --noextattr --noqtn --noacl`로 압축하고 `xcrun notarytool submit … --keychain-profile <프로필> --wait`, `xcrun stapler staple Jindesk.app`을 한다. 스테이플한 앱을 같은 방법으로 다시 압축해 `Jindesk-<판>.zip`을 만든다. 그 zip 을 `unzip`으로 풀어 Gatekeeper 를 통과하는지 다시 본다.
+   - zip 에 확장 속성(macOS 가 붙이는 `com.apple.provenance` 등)을 담지 않는다. 담으면 번들 안에 `._` 파일로 들어가, 압축 해제 앱이 아닌 도구로 풀 때 그 파일이 번들에 생겨 서명이 깨진다. 그러면 받는 맥이 "Apple could not verify"로 막는다(0.1.0 에서 겪었다).
 4. **Sparkle 서명.** `sign_update Jindesk-<판>.zip`으로 EdDSA 서명과 길이를 얻는다.
 5. **appcast.** `appcast.xml`에 이번 판 항목 하나를 쓴다. 피드 주소가 늘 최신 릴리즈의 `appcast.xml`을 가리키므로 지난 판 항목은 넣지 않는다. 담는 것은 다음과 같다.
    - `sparkle:version`(빌드 번호), `sparkle:shortVersionString`

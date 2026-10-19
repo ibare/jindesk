@@ -122,13 +122,21 @@ if (( dry )); then
 fi
 
 # 4. 공증과 스테이플
+# zip 에는 확장 속성(com.apple.provenance 등)을 담지 않는다. 담으면 번들 안에 ._ 파일로 들어가,
+# 압축 해제 앱이 아닌 도구(unzip 등)로 풀 때 그 파일이 번들에 생겨 서명이 깨지고 Gatekeeper 가 막는다.
+pack() { ditto -c -k --keepParent --norsrc --noextattr --noqtn --noacl $1 $2 }
 step "공증 (notarytool, 프로필 $profile)"
-ditto -c -k --keepParent $app $out/notarize.zip
+pack $app $out/notarize.zip
 xcrun notarytool submit $out/notarize.zip --keychain-profile $profile --wait
 xcrun stapler staple $app
 spctl --assess --type execute -vv $app 2>&1 | sed 's/^/  /'
 zip=$out/Jindesk-$version.zip
-ditto -c -k --keepParent $app $zip
+pack $app $zip
+# 받는 쪽처럼 unzip 으로 풀어 서명과 공증을 다시 본다
+rm -rf $out/check && mkdir -p $out/check && unzip -q $zip -d $out/check
+spctl --assess --type execute -vv $out/check/Jindesk.app 2>&1 | sed 's/^/  /'
+spctl --assess --type execute $out/check/Jindesk.app 2>/dev/null || fail "풀어 낸 앱이 Gatekeeper 를 통과하지 못합니다"
+rm -rf $out/check
 
 # 5. Sparkle 서명
 step "Sparkle 서명"

@@ -58,8 +58,12 @@ fi
 [[ -d $repo/schemas/$schema ]] || fail "schemas/$schema/ 가 없습니다"
 if (( ! dry )); then
   [[ -z $(git -C $repo status --porcelain) ]] || fail "커밋하지 않은 변경이 있습니다. 지침과 코드를 모두 커밋한 뒤 릴리즈합니다"
+  # 릴리즈는 main 에서, 원격 main 과 같은 커밋에서 낸다 (CLAUDE.md 의 브랜치와 PR)
+  branch=$(git -C $repo branch --show-current)
+  [[ $branch == main ]] || fail "릴리즈는 main 에서 냅니다 (지금 $branch). develop → main PR 을 머지한 뒤 main 으로 옮겨 냅니다"
+  git -C $repo fetch -q origin main
   head=$(git -C $repo rev-parse HEAD)
-  [[ -n $(git -C $repo branch -r --contains $head 2>/dev/null) ]] || fail "지금 커밋($head)을 GitHub 에 올린 뒤 릴리즈합니다"
+  [[ $head == $(git -C $repo rev-parse origin/main) ]] || fail "로컬 main($head)이 원격 main 과 다릅니다. 받거나 PR 로 넣은 뒤 릴리즈합니다"
 fi
 if gh release view $tag -R $slug >/dev/null 2>&1; then fail "$tag 릴리즈가 이미 있습니다. MARKETING_VERSION 을 올리세요"; fi
 last_tag=$(gh release view -R $slug --json tagName -q .tagName 2>/dev/null || true)

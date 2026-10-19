@@ -64,7 +64,7 @@ fi
 if gh release view $tag -R $slug >/dev/null 2>&1; then fail "$tag 릴리즈가 이미 있습니다. MARKETING_VERSION 을 올리세요"; fi
 last_tag=$(gh release view -R $slug --json tagName -q .tagName 2>/dev/null || true)
 # 릴리즈 태그는 GitHub 에서 만들어지므로, 지난 판의 스키마를 읽기 전에 받아 온다
-[[ -n $last_tag ]] && git -C $repo fetch -q origin "refs/tags/$last_tag:refs/tags/$last_tag"
+[[ -n $last_tag ]] && git -C $repo fetch -q origin "refs/tags/${last_tag}:refs/tags/${last_tag}"
 if [[ -n $last_tag ]]; then
   last_build=$(curl -fsSL https://github.com/$slug/releases/download/$last_tag/appcast.xml | grep -oE '<sparkle:version>[0-9]+' | grep -oE '[0-9]+' | head -1)
   (( build > last_build )) || fail "빌드 번호 $build 가 지난 릴리즈($last_tag 의 $last_build)보다 커야 합니다 (CURRENT_PROJECT_VERSION)"

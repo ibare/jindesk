@@ -147,6 +147,9 @@ struct IntakeSheet: View {
       Button("파일 고르기…") { choose { place($0, into: nil) } }.controlSize(.small)
       Text("PDF, PPT·PPTX·KEY, DOC·DOCX·PAGES, JPEG·PNG·HEIC").font(.caption).foregroundStyle(.tertiary)
     }
+    // 내용이 점선에 닿지 않게 안쪽 여백을 둔다
+    .padding(.horizontal, 16)
+    .padding(.vertical, 18)
     .frame(maxWidth: .infinity, minHeight: groups.isEmpty ? 220 : 110)
     .background(RoundedRectangle(cornerRadius: 12).fill(targeted ? Color.accentColor.opacity(0.12) : Color.clear))
     .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])).foregroundStyle(Color.primary.opacity(0.25)))

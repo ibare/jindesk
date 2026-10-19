@@ -26,7 +26,7 @@ struct ConceptMapView: View {
   }
 }
 
-// 노드마다 보일 것: 목차 코드, 한국어 이름(학습 페이지가 있을 때), 학습 페이지가 있는지, 오늘 정리됐는지
+// 노드마다 보일 것: 목차 코드, 한국어 이름(학습 페이지가 있을 때), 학습 페이지가 있는지, 하루 안에 정리됐는지
 struct MapFacts: Equatable {
   struct Fact: Equatable {
     var code: String?
@@ -43,7 +43,6 @@ struct MapFacts: Equatable {
   subscript(_ id: String) -> Fact { byID[id] ?? Fact() }
 
   @MainActor init(model: AppModel, map: ConceptMap) {
-    let today = String(JobID.stamp(Date()).prefix(8))
     for n in map.nodes {
       var f = Fact()
       if n.kind != .missing, let c = model.concept(n.id) {
@@ -52,7 +51,7 @@ struct MapFacts: Equatable {
         f.hasPage = state.hasPage
         f.note = state.hasPage ? state.note : nil
         f.code = c.item.map { model.syllabi[c.subject]?.item($0)?.code ?? $0.uppercased() } ?? c.itemProposed
-        f.isNew = n.curatedOn == today
+        f.isNew = c.isNew()
         if case .other(let subject) = n.kind { f.subjectName = model.library.subjects.first { $0.id == subject }?.name ?? subject }
       }
       byID[n.id] = f

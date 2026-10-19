@@ -1,4 +1,5 @@
-// 과목 → 개념 목록 → 학습 페이지. iPad 와 큰 화면은 나란히, iPhone 은 차례로 쌓인다 (MOBILE.md 의 화면).
+// 과목 → 단원 → 개념 목록 → 학습 페이지 (DECISIONS.md 39). iPad 와 큰 화면은 과목 · 단원 · 개념 목록이 나란히 서고
+// 학습 페이지는 개념 목록 자리에 올라온다. iPhone 은 차례로 쌓인다 (MOBILE.md 의 화면).
 import JindeskKit
 import SwiftUI
 
@@ -14,12 +15,14 @@ struct RootView: View {
       if model.subject == MobileModel.termsSelection || model.subject == MobileModel.symbolsSelection {
         DictionaryList(symbols: model.subject == MobileModel.symbolsSelection)
       } else if let subject = model.subject {
-        ConceptList(subject: subject)
+        UnitList(subject: subject)
       } else {
         ContentUnavailableView("과목을 고릅니다", systemImage: "books.vertical")
       }
     } detail: {
-      NavigationStack { detail }
+      NavigationStack(path: $model.pages) {
+        detail.navigationDestination(for: PageRoute.self) { page($0) }
+      }
     }
     .sheet(isPresented: $model.showSettings) { SettingsView() }
     .sheet(item: $model.sourcePeek) { SourcePageView(peek: $0) }
@@ -35,17 +38,45 @@ struct RootView: View {
     }
   }
 
-  // 과목 개념 지도이거나 학습 페이지
+  // 과목 개념 지도이거나 단원의 개념 목록
   @ViewBuilder private var detail: some View {
-    if let subject = MobileModel.mapSubject(model.concept) {
+    if let subject = MobileModel.mapSubject(model.unit) {
       ConceptMapScreen(subject: subject).id(subject)
-    } else if let unit = MobileModel.unitKey(model.concept) {
-      UnitSummaryScreen(subject: unit.subject, key: unit.key).id(model.concept)
-    } else if let id = model.concept, let concept = model.concept(id) {
-      ConceptPage(concept: concept)
+    } else if let unit = MobileModel.unitKey(model.unit) {
+      ConceptList(subject: unit.subject, key: unit.key).id(model.unit)
     } else {
-      ContentUnavailableView("개념을 고릅니다", systemImage: "doc.text")
+      ContentUnavailableView("단원을 고릅니다", systemImage: "square.stack")
     }
+  }
+
+  // 개념 목록 위에 올린 학습 페이지나 단원 요약
+  @ViewBuilder private func page(_ route: PageRoute) -> some View {
+    switch route {
+    case .concept(let id):
+      if let concept = model.concept(id) {
+        ConceptPage(concept: concept)
+      } else {
+        ContentUnavailableView("개념을 찾지 못했습니다", systemImage: "questionmark.folder")
+      }
+    case .summary(let subject, let key):
+      UnitSummaryScreen(subject: subject, key: key)
+    }
+  }
+}
+
+extension Color {
+  // 앱 아이콘의 리본 색 (맥과 같다). 하루 안에 정리된 개념의 점
+  static let ribbon = Color(
+    uiColor: UIColor { traits in
+      traits.userInterfaceStyle == .dark
+        ? UIColor(red: 0.886, green: 0.333, blue: 0.247, alpha: 1) : UIColor(red: 0.776, green: 0.231, blue: 0.153, alpha: 1)
+    })
+}
+
+// 하루 안에 정리된 개념의 점 (DECISIONS.md 39)
+struct NewDot: View {
+  var body: some View {
+    Circle().fill(Color.ribbon).frame(width: 7, height: 7).accessibilityLabel("새로 정리됨")
   }
 }
 
@@ -71,9 +102,13 @@ struct SubjectList: View {
       } else {
         Section("과목") {
           ForEach(model.subjects, id: \.id) { s in
-            VStack(alignment: .leading, spacing: 2) {
-              Text(s.name)
-              Text("개념 \(s.count)개").font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+              VStack(alignment: .leading, spacing: 2) {
+                Text(s.name)
+                Text("단원 \(model.units(s.id).count) · 개념 \(s.count)").font(.caption).foregroundStyle(.secondary)
+              }
+              Spacer(minLength: 6)
+              if model.hasNew(subject: s.id) { NewDot() }
             }
             .tag(s.id)
           }
@@ -128,17 +163,16 @@ struct SyncStatusRow: View {
   }
 }
 
-// 과목의 개념: 목차 항목마다 묶는다 (맥의 목록 칸과 같은 묶음). 목차에 없는 개념은 제안된 이름으로 묶는다.
-struct ConceptList: View {
+// 과목의 단원: 맨 위에 개념 지도, 그 아래 단원 (이름의 알파벳순, DECISIONS.md 39). 맥의 과목 단계와 같다.
+struct UnitList: View {
   @Environment(MobileModel.self) private var model
   let subject: String
 
   var body: some View {
     @Bindable var model = model
-    let concepts = model.concepts[subject] ?? []
-    let syllabus = model.syllabi[subject]
-    List(selection: $model.concept) {
-      if !concepts.isEmpty {
+    let units = model.units(subject)
+    List(selection: $model.unit) {
+      if !units.isEmpty {
         let map = model.conceptMap(subject, showOthers: true)
         Section {
           Label {
@@ -151,42 +185,55 @@ struct ConceptList: View {
           }
           .tag(MobileModel.mapSelection(subject))
         }
-      }
-      if let syllabus {
-        ForEach(syllabus.flat, id: \.item.code) { entry in
-          let inItem = concepts.filter { $0.item.map(ItemPath.dir) == ItemPath.dir(entry.item.code) }
-          if !inItem.isEmpty {
-            Section("\(entry.item.code) \(entry.item.title)") {
-              UnitRow().tag(MobileModel.unitSelection(subject, "item:\(entry.item.code)"))
-              ForEach(inItem) { ConceptRow(concept: $0).tag($0.id) }
+        Section {
+          ForEach(units) { u in
+            HStack(spacing: 8) {
+              Text(u.name).lineLimit(1)
+              Spacer(minLength: 6)
+              if u.hasNew { NewDot() }
+              Text("\(u.concepts.count)").foregroundStyle(.secondary).monospacedDigit()
             }
+            .tag(MobileModel.unitSelection(subject, u.key))
+          }
+        } header: {
+          HStack {
+            Text("단원 \(units.count)")
+            Spacer()
+            Text("A–Z")
           }
         }
       }
-      ForEach(Self.groups(concepts.filter { $0.item == nil }, prefix: syllabus == nil ? nil : "목차 밖 · "), id: \.name) { group in
-        Section(group.name) {
-          UnitRow().tag(MobileModel.unitSelection(subject, "proposed:\(group.concepts.first?.itemProposed ?? "목차 밖")"))
-          ForEach(group.concepts) { ConceptRow(concept: $0).tag($0.id) }
-        }
-      }
     }
+    .listStyle(.insetGrouped)
     .navigationTitle(model.subjects.first { $0.id == subject }?.name ?? subject)
     .refreshable { await model.sync(force: true) }
   }
+}
 
-  static func groups(_ concepts: [Concept], prefix: String?) -> [(name: String, concepts: [Concept])] {
-    var order: [String] = []
-    var byName: [String: [Concept]] = [:]
-    for c in concepts {
-      let name = (prefix ?? "") + (c.item ?? c.itemProposed ?? "목차 밖")
-      if byName[name] == nil { order.append(name) }
-      byName[name, default: []].append(c)
+// 단원의 개념: 맨 위에 단원 요약, 그 아래 개념 (배우는 순서). 누르면 그 위에 올린다.
+struct ConceptList: View {
+  @Environment(MobileModel.self) private var model
+  let subject: String
+  let key: String
+
+  var body: some View {
+    let unit = model.unit(subject, key)
+    List {
+      Section {
+        NavigationLink(value: PageRoute.summary(subject, key)) { UnitRow() }
+      }
+      Section {
+        ForEach(unit.concepts) { c in
+          NavigationLink(value: PageRoute.concept(c.id)) { ConceptRow(concept: c) }
+        }
+      }
     }
-    return order.sorted().map { ($0, byName[$0]!) }
+    .navigationTitle(unit.title)
+    .refreshable { await model.sync(force: true) }
   }
 }
 
-// 단원 묶음의 첫 줄: 단원 요약을 연다 (DECISIONS.md 34)
+// 단원의 개념 목록 첫 줄: 단원 요약을 연다 (DECISIONS.md 34)
 struct UnitRow: View {
   var body: some View {
     Label("단원 요약", systemImage: "doc.text.below.ecg").foregroundStyle(Color.accentColor)
@@ -199,14 +246,18 @@ struct ConceptRow: View {
 
   var body: some View {
     let titles = model.pageTitles(concept)
-    VStack(alignment: .leading, spacing: 2) {
-      Text(concept.title).lineLimit(2)
-      HStack(spacing: 6) {
-        if let ko = titles.ko { Text(ko) }
-        if !titles.hasPage { Text("페이지 만드는 중").foregroundStyle(.orange) }
+    HStack(spacing: 8) {
+      VStack(alignment: .leading, spacing: 2) {
+        Text(concept.title).lineLimit(2)
+        HStack(spacing: 6) {
+          if let ko = titles.ko { Text(ko) }
+          if !titles.hasPage { Text("페이지 만드는 중").foregroundStyle(.orange) }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
       }
-      .font(.caption)
-      .foregroundStyle(.secondary)
+      Spacer(minLength: 6)
+      if concept.isNew() { NewDot() }
     }
     .padding(.vertical, 1)
   }

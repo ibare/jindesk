@@ -1,150 +1,165 @@
 import JindeskKit
 import SwiftUI
 
-// 과목 화면: 자료의 꼬리표에서 모은 과목마다 정리된 개념과 자료. 개념을 고르면 학습 페이지, 자료를 고르면 쪽이 보인다.
+// 과목 화면 (DECISIONS.md 39): 사이드바에서 고른 과목을 목록 칸의 스택으로 연다.
+// 과목 단계(과목 머리, 개념 지도, 단원)에서 단원을 누르면 단원 단계(단원 머리, 개념)로 들어간다.
+// 단원 머리를 고르면 단원 개요, 개념을 고르면 학습 페이지가 내용 칸에 열린다.
 struct SubjectsView: View {
   @Environment(AppModel.self) private var model
-  // 접은 과목, 자료를 펼친 과목
-  @State private var collapsed: Set<String> = []
-  @State private var openSources: Set<String> = []
 
   var body: some View {
     @Bindable var model = model
-    let library = model.library
-    if library.sources.isEmpty {
-      ContentUnavailableView {
-        Label("아직 자료가 없어요", systemImage: "books.vertical")
-      } description: {
-        Text("학교에서 받은 자료를 넣으면 과목마다 모여 보입니다. 과목은 자료를 넣을 때 붙이는 꼬리표에서 생깁니다.")
-      } actions: {
-        Button("자료 넣기…") { model.showIntake = true }
-      }
-    } else {
-      // 목록 칸. 고른 개념·자료는 내용 칸(SelectionDetail)에 보인다.
+    if let id = model.currentSubject, let subject = model.library.subjects.first(where: { $0.id == id }) {
+      // 목록 칸. 고른 것은 내용 칸(SelectionDetail)에 보인다.
       VStack(spacing: 0) {
         if !model.waitingWork.isEmpty { PendingBanner().card().padding(.horizontal, 10).padding(.top, 8) }
         ScrollViewReader { proxy in
           List(selection: $model.selection) {
-            let comments = model.commentCounts()
-            // 과목 머리는 섹션 머리가 아닌 보통 줄로 둔다 (섹션 머리는 아래에 선을 긋는다). 줄 사이에도 구분선을 긋지 않는다 (DECISIONS.md 32).
-            ForEach(library.subjects) { subject in
-              // 과목 사이에만 선 하나
-              if subject.id != library.subjects.first?.id { Divider().padding(.top, 10) }
-              SubjectHeader(subject: subject, collapsed: collapsed.contains(subject.id)) { withAnimation(.snappy(duration: 0.2)) { toggle(&collapsed, subject.id) } }
-              if !collapsed.contains(subject.id) {
-                ConceptRows(subject: subject.id, comments: comments)
-                SourcesToggleRow(subject: subject, open: openSources.contains(subject.id)) { toggle(&openSources, subject.id) }
-                if openSources.contains(subject.id) {
-                  ForEach(subject.sources) { SourceRow(source: $0).padding(.leading, 24).tag(SubjectSelection.source($0.id)) }
-                }
+            // 줄 사이에 구분선을 긋지 않는다 (DECISIONS.md 32)
+            Group {
+              if let key = model.openUnit {
+                UnitLevel(subject: subject, key: key)
+              } else {
+                SubjectLevel(subject: subject)
               }
             }
             .listRowSeparator(.hidden)
-            if !library.unlabeled.isEmpty {
-              ListLabel(text: "과목 꼬리표가 없는 자료").padding(.top, 10).listRowSeparator(.hidden)
-              ForEach(library.unlabeled) { SourceRow(source: $0).tag(SubjectSelection.source($0.id)) }.listRowSeparator(.hidden)
-            }
           }
           // 학습 페이지의 앞뒤 개념이나 개념 지도에서 옮겨 가면 그 개념의 줄이 보이게 내린다
           .onChange(of: model.revealInList) { reveal(proxy) }
           .onAppear { reveal(proxy) }
         }
       }
+      // 다른 곳에서 연 개념이나 단원을 따라 과목과 단원을 옮긴다
+      .onAppear { model.follow(model.selection) }
+      .onChange(of: model.selection) { model.follow(model.selection) }
+    } else {
+      ContentUnavailableView {
+        Label("아직 과목이 없어요", systemImage: "books.vertical")
+      } description: {
+        Text("학교에서 받은 자료를 넣으면 과목마다 모여 보입니다. 과목은 자료를 넣을 때 붙이는 꼬리표에서 생깁니다.")
+      } actions: {
+        Button("자료 넣기…") { model.showIntake = true }
+      }
     }
-  }
-
-  private func toggle(_ set: inout Set<String>, _ id: String) {
-    if set.contains(id) { set.remove(id) } else { set.insert(id) }
   }
 
   private func reveal(_ proxy: ScrollViewProxy) {
     guard let id = model.revealInList else { return }
-    // 접힌 과목의 개념이면 펼친다
-    if let subject = ConceptID(id)?.subject { collapsed.remove(subject) }
-    withAnimation { proxy.scrollTo(id, anchor: .center) }
     model.revealInList = nil
+    // 단원 단계로 바뀐 목록이 그려진 뒤에 내린다
+    Task { @MainActor in
+      try? await Task.sleep(for: .milliseconds(60))
+      withAnimation { proxy.scrollTo(id, anchor: .center) }
+    }
   }
 }
 
-// 과목의 개념: 맨 위에 개념 지도, 목차가 있으면 목차 항목 차례로(자료가 있는 항목 ●, 없는 항목 ○), 목차 밖 개념은 단원 제안으로 묶어 맨 아래에 둔다.
-// 한 묶음 안의 개념은 배우는 순서로 놓는다 (DECISIONS.md 32).
-struct ConceptRows: View {
+// 과목 단계: 과목 머리, 목차 확인, 개념 지도 카드, 단원 (이름의 알파벳순)
+struct SubjectLevel: View {
+  @Environment(AppModel.self) private var model
+  let subject: SubjectSummary
+
+  var body: some View {
+    let units = model.units(subject.id)
+    let syllabus = model.syllabi[subject.id]
+    SubjectHeader(subject: subject, unitCount: units.count)
+    if let syllabus, syllabus.confirmed == nil { SyllabusConfirmRow(subject: subject.id, count: syllabus.items.count) }
+    if units.isEmpty {
+      Text(subject.sources.contains { model.readSources[$0.id] != nil } ? "개념을 정리하는 중이에요" : "자료를 읽으면 개념이 생겨요")
+        .font(.caption).foregroundStyle(.secondary)
+    } else {
+      ConceptMapRow(subject: subject.id).tag(SubjectSelection.map(subject.id))
+      ListLabel(text: "단원 \(units.count)", trailing: "A–Z").padding(.top, 12)
+      ForEach(units) { unit in
+        UnitRow(subject: subject.id, unit: unit, current: unit.key == currentKey).id(unit.key)
+      }
+    }
+  }
+
+  // 들어갔다 나온 단원: 고른 단원 개요나 개념의 단원
+  var currentKey: String? {
+    switch model.selection {
+    case .unit(_, let key)?: key
+    case .concept(let id)?: model.concept(id).map { SubjectUnits.key($0, syllabus: model.syllabi[$0.subject]) }
+    default: nil
+    }
+  }
+}
+
+// 단원 줄: 이름, 하루 안에 정리된 개념이 있으면 점, 개념 수. 누르면 단원 단계로 들어간다.
+struct UnitRow: View {
   @Environment(AppModel.self) private var model
   let subject: String
-  // 개념마다 코멘트 수
-  var comments: [String: Int] = [:]
+  let unit: SubjectUnit
+  // 방금 있던 단원이면 옅게 칠한다
+  let current: Bool
 
   var body: some View {
-    let concepts = model.inLearningOrder(model.concepts[subject] ?? [])
-    let syllabus = model.syllabi[subject]
-    if !concepts.isEmpty { ConceptMapRow(subject: subject).tag(SubjectSelection.map(subject)) }
-    if let syllabus, syllabus.confirmed == nil { SyllabusConfirmRow(subject: subject, count: syllabus.items.count) }
-    if concepts.isEmpty && syllabus == nil {
-      Text(model.library.subjects.first { $0.id == subject }.map { s in s.sources.contains { model.readSources[$0.id] != nil } } == true ? "개념을 정리하는 중이에요" : "자료를 읽으면 개념이 생겨요")
-        .font(.caption).foregroundStyle(.secondary)
-    }
-    if let syllabus {
-      ForEach(syllabus.flat, id: \.item.code) { entry in
-        let inItem = concepts.filter { $0.item.map(ItemPath.dir) == ItemPath.dir(entry.item.code) }
-        SyllabusItemRow(item: entry.item, depth: entry.depth, hasConcepts: !inItem.isEmpty)
-          .tag(SubjectSelection.unit(subject, "item:\(entry.item.code)"))
-        ForEach(inItem) { c in
-          ConceptRow(concept: c, comments: comments[c.id] ?? 0).tag(SubjectSelection.concept(c.id)).id(c.id).padding(.leading, CGFloat(entry.depth) * 10)
-        }
+    Button {
+      model.enterUnit(subject, unit.key)
+    } label: {
+      HStack(spacing: 8) {
+        Text(unit.name).font(.system(size: 13.5, weight: .medium)).lineLimit(1)
+        Spacer(minLength: 6)
+        if unit.hasNew { NewDot().help("하루 안에 정리된 개념이 있음") }
+        Text("\(unit.concepts.count)").font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit()
+        Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
       }
+      .padding(.vertical, 6)
+      .padding(.horizontal, 6)
+      .contentShape(Rectangle())
+      .background(RoundedRectangle(cornerRadius: 7).fill(current ? Color.primary.opacity(0.07) : .clear))
     }
-    let unplaced = concepts.filter { $0.item == nil }
-    ForEach(Self.groups(unplaced, prefix: syllabus == nil ? nil : "목차 밖 · "), id: \.name) { group in
-      // 단원 이름을 고르면 단원 개요를 연다 (DECISIONS.md 34)
-      ListLabel(text: group.name, trailing: "\(group.concepts.count)").padding(.top, 8)
-        .tag(SubjectSelection.unit(subject, "proposed:\(group.concepts.first?.itemProposed ?? "목차 밖")"))
-      ForEach(group.concepts) { c in ConceptRow(concept: c, comments: comments[c.id] ?? 0).tag(SubjectSelection.concept(c.id)).id(c.id) }
-    }
-  }
-
-  // 단원 제안으로 묶는다. 묶음 안의 차례는 받은 차례(배우는 순서) 그대로다.
-  static func groups(_ concepts: [Concept], prefix: String? = nil) -> [(name: String, concepts: [Concept])] {
-    var order: [String] = []
-    var byName: [String: [Concept]] = [:]
-    for c in concepts {
-      let name = (prefix ?? "") + (c.item ?? c.itemProposed ?? "목차 밖")
-      if byName[name] == nil { order.append(name) }
-      byName[name, default: []].append(c)
-    }
-    return order.sorted().map { ($0, byName[$0]!) }
+    .buttonStyle(.plain)
+    .help(unit.name)
   }
 }
 
-struct SyllabusItemRow: View {
-  let item: SyllabusItem
-  let depth: Int
-  let hasConcepts: Bool
+// 단원 단계: 과목으로 돌아가기, 단원 머리(고르면 단원 개요), 단원의 개념 (배우는 순서)
+struct UnitLevel: View {
+  @Environment(AppModel.self) private var model
+  let subject: SubjectSummary
+  let key: String
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 2) {
-      HStack(alignment: .firstTextBaseline, spacing: 6) {
-        Text(hasConcepts ? "●" : "○").font(.system(size: 8)).foregroundStyle(hasConcepts ? Color.accentColor : .secondary)
-        Text(item.code).font(.system(size: 11, design: .monospaced)).foregroundStyle(.tertiary)
-        Text(item.title).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(.secondary).lineLimit(1)
-        if let level = item.level { Text(level).font(.system(size: 10.5)).foregroundStyle(.tertiary) }
+    let unit = model.unit(subject.id, key)
+    let comments = model.commentCounts()
+    Button {
+      model.openUnit = nil
+    } label: {
+      HStack(spacing: 4) {
+        Image(systemName: "chevron.left").font(.system(size: 11, weight: .semibold))
+        Text(subject.name).font(.system(size: 13, weight: .medium)).lineLimit(1)
       }
-      if let soi = item.myp?.statementOfInquiry {
-        Text(soi).font(.system(size: 10.5)).foregroundStyle(.tertiary).lineLimit(2)
-      }
+      .foregroundStyle(Color.accentColor)
+      .contentShape(Rectangle())
     }
-    .padding(.leading, CGFloat(depth) * 10)
-    .padding(.top, depth == 0 ? 8 : 2)
-    .help(Self.mypHelp(item.myp))
+    .buttonStyle(.plain)
+    .padding(.vertical, 4)
+    .help("\(subject.name)의 단원으로 돌아갑니다")
+    UnitHeaderRow(title: unit.title, count: unit.concepts.count).tag(SubjectSelection.unit(subject.id, key))
+    if unit.concepts.isEmpty {
+      Text("이 단원에 개념이 없어요").font(.caption).foregroundStyle(.secondary)
+    }
+    ForEach(unit.concepts) { c in
+      ConceptRow(concept: c, comments: comments[c.id] ?? 0).tag(SubjectSelection.concept(c.id)).id(c.id)
+    }
   }
+}
 
-  static func mypHelp(_ m: MYPUnit?) -> String {
-    guard let m else { return "" }
-    var lines: [String] = []
-    if let k = m.keyConcept { lines.append("Key concept: \(k)") }
-    if !m.relatedConcepts.isEmpty { lines.append("Related concepts: \(m.relatedConcepts.joined(separator: ", "))") }
-    if let g = m.globalContext { lines.append("Global context: \(g)") }
-    if let s = m.statementOfInquiry { lines.append("Statement of inquiry: \(s)") }
-    return lines.joined(separator: "\n")
+// 단원 머리: 세리프로 쓴 단원 이름, "단원 요약 · 개념 N"
+struct UnitHeaderRow: View {
+  let title: String
+  let count: Int
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text(title).font(.system(size: 18, weight: .semibold, design: .serif)).lineLimit(2)
+      Text("단원 요약 · 개념 \(count)").font(.system(size: 11.5)).foregroundStyle(.secondary).monospacedDigit()
+    }
+    .padding(.vertical, 6)
+    .padding(.bottom, 4)
   }
 }
 
@@ -242,7 +257,7 @@ struct ConceptMapRow: View {
   }
 }
 
-// 개념 줄: 영어 이름과 한국어 이름의 콜론 앞, 오른쪽에 상태. 고른 줄은 펼쳐 이름의 나머지와 자료의 쪽, 확인 문제 수를 보인다 (DECISIONS.md 32).
+// 개념 줄: 영어 이름과 한국어 이름의 콜론 앞, 오른쪽에 상태. 고른 줄은 이름의 나머지를 펼친다 (DECISIONS.md 32, 39).
 struct ConceptRow: View {
   @Environment(AppModel.self) private var model
   let concept: Concept
@@ -254,13 +269,8 @@ struct ConceptRow: View {
     HStack(alignment: .top, spacing: 8) {
       VStack(alignment: .leading, spacing: 1) {
         ConceptNames(title: concept.title, titleKo: state.titleKo)
-        if selected {
-          if let tail = TitleParts(concept.title).tail {
-            Text(tail).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(.top, 3)
-          }
-          if let detail = Self.detail(concept, state) {
-            Text(detail).font(.system(size: 11.5)).foregroundStyle(.secondary).monospacedDigit().padding(.top, 2)
-          }
+        if selected, let tail = TitleParts(concept.title).tail {
+          Text(tail).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(.top, 3)
         }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -268,37 +278,6 @@ struct ConceptRow: View {
     }
     .padding(.vertical, 3)
     .help([concept.title, state.titleKo].compactMap { $0 }.joined(separator: "\n"))
-  }
-
-  // "자료 12–24쪽 · 확인 문제 3"
-  static func detail(_ concept: Concept, _ state: AppModel.PageState) -> String? {
-    let pages = Occurrence.pagesLabel(concept.occurrences).map { $0.hasPrefix("자료") ? $0 : "자료 \($0)" }
-    let parts = [pages, state.checks > 0 ? "확인 문제 \(state.checks)" : nil].compactMap { $0 }
-    return parts.isEmpty ? nil : parts.joined(separator: " · ")
-  }
-}
-
-// 과목 맨 아래의 자료 줄. 누르면 자료를 펼친다.
-struct SourcesToggleRow: View {
-  let subject: SubjectSummary
-  let open: Bool
-  let toggle: () -> Void
-
-  var body: some View {
-    Button(action: toggle) {
-      HStack(spacing: 8) {
-        Image(systemName: "doc").font(.system(size: 12)).foregroundStyle(.tertiary).frame(width: 16)
-        Text("자료 \(subject.sources.count)개").font(.system(size: 12.5)).foregroundStyle(.secondary)
-        Text("· \(subject.sources.map(\.meta.pages).reduce(0, +))쪽").font(.system(size: 12.5)).foregroundStyle(.tertiary).monospacedDigit()
-        Spacer(minLength: 0)
-        Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary).rotationEffect(.degrees(open ? 0 : -90))
-      }
-      .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    .padding(.vertical, 3)
-    .padding(.top, 4)
-    .accessibilityLabel(open ? "자료 접기" : "자료 펼치기")
   }
 }
 
@@ -348,31 +327,21 @@ struct PendingBanner: View {
   }
 }
 
-// 과목 머리: 세리프로 쓴 이름, 학년·수준 · 개념 수 · 자료 수. 눌러 접고, 마우스를 올리면 과목 메뉴가 보인다.
+// 과목 머리: 세리프로 쓴 이름, 학년·수준 · 단원 수 · 개념 수. 마우스를 올리면 과목 메뉴가 보인다 (DECISIONS.md 39).
 struct SubjectHeader: View {
   @Environment(AppModel.self) private var model
   let subject: SubjectSummary
-  let collapsed: Bool
-  let toggle: () -> Void
+  let unitCount: Int
   @State private var renaming = false
   @State private var hovering = false
 
   var body: some View {
     HStack(spacing: 6) {
-      Button(action: toggle) {
-        HStack(spacing: 8) {
-          Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
-            .rotationEffect(.degrees(collapsed ? -90 : 0)).frame(width: 12)
-          VStack(alignment: .leading, spacing: 3) {
-            Text(subject.name).font(.system(size: 18, weight: .semibold, design: .serif)).foregroundStyle(.primary).lineLimit(1)
-            Text(meta).font(.system(size: 11.5)).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
-          }
-          Spacer(minLength: 0)
-        }
-        .contentShape(Rectangle())
+      VStack(alignment: .leading, spacing: 3) {
+        Text(subject.name).font(.system(size: 20, weight: .semibold, design: .serif)).foregroundStyle(.primary).lineLimit(2)
+        Text(meta).font(.system(size: 11.5)).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
       }
-      .buttonStyle(.plain)
-      .accessibilityLabel(collapsed ? "\(subject.name) 펼치기" : "\(subject.name) 접기")
+      Spacer(minLength: 0)
       Menu {
         Button("과목 이름 바꾸기·합치기…") { renaming = true }
       } label: {
@@ -384,15 +353,15 @@ struct SubjectHeader: View {
       .opacity(hovering ? 1 : 0)
       .help("과목 이름 바꾸기·합치기")
     }
-    .padding(.top, 10)
-    .padding(.bottom, 4)
+    .padding(.top, 4)
+    .padding(.bottom, 8)
     .onHover { hovering = $0 }
     .sheet(isPresented: $renaming) { SubjectRenameSheet(subject: subject) }
   }
 
   var meta: String {
     let concepts = model.concepts[subject.id]?.count ?? 0
-    return (subject.grades + subject.levels + ["개념 \(concepts)", "자료 \(subject.sources.count)"]).joined(separator: " · ")
+    return (subject.grades + subject.levels + ["단원 \(unitCount)", "개념 \(concepts)"]).joined(separator: " · ")
   }
 }
 

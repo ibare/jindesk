@@ -160,6 +160,12 @@ public struct Concept: Sendable, Equatable, Identifiable {
   // 목차 항목 코드 (목차 밖이면 nil)
   public var item: String? { cid.isUnplaced ? nil : cid.item }
 
+  // 정리한 작업(provenance.job)이 하루(24시간) 안이면 새로 정리된 개념이다 (DECISIONS.md 39)
+  public func isNew(now: Date = Date()) -> Bool {
+    guard let job = provenance["job"]?.string, let at = JobID.date(job) else { return false }
+    return now.timeIntervalSince(at) < 86400
+  }
+
   public init(
     cid: ConceptID, title: String, itemProposed: String?, level: String? = nil, occurrences: [Occurrence], symbols: [SymbolDef], nextID: Int,
     units: [ConceptUnit], provenance: YAMLMap

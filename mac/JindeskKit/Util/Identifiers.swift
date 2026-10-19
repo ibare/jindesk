@@ -42,6 +42,18 @@ public enum JobID {
     let c = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: date)
     return String(format: "%04d%02d%02d-%02d%02d", c.year!, c.month!, c.day!, c.hour!, c.minute!)
   }
+
+  // 작업 id 앞의 YYYYMMDD-HHMM 을 로컬 시간으로 읽는다
+  public static func date(_ id: String) -> Date? {
+    let s = Array(id.prefix(13))
+    guard s.count == 13, s[8] == "-" else { return nil }
+    let digits = s[0..<8] + s[9..<13]
+    guard digits.allSatisfy(\.isNumber) else { return nil }
+    let n = digits.map { Int(String($0))! }
+    func number(_ r: Range<Int>) -> Int { n[r].reduce(0) { $0 * 10 + $1 } }
+    let c = DateComponents(year: number(0..<4), month: number(4..<6), day: number(6..<8), hour: number(8..<10), minute: number(10..<12))
+    return Calendar.current.date(from: c)
+  }
 }
 
 // 사용자 입력이 잘못되어 요청을 받을 수 없을 때. 화면에 그대로 보여 준다.

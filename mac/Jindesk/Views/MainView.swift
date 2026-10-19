@@ -1,17 +1,28 @@
 import JindeskKit
 import SwiftUI
 
-// 메인 창: 세 칸이다. 사이드바(오늘, 과목, 모아 보기, 작업) · 목록 · 내용(학습 페이지, 자료, 작업 기록)
+// 메인 창: 세 칸이다. 사이드바(오늘, 과목들, 모아 보기, 작업) · 목록 · 내용(학습 페이지, 자료, 작업 기록)
 struct MainView: View {
   @Environment(AppModel.self) private var model
 
   var body: some View {
     @Bindable var model = model
     NavigationSplitView {
-      List(selection: $model.section) {
-        ForEach(SidebarSection.allCases) { section in
-          Label(section.label, systemImage: section.icon).tag(section)
+      List(selection: $model.sidebarPick) {
+        sectionRow(.today)
+        // "과목"은 누를 수 없는 이름표이고, 과목은 그 아래에 늘 펼쳐져 있다 (DECISIONS.md 39)
+        Label(SidebarSection.subjects.label, systemImage: SidebarSection.subjects.icon)
+        ForEach(model.library.subjects) { s in
+          HStack(spacing: 6) {
+            Text(s.name).lineLimit(1)
+            Spacer(minLength: 4)
+            if model.hasNew(subject: s.id) { NewDot().help("하루 안에 정리된 개념이 있음") }
+          }
+          .padding(.leading, 24)
+          .tag(SidebarPick.subject(s.id))
         }
+        sectionRow(.collections)
+        sectionRow(.jobs)
       }
       .navigationSplitViewColumnWidth(min: 180, ideal: 200)
       .safeAreaInset(edge: .bottom) { StatusFooter().padding(10) }
@@ -61,6 +72,10 @@ struct MainView: View {
   static func isConcept(_ s: SubjectSelection?) -> Bool {
     if case .concept = s { return true }
     return false
+  }
+
+  private func sectionRow(_ section: SidebarSection) -> some View {
+    Label(section.label, systemImage: section.icon).tag(SidebarPick.section(section))
   }
 
   @ViewBuilder

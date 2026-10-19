@@ -15,6 +15,13 @@ enum Lookup: Identifiable, Equatable {
   }
 }
 
+// 개념 목록 위에 올리는 화면 (DECISIONS.md 39)
+enum PageRoute: Hashable {
+  case concept(String)
+  // 단원 요약 (과목 id, 단원 키)
+  case summary(String, String)
+}
+
 extension MobileModel {
   // 사전 줄의 선택 값 (과목 목록의 선택)
   static let termsSelection = "dict:terms"

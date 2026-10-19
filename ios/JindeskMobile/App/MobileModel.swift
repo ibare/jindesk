@@ -41,9 +41,16 @@ final class MobileModel {
   private(set) var syllabi: [String: Syllabus] = [:]
   @ObservationIgnored private var lastAttempt: Date?
 
-  // 목록에서 고른 과목과 개념 (학습 페이지의 앞뒤 개념을 누르면 개념이 바뀐다)
-  var subject: String?
-  var concept: String?
+  // 과목 → 단원 → 개념 → 학습 페이지 (DECISIONS.md 39). 과목이 바뀌면 단원을, 단원이 바뀌면 올린 페이지를 비운다.
+  var subject: String? {
+    didSet { if subject != oldValue { unit = nil } }
+  }
+  // 단원 목록에서 고른 것: 단원("unit:<과목 id>|<단원 키>") 또는 개념 지도("map:<과목 id>")
+  var unit: String? {
+    didSet { if unit != oldValue { pages = [] } }
+  }
+  // 개념 목록 위에 올린 학습 페이지와 단원 요약
+  var pages: [PageRoute] = []
   var sourcePeek: SourcePeek?
   private(set) var bucketName = UserDefaults.standard.string(forKey: bucketKey) ?? ""
   private(set) var hasBucketKey = bucketKeys.exists
@@ -88,10 +95,10 @@ final class MobileModel {
     concepts = Dictionary(uniqueKeysWithValues: ConceptStore.subjects(data).map { ($0, ConceptStore.all(data, subject: $0)) })
     syllabi = Dictionary(uniqueKeysWithValues: concepts.keys.compactMap { s in Syllabus.load(data, subject: s).map { (s, $0) } })
     if let subject, concepts[subject] == nil, !subject.hasPrefix("dict:") { self.subject = nil }
-    if let concept, self.concept(concept) == nil, Self.mapSubject(concept).flatMap({ concepts[$0] }) == nil,
-      Self.unitKey(concept).flatMap({ concepts[$0.subject] }) == nil
-    {
-      self.concept = nil
+    if let unit, (Self.mapSubject(unit) ?? Self.unitKey(unit)?.subject).flatMap({ concepts[$0] }) == nil { self.unit = nil }
+    pages.removeAll { route in
+      if case .concept(let id) = route { return concept(id) == nil }
+      return false
     }
   }
 
@@ -102,6 +109,16 @@ final class MobileModel {
     return order.map { ($0, names[$0] ?? $0, concepts[$0]?.count ?? 0) }
   }
 
+  // 과목의 단원 (이름의 알파벳순, DECISIONS.md 39)
+  func units(_ subject: String) -> [SubjectUnit] {
+    SubjectUnits.make(concepts[subject] ?? [], syllabus: syllabi[subject])
+  }
+
+  // 그 과목에 하루 안에 정리된 개념이 있다
+  func hasNew(subject: String) -> Bool {
+    (concepts[subject] ?? []).contains { $0.isNew() }
+  }
+
   var allConcepts: [Concept] { concepts.values.flatMap { $0 }.sorted { $0.id < $1.id } }
 
   func concept(_ id: String) -> Concept? {
@@ -109,11 +126,12 @@ final class MobileModel {
     return concepts[cid.subject]?.first { $0.id == id }
   }
 
-  // 학습 페이지의 앞뒤 개념이나 목록에서 개념을 연다
+  // 학습 페이지의 앞뒤 개념, 찾기, 용어 시트에서 개념을 연다: 그 개념의 단원을 고르고 페이지를 올린다
   func open(_ id: String) {
-    guard let cid = ConceptID(id), concept(id) != nil else { return }
-    subject = cid.subject
-    concept = id
+    guard let c = concept(id) else { return }
+    subject = c.subject
+    unit = Self.unitSelection(c.subject, SubjectUnits.key(c, syllabus: syllabi[c.subject]))
+    pages = [.concept(id)]
   }
 
   // MARK: - 과목 개념 지도
@@ -131,7 +149,7 @@ final class MobileModel {
     guard let cid = ConceptID(id) else { return }
     subject = cid.subject
     mapFocus = id
-    concept = Self.mapSelection(cid.subject)
+    unit = Self.mapSelection(cid.subject)
   }
 
   // 저장하지 않고 지금 받아 둔 개념에서 계산한다 (맥과 같은 엔진, PAGES.md 의 개념 지도)
@@ -156,8 +174,8 @@ final class MobileModel {
       let titles = pageTitles(c)
       info.ko = titles.ko
       info.hasPage = titles.hasPage
+      info.isNew = c.isNew()
     }
-    info.isNew = node.curatedOn == JobID.stamp(Date()).prefix(8).description
     return info
   }
 
@@ -283,15 +301,17 @@ final class MobileModel {
         // 과목 지도를 그 개념을 고른 채 연다. 과목 id 만 주면 고르지 않고 연다.
         if ConceptID(id) != nil { openMap(focus: id) } else {
           subject = id
-          concept = Self.mapSelection(id)
+          unit = Self.mapSelection(id)
         }
       } else if let s = defaults.string(forKey: "openSubject") {
         subject = s
       }
-      // 단원 요약을 연다 (-openUnit "unit:<과목 id>|<단원 키>"), 용어 시트를 띄운다 (-lookupTerm <영어 용어>)
+      // 단원의 개념 목록을 연다 (-openUnit "unit:<과목 id>|<단원 키>", -openUnitSummary YES 면 단원 요약까지 올린다).
+      // 용어 시트를 띄운다 (-lookupTerm <영어 용어>)
       if let u = defaults.string(forKey: "openUnit"), let key = Self.unitKey(u) {
         subject = key.subject
-        concept = u
+        unit = u
+        if defaults.bool(forKey: "openUnitSummary") { pages = [.summary(key.subject, key.key)] }
       }
       if let t = defaults.string(forKey: "lookupTerm") { lookup = .term(t) }
       // 원래 자료의 그 쪽을 연다 (-openSource <자료 id>#<쪽>)

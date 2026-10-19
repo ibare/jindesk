@@ -60,7 +60,15 @@
           m.section = .collections
           m.collectionsTab = .checks
         },
-        // 과목 목록: 배우는 순서의 둘째 개념을 고른다 (고른 줄이 펼쳐진다)
+        // 과목 단계: 첫 단원의 개요를 열고 나온 뒤 (방금 있던 단원 줄이 옅게 칠해진다, DECISIONS.md 39)
+        Scenario(name: "subjects-units") { m in
+          m.phase = .ready
+          m.section = .subjects
+          m.selection = firstUnit(m)
+          try? await Task.sleep(for: .milliseconds(300))
+          m.openUnit = nil
+        },
+        // 단원 단계: 배우는 순서의 둘째 개념을 고른다 (고른 줄이 펼쳐진다)
         Scenario(name: "subjects-list-dark", dark: true) { m in
           m.phase = .ready
           m.section = .subjects
@@ -335,7 +343,7 @@
     // 첫 과목의 첫 단원 (단원 개요)
     static func firstUnit(_ m: AppModel) -> SubjectSelection? {
       guard let subject = m.concepts.keys.sorted().first, let c = m.inLearningOrder(m.concepts[subject] ?? []).first else { return nil }
-      return .unit(subject, c.item.map { "item:\($0)" } ?? "proposed:\(c.itemProposed ?? "목차 밖")")
+      return .unit(subject, SubjectUnits.key(c, syllabus: m.syllabi[subject]))
     }
 
     // 개념 지도를 찍을 과목: -snapshotConcept 로 준 개념의 과목, 없으면 개념이 가장 많은 과목

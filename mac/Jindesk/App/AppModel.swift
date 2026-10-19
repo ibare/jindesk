@@ -134,6 +134,9 @@ final class AppModel {
   private(set) var pendingWork: [PendingWork] = []
   // 과목 화면에서 고른 것 (개념이나 자료)
   var selection: SubjectSelection?
+  // 사이드바에서 고른 과목과, 목록 칸에서 들어간 단원 (nil 이면 과목 단계, DECISIONS.md 39)
+  var subject: String?
+  var openUnit: String?
   // 개념 지도를 열 때 골라 둘 개념 (학습 페이지의 "개념 지도에서 보기")
   var mapFocus: String?
   // 목록 칸이 따라가 보여 줄 개념 (학습 페이지의 앞뒤 개념이나 개념 지도에서 옮겨 갔을 때)
@@ -472,7 +475,7 @@ final class AppModel {
     var titleKo: String?
     var note: String?
     var hasPage = false
-    // 7일 안에 페이지를 만들었다 (페이지의 작업 id 날짜로 본다)
+    // 하루 안에 정리된 개념이다 (Concept.isNew, DECISIONS.md 39)
     var isNew = false
     // 페이지를 만든 시각 (HH:mm)
     var madeAt: String?
@@ -483,12 +486,11 @@ final class AppModel {
   func pageState(_ concept: Concept) -> PageState {
     guard let data else { return PageState() }
     let folder = ConceptFolder(concept.cid, in: data)
-    guard let page = Page.load(folder) else { return PageState(note: "페이지 만드는 중") }
+    guard let page = Page.load(folder) else { return PageState(note: "페이지 만드는 중", isNew: concept.isNew()) }
     let missing = Translation.targets(page, layers: Layers.load(folder)).count
     let job = page.provenance["job"]?.string ?? ""
     return PageState(
-      titleKo: page.titleKo, note: missing > 0 ? "한국어 \(missing)곳 남음" : nil, hasPage: true,
-      isNew: job.prefix(8) >= JobID.stamp(Date().addingTimeInterval(-7 * 86400)).prefix(8), madeAt: Self.jobTime(job),
+      titleKo: page.titleKo, note: missing > 0 ? "한국어 \(missing)곳 남음" : nil, hasPage: true, isNew: concept.isNew(), madeAt: Self.jobTime(job),
       checks: page.units.filter { $0.kind == .check }.count)
   }
 

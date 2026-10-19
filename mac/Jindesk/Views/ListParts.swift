@@ -5,7 +5,7 @@ import SwiftUI
 // 목록 칸이 함께 쓰는 부품 (DECISIONS.md 32)
 
 extension Color {
-  // 앱 아이콘의 리본 색. 7일 안에 정리된 개념의 점, 멈춘 일
+  // 앱 아이콘의 리본 색. 하루 안에 정리된 개념의 점, 멈춘 일
   static let ribbon = Color(
     nsColor: NSColor(name: nil) { appearance in
       appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
@@ -20,13 +20,23 @@ struct ConceptNames: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 1) {
-      Text(TitleParts(title).head).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+      Text(TitleParts(title).head).font(.system(size: 13, weight: .medium)).lineLimit(1)
       if let titleKo { Text(TitleParts(titleKo).head).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1) }
     }
   }
 }
 
-// 개념 줄 오른쪽의 상태: 페이지·한국어, 메모 수, 7일 안에 정리됨
+// 하루 안에 정리된 개념의 점 (DECISIONS.md 39). 고른 줄 위에서는 흰 테두리를 두른다.
+struct NewDot: View {
+  var selected = false
+
+  var body: some View {
+    Circle().fill(Color.ribbon).frame(width: 6, height: 6)
+      .overlay(Circle().stroke(Color.white, lineWidth: selected ? 1.5 : 0))
+  }
+}
+
+// 개념 줄 오른쪽의 상태: 페이지·한국어, 메모 수, 하루 안에 정리됨
 struct RowBadges: View {
   var note: String?
   var comments = 0
@@ -48,11 +58,7 @@ struct RowBadges: View {
         .foregroundStyle(.secondary)
         .help("메모 \(comments)")
       }
-      if isNew {
-        Circle().fill(Color.ribbon).frame(width: 6, height: 6)
-          .overlay(Circle().stroke(Color.white, lineWidth: selected ? 1.5 : 0))
-          .help("7일 안에 정리됨")
-      }
+      if isNew { NewDot(selected: selected).help("하루 안에 정리됨") }
     }
     .fixedSize()
   }

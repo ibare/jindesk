@@ -81,7 +81,14 @@ public struct Glossary: Sendable, Equatable {
       guard !en.isEmpty, !ko.isEmpty else { continue }
       let k = Self.key(en)
       if let i = terms.firstIndex(where: { $0.names.contains { Self.key($0) == k } }) {
-        if !terms[i].subjects.isEmpty && !terms[i].subjects.contains(subject) { terms[i].subjects.append(subject) }
+        if !terms[i].subjects.isEmpty && !terms[i].subjects.contains(subject) {
+          // 다른 과목에만 달린 용어다. 한국어가 다르면 그 과목의 한국어를 이 과목에 묶지 않고 충돌로만 남긴다 (DECISIONS.md 44)
+          guard Self.key(terms[i].ko) == Self.key(ko) else {
+            result.conflicts.append("\(en): \(terms[i].subjects.joined(separator: ", ")) 과목의 어휘는 \(terms[i].ko), 제안은 \(ko). 이 과목에 더하지 않았다")
+            continue
+          }
+          terms[i].subjects.append(subject)
+        }
         if !terms[i].names.contains(en) {
           terms[i].aliases.append(en)
           result.aliased.append(en)

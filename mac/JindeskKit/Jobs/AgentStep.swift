@@ -71,7 +71,7 @@ enum AgentStep {
   }
 
   // 용어 어휘를 input/glossary.yaml 로 둔다. 아직 없으면 빈 어휘를 둔다 (지침이 늘 있는 파일로 가리킬 수 있게).
-  // subject 를 주면 그 과목의 용어만 넣는다 (번역: 검사와 같은 용어)
+  // subject 를 주면 그 과목의 용어만 넣는다 (번역, 물어보기, 부분 다시 만들기: 한국어 검사와 같은 용어)
   static func writeGlossary(_ data: DataFolder, into input: URL, subject: String? = nil) throws {
     let all = Glossary.load(data)
     let glossary = subject.map(all.of) ?? all

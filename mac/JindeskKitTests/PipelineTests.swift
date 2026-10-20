@@ -85,6 +85,17 @@ extension URL {
     #expect(r.conflicts.count == 1)
     #expect(g.term("LOGARITHM")?.ko == "로그")
   }
+
+  @Test func 다른_과목에만_달린_용어는_한국어가_다르면_이_과목에_묶지_않는다() {
+    var g = Glossary(terms: [GlossaryTerm(en: "reflection", ko: "대칭이동", subjects: ["extended-mathematics"])])
+    let r = g.merge([("reflection", "성찰")], subject: "spanish")
+    #expect(r.conflicts.count == 1)
+    #expect(g.term("reflection")?.subjects == ["extended-mathematics"])
+    #expect(g.of(subject: "spanish").terms.isEmpty)
+    // 한국어가 같으면 이 과목에도 쓴다
+    _ = g.merge([("reflection", "대칭이동")], subject: "physics")
+    #expect(g.term("reflection")?.subjects == ["extended-mathematics", "physics"])
+  }
 }
 
 @Suite struct ReadingCheckTests {
@@ -556,7 +567,11 @@ extension CurationCheckTests {
     #expect(LanguageAcquisition.target(of: "Language B") == LanguageAcquisition.unnamed)
     #expect(LanguageAcquisition.target(of: "language-acquisition") == LanguageAcquisition.unnamed)
     // 영어와 문학 과목, 내용 과목은 언어 습득 과목이 아니다
-    for name in ["English", "Language and Literature", "Language A: Literature", "Spanish A: Literature", "Physics", "Extended Mathematics", "Individuals and Societies"] {
+    // 한자·가나·한글로 쓰는 언어는 아직 다루지 않는다
+    for name in [
+      "English", "Language and Literature", "Language A: Literature", "Spanish A: Literature", "Spanish A", "French A", "Physics", "Extended Mathematics",
+      "Individuals and Societies", "Mandarin B", "Japanese ab initio", "Chinese", "Korean B",
+    ] {
       #expect(LanguageAcquisition.target(of: name) == nil, "\(name)")
     }
   }

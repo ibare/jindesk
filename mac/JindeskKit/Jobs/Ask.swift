@@ -66,7 +66,7 @@ public enum Ask {
     try FileOps.write(q.joined(separator: "\n") + "\n", to: dirs.input.appending(path: "question.md"))
     try FileOps.copy(folder.concept, to: dirs.input.appending(path: "concept.yaml"))
     if FileOps.exists(folder.page) { try FileOps.copy(folder.page, to: dirs.input.appending(path: "page.yaml")) }
-    try AgentStep.writeGlossary(ctx.data, into: dirs.input)
+    try AgentStep.writeGlossary(ctx.data, into: dirs.input, subject: concept.subject)
 
     await ctx.setPhase("running")
     let options = AgentStep.options(ctx, dirs, instructions: instructionsFile, prompt: prompt, events: "ask")

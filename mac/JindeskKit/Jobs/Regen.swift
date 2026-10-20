@@ -142,7 +142,7 @@ public enum Regen {
     let folder = ConceptFolder(concept.cid, in: ctx.data)
     try FileOps.copy(folder.concept, to: dirs.input.appending(path: "concept.yaml"))
     try FileOps.copy(folder.page, to: dirs.input.appending(path: "page.yaml"))
-    try AgentStep.writeGlossary(ctx.data, into: dirs.input)
+    try AgentStep.writeGlossary(ctx.data, into: dirs.input, subject: concept.subject)
     // 블록(풀이, 확인 문제, 그림)의 모양과 그림 규칙은 학습 페이지 지침에 있다. 참고로 함께 둔다.
     if let reference = FileOps.readIfExists(ctx.config.instructions.file(.pageBuild)) {
       try FileOps.write(reference, to: dirs.input.appending(path: "reference/page-build.md"))

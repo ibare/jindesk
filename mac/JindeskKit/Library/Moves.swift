@@ -1,5 +1,6 @@
 // 개념과 과목 옮기기. 목차가 생겨 목차 밖 개념을 항목으로 옮길 때, 과목 꼬리표의 이름을 바꾸거나 합칠 때 쓴다 (DATA.md 의 id).
 // 옮기면 id 가 바뀐다. 옛 id → 새 id 를 library/moves.jsonl 에 덧붙여, 옛 id 를 가리키는 코멘트와 요구가 새 자리를 찾게 한다.
+// 개념 다시 정리는 단위도 옮긴다(kind "unit", DECISIONS.md 47). 자리는 "<개념 id>#<단위 id>"이고, 옮겨 갈 단위가 없으면(뺀 단위) 단위 id 가 비어 있다.
 import Foundation
 
 public struct MoveRecord: Sendable, Equatable {
@@ -18,6 +19,11 @@ public enum Moves {
     try FileOps.appendLine(JSONText.line(line), to: file(data))
   }
 
+  // 단위 하나를 옮긴 줄. to 의 단위가 nil 이면 그 개념으로만 옮기고 단위는 없다 (뺀 단위)
+  static func appendUnit(_ data: DataFolder, from: (concept: String, unit: String), to: (concept: String, unit: String?), why: String) throws {
+    try append(data, kind: "unit", from: "\(from.concept)#\(from.unit)", to: "\(to.concept)#\(to.unit ?? "")", why: why)
+  }
+
   public static func all(_ data: DataFolder) -> [MoveRecord] {
     ((try? JSONLines.read(file(data)))?.values ?? []).compactMap { v in
       guard let k = v["kind"]?.stringValue, let f = v["from"]?.stringValue, let t = v["to"]?.stringValue else { return nil }
@@ -33,6 +39,46 @@ public enum Moves {
       current = m.to
     }
     return current
+  }
+
+  // 옛 자리(개념, 단위)를 지금 자리로. 단위를 옮긴 줄이 있으면 그것을, 없으면 개념을 옮긴 줄을 따라간다.
+  // moved: 단위를 옮긴 줄을 하나라도 따라갔다. 그때 단위는 개념 단위(u…)이거나, 옮겨 갈 단위가 없으면 빈 문자열이다.
+  public static func resolve(concept: String, unit: String, moves: [MoveRecord]) -> (concept: String, unit: String, moved: Bool) {
+    var c = concept
+    var u = unit
+    var moved = false
+    for _ in 0..<40 {
+      if !u.isEmpty, let m = moves.last(where: { $0.kind == "unit" && $0.from == "\(c)#\(u)" }), let hash = m.to.lastIndex(of: "#") {
+        c = String(m.to[..<hash])
+        u = String(m.to[m.to.index(after: hash)...])
+        moved = true
+        continue
+      }
+      guard let m = moves.last(where: { $0.kind == "concept" && $0.from == c }) else { break }
+      c = m.to
+    }
+    return (c, u, moved)
+  }
+}
+
+// 옮겨 간 자리를 지금 페이지의 단위로 (DECISIONS.md 47). 단위를 옮긴 줄은 개념 단위(u…)를 가리키므로,
+// 그 개념의 페이지에서 그 원문 단위의 문단을 찾는다. 페이지가 아직 없거나 문단이 없으면 개념 단위 그대로 둔다.
+public struct AnchorResolver {
+  let data: DataFolder
+  let moves: [MoveRecord]
+  private var pages: [String: Page?] = [:]
+
+  public init(_ data: DataFolder, moves: [MoveRecord]) {
+    self.data = data
+    self.moves = moves
+  }
+
+  public mutating func resolve(concept: String, unit: String) -> (concept: String, unit: String, moved: Bool) {
+    let r = Moves.resolve(concept: concept, unit: unit, moves: moves)
+    guard r.moved, !r.unit.isEmpty else { return r }
+    if pages[r.concept] == nil { pages[r.concept] = ConceptID(r.concept).flatMap { Page.load(ConceptFolder($0, in: data)) } }
+    let para = pages[r.concept]??.units.first { $0.kind == .para && $0.fromUnit == r.unit }
+    return (r.concept, para?.id ?? r.unit, true)
   }
 }
 

@@ -32,10 +32,15 @@ public enum Regen {
     }
   }
 
-  // 다시 돌아야 하는 요구: 요청했는데 아직 결과가 없거나, 원문이 바뀌어 다시 확인해야 하거나, 곁 층이 낡은 것
+  // 다시 돌아야 하는 요구: 요청했는데 아직 결과가 없거나, 원문이 바뀌어 다시 확인해야 하거나, 곁 층이 낡은 것.
+  // 대상 단위가 페이지에 아직 없으면(다시 정리로 옮겨 간 개념의 페이지를 아직 만들지 않았을 때) 페이지가 생길 때까지 기다린다.
   public static func pending(_ data: DataFolder) -> [Directive] {
     let all = DirectiveStore.load(data)
-    var out = all.filter { $0.status == .requested || $0.status == .recheck }
+    func onPage(_ d: Directive) -> Bool {
+      guard let cid = ConceptID(d.target.concept), let page = Page.load(ConceptFolder(cid, in: data)) else { return false }
+      return page.units.contains { $0.id == d.target.unit }
+    }
+    var out = all.filter { ($0.status == .requested || $0.status == .recheck) && onPage($0) }
     for d in all where d.status == .applied && (d.op == .easy || d.op == .detail) {
       guard let cid = ConceptID(d.target.concept) else { continue }
       let folder = ConceptFolder(cid, in: data)

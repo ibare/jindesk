@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jindesk/2/schema",
+  "title": "meta/schema.yaml",
+  "description": "데이터 폴더의 스키마 버전, 마이그레이션 이력, 이 폴더를 마지막으로 연 앱 판",
+  "type": "object",
+  "required": ["kind", "v", "schema", "created", "last_opened_by", "history"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": { "const": "schema" },
+    "v": { "const": 1 },
+    "schema": { "type": "integer", "minimum": 1 },
+    "created": { "type": "string" },
+    "last_opened_by": {
+      "type": "object",
+      "required": ["app", "build"],
+      "additionalProperties": false,
+      "properties": {
+        "app": { "type": "string" },
+        "build": { "type": "string" }
+      }
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to", "app", "at", "kind", "backup"],
+        "additionalProperties": false,
+        "properties": {
+          "from": { "type": "integer" },
+          "to": { "type": "integer" },
+          "app": { "type": "string" },
+          "at": { "type": "string" },
+          "kind": { "enum": ["code", "code+agent"] },
+          "backup": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -30,6 +30,50 @@ import Testing
     #expect(Moves.resolve("math/unplaced/logs", moves: Moves.all(t.data)) == "math/u2/logs")
   }
 
+  @Test func 단위를_옮긴_줄을_따라_코멘트와_요구가_옮겨_간_문단을_찾는다() throws {
+    let t = TempPlace()
+    try t.data.initialize(app: testApp)
+    _ = try concept(t.data, "math/unplaced/old")
+    let target = try concept(t.data, "math/unplaced/new")
+    // 받는 개념의 페이지: 원문 단위 u7 의 문단이 p3 이다
+    try Page(
+      concept: target.id, titleKo: "새", nextID: 4,
+      units: [PageUnit(id: "p1", rev: 1, kind: .para, from: "u1@a", prov: "source"), PageUnit(id: "p3", rev: 1, kind: .para, from: "u7@b", prov: "source")],
+      provenance: YAMLMap([])
+    ).write(ConceptFolder(target.cid, in: t.data))
+    // 없앤 개념 old: p2(원문 u2)는 new 의 u7 로 옮겼고, p1 은 뺐다
+    try Moves.appendUnit(t.data, from: ("math/unplaced/old", "p2"), to: ("math/unplaced/new", "u7"), why: "다시 정리")
+    try Moves.appendUnit(t.data, from: ("math/unplaced/old", "p1"), to: ("math/unplaced/new", nil), why: "다시 정리")
+    try Moves.append(t.data, kind: "concept", from: "math/unplaced/old", to: "math/unplaced/new", why: "다시 정리로 없앰")
+    let moves = Moves.all(t.data)
+    #expect(Moves.resolve(concept: "math/unplaced/old", unit: "p2", moves: moves) == ("math/unplaced/new", "u7", true))
+    #expect(Moves.resolve(concept: "math/unplaced/old", unit: "p1", moves: moves) == ("math/unplaced/new", "", true))
+    #expect(Moves.resolve(concept: "math/unplaced/new", unit: "p1", moves: moves) == ("math/unplaced/new", "p1", false))
+    var resolver = AnchorResolver(t.data, moves: moves)
+    #expect(resolver.resolve(concept: "math/unplaced/old", unit: "p2") == ("math/unplaced/new", "p3", true))
+
+    // 코멘트는 옮겨 간 문단에 "이전 판"으로 붙고, 뺀 단위의 코멘트는 어느 문단에도 붙지 않는다
+    let moved = Comment(
+      id: "cm-1", at: "t", by: "learner", kind: .memo, anchor: CommentAnchor(concept: "math/unplaced/old", unit: "p2", rev: 3, quote: "q"), text: "옮겨 간 문단")
+    let dropped = Comment(
+      id: "cm-2", at: "t", by: "learner", kind: .memo, anchor: CommentAnchor(concept: "math/unplaced/old", unit: "p1", rev: 1, quote: "q"), text: "뺀 문단")
+    try CommentStore.append(t.data, moved)
+    try CommentStore.append(t.data, dropped)
+    let loaded = CommentStore.load(t.data)
+    #expect(loaded[0].anchor == CommentAnchor(concept: "math/unplaced/new", unit: "p3", rev: 0, quote: "q"))
+    #expect(loaded[1].anchor?.concept == "math/unplaced/new" && loaded[1].anchor?.unit == "")
+
+    // 요구도 따라가고, 대상 단위가 페이지에 없으면 부분 다시 만들기가 기다린다
+    _ = try DirectiveStore.request(t.data, op: .easy, target: DirectiveTarget(concept: "math/unplaced/old", unit: "p2", rev: 1), note: nil, fromComment: nil)
+    _ = try DirectiveStore.request(t.data, op: .easy, target: DirectiveTarget(concept: "math/unplaced/old", unit: "p1", rev: 1), note: nil, fromComment: nil)
+    #expect(DirectiveStore.load(t.data).map(\.target.unit) == ["p3", ""])
+    #expect(Regen.pending(t.data).map(\.target.unit) == ["p3"])
+
+    // 다시 옮기면 끝까지 따라간다
+    try Moves.appendUnit(t.data, from: ("math/unplaced/new", "u7"), to: ("math/unplaced/third", "u2"), why: "다시 정리")
+    #expect(Moves.resolve(concept: "math/unplaced/old", unit: "p2", moves: Moves.all(t.data)) == ("math/unplaced/third", "u2", true))
+  }
+
   @Test func 과목_이름을_바꾸면_꼬리표와_엔트리와_개념이_새_과목으로_간다() async throws {
     let t = TempPlace()
     try t.data.initialize(app: testApp)

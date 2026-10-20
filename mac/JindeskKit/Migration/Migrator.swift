@@ -45,9 +45,9 @@ public struct MigrationContext: Sendable {
   }
 }
 
-// 앱이 담은 단계들. 스키마를 올릴 때 Step_<n>_<n+1> 을 여기 더한다. 아직 스펙을 바꾼 적이 없어 없다 (DECISIONS.md 42)
+// 앱이 담은 단계들. 스키마를 올릴 때 Step_<n>_<n+1> 을 여기 더한다 (DECISIONS.md 42, 47)
 public enum MigrationPlan {
-  public static let steps: [any MigrationStep] = []
+  public static let steps: [any MigrationStep] = [Step_1_2()]
 
   // from 에서 to 까지 이어지는 단계들. 빠진 단계가 있으면 오류다.
   public static func chain(from: Int, to: Int, steps: [any MigrationStep]) throws -> [any MigrationStep] {

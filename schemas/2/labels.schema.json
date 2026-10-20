@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jindesk/2/labels",
+  "title": "sources/<자료 id>/labels.yaml",
+  "description": "학생이 붙인 꼬리표, 메모, 목차의 근거 표시",
+  "type": "object",
+  "required": [
+    "kind",
+    "v",
+    "source",
+    "labels",
+    "memo",
+    "syllabus_basis"
+  ],
+  "properties": {
+    "kind": {
+      "const": "labels"
+    },
+    "v": {
+      "const": 1
+    },
+    "source": {
+      "type": "string"
+    },
+    "labels": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "memo": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "syllabus_basis": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false
+}

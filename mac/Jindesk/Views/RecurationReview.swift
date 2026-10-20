@@ -33,8 +33,12 @@ struct RecurationReview: View {
             GridRow {
               Text(row.concept.isEmpty ? "—" : row.title).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
               ActionPill(action: row.action)
-              Text(row.action == "새 개념" ? row.title + " (새)" : row.targets.isEmpty ? "—" : row.targets.joined(separator: "\n"))
-                .font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+              VStack(alignment: .leading, spacing: 2) {
+                Text(row.action == "새 개념" ? row.title + " (새)" : row.targets.isEmpty ? "옮긴 내용 없음" : row.targets.joined(separator: "\n"))
+                  .font(.system(size: 13)).foregroundStyle(row.targets.isEmpty && row.action != "새 개념" ? .secondary : .primary)
+                if let into = row.into { Text("코멘트 → \(into)").font(.system(size: 11.5)).foregroundStyle(.secondary) }
+              }
+              .fixedSize(horizontal: false, vertical: true)
             }
           }
         }

@@ -336,7 +336,9 @@ struct RecurateCommand: AsyncParsableCommand {
   // 대응표: 고른 개념마다 무엇이 되었는지
   static func show(_ p: Recuration.Proposal) {
     print("· 후보 \(p.job) (\(p.subject)): 개념 \(p.before)개 → \(p.after)개\(p.held > 0 ? ", 보류 \(p.held)" : "")")
-    for r in p.rows { print("  \(r.title): \(r.action)\(r.targets.isEmpty ? "" : " → " + r.targets.joined(separator: ", "))") }
+    for r in p.rows {
+      print("  \(r.title): \(r.action)\(r.targets.isEmpty ? "" : " → " + r.targets.joined(separator: ", "))\(r.into.map { " (코멘트 → \($0))" } ?? "")")
+    }
     print("  반영: Jindesk recurate --apply \(p.job)   버리기: Jindesk recurate --discard \(p.job)")
   }
 }

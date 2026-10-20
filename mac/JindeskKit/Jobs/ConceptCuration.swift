@@ -422,6 +422,9 @@ public enum ConceptCuration {
     // 다시 정리: 고른 개념의 옛 단위 ("k03.u2")
     let selected = input.recurate ?? []
     let oldUnits = Set(input.concepts.filter { selected.contains($0.key) }.flatMap { k in k.concept.units.map { "\(k.key).\($0.id)" } })
+    // 다시 정리에서 새 단위의 from 으로 옮긴 옛 단위. 남기는 개념에서 빠져도 removed_units 에 다시 적지 않아도 된다
+    let movedRefs: Set<String> =
+      input.recurate == nil ? [] : Set((v["concepts"]?.arrayValue ?? []).flatMap { ($0["units"]?.arrayValue ?? []).flatMap { AgentJSON.strings($0["from"]) } })
 
     for (i, raw) in (v["concepts"]?.arrayValue ?? []).enumerated() {
       let at = "concepts[\(i)]"
@@ -501,7 +504,7 @@ public enum ConceptCuration {
         if !existingIDs.contains(id) { problems.append("\(at).removed_units: 이 개념에 없는 단위입니다 (\(id))") }
         removed.append((id, reason ?? ""))
       }
-      for id in existingIDs.subtracting(seenIDs).subtracting(removed.map(\.id)).sorted() {
+      for id in existingIDs.subtracting(seenIDs).subtracting(removed.map(\.id)).sorted() where !movedRefs.contains("\(existingKey ?? "").\(id)") {
         problems.append("\(at): 기존 단위 \(id) 가 빠졌습니다. 그대로 두려면 units 에 id 와 함께 넣고, 빼려면 removed_units 에 까닭을 적는다")
       }
       if let selected = input.recurate, let key = existingKey, !selected.contains(key), !removed.isEmpty {

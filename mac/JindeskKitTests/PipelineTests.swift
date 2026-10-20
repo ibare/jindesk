@@ -300,6 +300,33 @@ extension URL {
     #expect(c.problems.contains { $0.contains("u2") })
   }
 
+  @Test func 다시_정리에서는_옛_단위마다_남기거나_옮기거나_까닭과_함께_뺀다() throws {
+    var input = input()
+    input.recurate = ["k01"]
+    // u1 은 남기고, u2 는 새 개념으로 옮긴다 (removed_units 에 다시 적지 않아도 된다)
+    let moved = try plan([
+      "concepts": [
+        ["concept": "k01", "entries": ["e01"], "units": [["id": "u1", "text": "Old one", "claims": [["text": "x", "src": ["20261010-11112222#p3"]]]]]],
+        [
+          "concept": NSNull(), "slug": "split-off", "title": "Split off", "entries": ["e02"],
+          "units": [["id": NSNull(), "text": "Old two, moved", "from": ["k01.u2"], "claims": [["text": "z", "src": ["20261017-aaaabbbb#p2"]]]]],
+        ],
+      ],
+      "held": [],
+    ])
+    #expect(ConceptCuration.check(out: moved, input: input, math: nil).problems.isEmpty)
+    // 행방이 없거나 옛 단위가 아닌 것을 가리키면 틀린다
+    let lost = try plan([
+      "concepts": [
+        ["concept": "k01", "entries": ["e01", "e02"], "units": [["id": "u1", "text": "Old one", "from": ["k01.u9"], "claims": [["text": "x", "src": ["20261010-11112222#p3"]]]]]]
+      ],
+      "held": [],
+    ])
+    let problems = ConceptCuration.check(out: lost, input: input, math: nil).problems
+    #expect(problems.contains { $0.contains("u2") })
+    #expect(problems.contains { $0.contains("k01.u9") })
+  }
+
   @Test func 맞는_계획을_반영하면_기존_id_를_지키고_새_단위에_id_를_붙인다() throws {
     let out = try plan([
       "concepts": [

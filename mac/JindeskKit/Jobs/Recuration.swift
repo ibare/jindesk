@@ -122,6 +122,8 @@ public enum Recuration {
     public let action: String
     // 내용이 간 개념의 제목 (새 개념은 "(새)"를 붙인다)
     public let targets: [String]
+    // 없앤 개념이면 그 코멘트와 요구가 따라갈 개념의 제목
+    public var into: String?
   }
 
   public struct Proposal: Sendable, Equatable, Identifiable {
@@ -147,7 +149,9 @@ public enum Recuration {
       if let r = plan.retired.first(where: { $0.key == key }) {
         let to = receivers(key, except: nil)
         to.forEach { named.insert($0.slug) }
-        rows.append(Row(concept: old.id, title: old.title, action: r.dropped.isEmpty && !to.isEmpty ? "합침" : "없앰", targets: to.map(name)))
+        let into = plan.concepts.first { p in p.existing == r.into || (r.into.hasPrefix("new:") && p.existing == nil && p.slug == String(r.into.dropFirst(4))) }
+        rows.append(
+          Row(concept: old.id, title: old.title, action: r.dropped.isEmpty && !to.isEmpty ? "합침" : "없앰", targets: to.map(name), into: into.map(name) ?? input.concepts.first { $0.key == r.into }?.concept.title))
       } else if let p = plan.concepts.first(where: { $0.existing == key }) {
         let out = receivers(key, except: key)
         out.forEach { named.insert($0.slug) }
@@ -181,7 +185,12 @@ public enum Recuration {
       "held": .array(input.held.map { .object(["key": .string($0.key), "entry": .string($0.entry.id), "reason": .string($0.reason)]) }),
       "plan": plan,
       "provenance": json(provenance),
-      "rows": .array(rows.map { .object(["concept": .string($0.concept), "title": .string($0.title), "action": .string($0.action), "targets": .array($0.targets.map(JSONValue.string))]) }),
+      "rows": .array(
+        rows.map { r in
+          var o: [String: JSONValue] = ["concept": .string(r.concept), "title": .string(r.title), "action": .string(r.action), "targets": .array(r.targets.map(JSONValue.string))]
+          if let into = r.into { o["into"] = .string(into) }
+          return .object(o)
+        }),
       "before": .number(Double(selected.count)),
       "after": .number(Double(plan["concepts"]?.arrayValue?.count ?? 0)),
       "held_count": .number(Double(plan["held"]?.arrayValue?.count ?? 0)),
@@ -224,7 +233,7 @@ public enum Recuration {
     let rows = (v["rows"]?.arrayValue ?? []).map { r in
       Row(
         concept: r["concept"]?.stringValue ?? "", title: r["title"]?.stringValue ?? "", action: r["action"]?.stringValue ?? "",
-        targets: (r["targets"]?.arrayValue ?? []).compactMap(\.stringValue))
+        targets: (r["targets"]?.arrayValue ?? []).compactMap(\.stringValue), into: r["into"]?.stringValue)
     }
     return Proposal(
       job: job, subject: subject, rows: rows, before: Int(v["before"]?.numberValue ?? 0), after: Int(v["after"]?.numberValue ?? 0),

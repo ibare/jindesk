@@ -1,28 +1,18 @@
-// 과목 → 단원 → 개념 목록 → 학습 페이지 (DECISIONS.md 39). iPad 와 큰 화면은 과목 · 단원 · 개념 목록이 나란히 서고
-// 학습 페이지는 개념 목록 자리에 올라온다. iPhone 은 차례로 쌓인다 (MOBILE.md 의 화면).
+// 과목 → 단원 → 개념 목록 → 학습 페이지 (DECISIONS.md 39, 43). iPad 는 두 칸이다: 왼쪽 칸은 목록 스택, 오른쪽 칸은 고른 것.
+// iPhone 과 iPad 의 좁은 창은 목록 단계 위에 고른 것이 차례로 쌓인다 (MOBILE.md 의 화면).
 import JindeskKit
 import SwiftUI
 
 struct RootView: View {
   @Environment(MobileModel.self) private var model
   @Environment(\.scenePhase) private var scenePhase
+  @Environment(\.horizontalSizeClass) private var sizeClass
 
   var body: some View {
     @Bindable var model = model
-    NavigationSplitView {
-      SubjectList()
-    } content: {
-      if model.subject == MobileModel.termsSelection || model.subject == MobileModel.symbolsSelection {
-        DictionaryList(symbols: model.subject == MobileModel.symbolsSelection)
-      } else if let subject = model.subject {
-        UnitList(subject: subject)
-      } else {
-        ContentUnavailableView("과목을 고릅니다", systemImage: "books.vertical")
-      }
-    } detail: {
-      NavigationStack(path: $model.pages) {
-        detail.navigationDestination(for: PageRoute.self) { page($0) }
-      }
+    Group {
+      // iPhone 은 가로로 돌려 폭 등급이 넓음이 되어도(Plus·Max) 한 스택이다 (DECISIONS.md 43)
+      if UIDevice.current.userInterfaceIdiom == .phone || sizeClass == .compact { StackLayout() } else { SplitLayout() }
     }
     .sheet(isPresented: $model.showSettings) { SettingsView() }
     .sheet(item: $model.sourcePeek) { SourcePageView(peek: $0) }
@@ -37,29 +27,100 @@ struct RootView: View {
       if scenePhase == .active { Task { await model.sync(force: false) } }
     }
   }
+}
 
-  // 과목 개념 지도이거나 단원의 개념 목록
-  @ViewBuilder private var detail: some View {
-    if let subject = MobileModel.mapSubject(model.unit) {
-      ConceptMapScreen(subject: subject).id(subject)
-    } else if let unit = MobileModel.unitKey(model.unit) {
-      ConceptList(subject: unit.subject, key: unit.key).id(model.unit)
-    } else {
-      ContentUnavailableView("단원을 고릅니다", systemImage: "square.stack")
+// iPad: 왼쪽 칸은 과목 → 단원 → 개념의 스택, 오른쪽 칸은 고른 것 (DECISIONS.md 43).
+// 가로는 두 칸이 나란히 서고(balanced) 개념을 골라도 왼쪽 칸을 그대로 둔다. 세로는 오른쪽 칸이 전체 폭이고 왼쪽 칸을 그 위에
+// 띄우며(prominentDetail), 고르면 닫는다. 모양은 방향마다 갈아 끼우므로 돌리면 칸을 새로 만든다. 목록 단계, 고른 것, 개념 지도의 상태는 모델에 있고,
+// 학습 페이지 보기는 칸 바깥에 두고 다시 쓴다(PageWebView). UISplitViewController 의 분할 방식을 직접 바꾸는 것은 SwiftUI 가 되돌린다.
+struct SplitLayout: View {
+  @Environment(MobileModel.self) private var model
+  @State private var columns = NavigationSplitViewVisibility.automatic
+  @State private var portrait = false
+
+  var body: some View {
+    Group {
+      if portrait { split.navigationSplitViewStyle(.prominentDetail) } else { split.navigationSplitViewStyle(.balanced) }
     }
+    // 돌리면 그 방향의 기본으로 돌아간다 (가로는 두 칸, 세로는 오른쪽 칸만). 세로에서 고른 것이 없으면 왼쪽 칸을 띄워 둔다.
+    .onGeometryChange(for: Bool.self) { $0.size.height > $0.size.width } action: { tall in
+      portrait = tall
+      columns = tall && model.page != nil ? .detailOnly : .all
+    }
+    // 세로에서 고르면 왼쪽 칸을 닫고, 고른 것이 없어지면(새 판에서 사라짐) 다시 띄운다
+    .onChange(of: model.page) { if portrait { columns = model.page == nil ? .all : .detailOnly } }
   }
 
-  // 개념 목록 위에 올린 학습 페이지나 단원 요약
-  @ViewBuilder private func page(_ route: PageRoute) -> some View {
+  private var split: some View {
+    @Bindable var model = model
+    return NavigationSplitView(columnVisibility: $columns) {
+      NavigationStack(path: $model.lists) {
+        SubjectList().navigationDestination(for: Route.self) { RouteScreen(route: $0) }
+      }
+      .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 400)
+    } detail: {
+      NavigationStack { PageScreen(route: model.page) }
+    }
+  }
+}
+
+// iPhone 과 iPad 의 좁은 창: 목록 단계 위에 고른 것을 올린다. 한 경로에 함께 쌓아야 뒤로 갈 때 목록 단계로 돌아온다.
+struct StackLayout: View {
+  @Environment(MobileModel.self) private var model
+
+  var body: some View {
+    NavigationStack(path: path) {
+      SubjectList().navigationDestination(for: Route.self) { RouteScreen(route: $0) }
+    }
+    .environment(\.stacksPages, true)
+  }
+
+  private var path: Binding<[Route]> {
+    Binding {
+      model.lists + (model.page.map { [Route.page($0)] } ?? [])
+    } set: { routes in
+      var page: PageRoute?
+      if case .page(let last)? = routes.last { page = last }
+      let lists = routes.filter { if case .page = $0 { false } else { true } }
+      if model.lists != lists { model.lists = lists }
+      if model.page != page { model.page = page }
+    }
+  }
+}
+
+// 스택의 한 단계: 과목의 단원, 단원의 개념, 사전, 고른 것(iPhone)
+struct RouteScreen: View {
+  let route: Route
+
+  var body: some View {
     switch route {
-    case .concept(let id):
+    case .subject(let subject): UnitList(subject: subject)
+    case .unit(let subject, let key): ConceptList(subject: subject, key: key)
+    case .dictionary(let symbols): DictionaryList(symbols: symbols)
+    case .page(let page): PageScreen(route: page)
+    }
+  }
+}
+
+// 고른 것: 학습 페이지, 단원 요약, 과목 개념 지도. 다른 개념을 골라도 같은 학습 페이지 보기를 다시 쓴다 (맥과 같다).
+struct PageScreen: View {
+  @Environment(MobileModel.self) private var model
+  let route: PageRoute?
+
+  var body: some View {
+    switch route {
+    case .concept(let id)?:
       if let concept = model.concept(id) {
-        ConceptPage(concept: concept)
+        ConceptPage(concept: concept, kept: true)
       } else {
         ContentUnavailableView("개념을 찾지 못했습니다", systemImage: "questionmark.folder")
       }
-    case .summary(let subject, let key):
-      UnitSummaryScreen(subject: subject, key: key)
+    case .summary(let subject, let key)?:
+      UnitSummaryScreen(subject: subject, key: key).id(key)
+    case .map(let subject)?:
+      ConceptMapScreen(subject: subject).id(subject)
+    case nil:
+      ContentUnavailableView("개념을 고릅니다", systemImage: "square.stack", description: Text("왼쪽 칸에서 과목, 단원, 개념 차례로 들어갑니다."))
     }
   }
 }
@@ -86,8 +147,7 @@ struct SubjectList: View {
   @State private var searchText = ""
 
   var body: some View {
-    @Bindable var model = model
-    List(selection: $model.subject) {
+    List {
       if model.data == nil {
         Section {
           VStack(alignment: .leading, spacing: 6) {
@@ -102,20 +162,21 @@ struct SubjectList: View {
       } else {
         Section("과목") {
           ForEach(model.subjects, id: \.id) { s in
-            HStack(spacing: 8) {
-              VStack(alignment: .leading, spacing: 2) {
-                Text(s.name)
-                Text("단원 \(model.units(s.id).count) · 개념 \(s.count)").font(.caption).foregroundStyle(.secondary)
+            NavigationLink(value: Route.subject(s.id)) {
+              HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                  Text(s.name)
+                  Text("단원 \(model.units(s.id).count) · 개념 \(s.count)").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 6)
+                if model.hasNew(subject: s.id) { NewDot() }
               }
-              Spacer(minLength: 6)
-              if model.hasNew(subject: s.id) { NewDot() }
             }
-            .tag(s.id)
           }
         }
         Section("사전") {
-          LabeledContent("용어", value: "\(model.glossary.terms.count)").tag(MobileModel.termsSelection)
-          LabeledContent("기호", value: "\(model.symbols.count)").tag(MobileModel.symbolsSelection)
+          NavigationLink(value: Route.dictionary(symbols: false)) { LabeledContent("용어", value: "\(model.glossary.terms.count)") }
+          NavigationLink(value: Route.dictionary(symbols: true)) { LabeledContent("기호", value: "\(model.symbols.count)") }
         }
       }
       Section { SyncStatusRow() }
@@ -164,6 +225,7 @@ struct SyncStatusRow: View {
 }
 
 // 과목의 단원: 맨 위에 개념 지도, 그 아래 단원 (이름의 알파벳순, DECISIONS.md 39). 맥의 과목 단계와 같다.
+// 개념 지도는 오른쪽 칸(iPhone 은 목록 위)에 열고, 단원은 목록 스택에 들어간다.
 struct UnitList: View {
   @Environment(MobileModel.self) private var model
   let subject: String
@@ -171,7 +233,7 @@ struct UnitList: View {
   var body: some View {
     @Bindable var model = model
     let units = model.units(subject)
-    List(selection: $model.unit) {
+    List(selection: $model.page) {
       if !units.isEmpty {
         let map = model.conceptMap(subject, showOthers: true)
         Section {
@@ -183,17 +245,19 @@ struct UnitList: View {
           } icon: {
             Image(systemName: "point.3.connected.trianglepath.dotted").foregroundStyle(Color.accentColor)
           }
-          .tag(MobileModel.mapSelection(subject))
+          .opensPage()
+          .tag(PageRoute.map(subject))
         }
         Section {
           ForEach(units) { u in
-            HStack(spacing: 8) {
-              Text(u.name).lineLimit(1)
-              Spacer(minLength: 6)
-              if u.hasNew { NewDot() }
-              Text("\(u.concepts.count)").foregroundStyle(.secondary).monospacedDigit()
+            NavigationLink(value: Route.unit(subject, u.key)) {
+              HStack(spacing: 8) {
+                Text(u.name).lineLimit(1)
+                Spacer(minLength: 6)
+                if u.hasNew { NewDot() }
+                Text("\(u.concepts.count)").foregroundStyle(.secondary).monospacedDigit()
+              }
             }
-            .tag(MobileModel.unitSelection(subject, u.key))
           }
         } header: {
           HStack {
@@ -210,27 +274,54 @@ struct UnitList: View {
   }
 }
 
-// 단원의 개념: 맨 위에 단원 요약, 그 아래 개념 (배우는 순서). 누르면 그 위에 올린다.
+// 단원의 개념: 맨 위에 단원 요약, 그 아래 개념 (배우는 순서). 고르면 오른쪽 칸(iPhone 은 목록 위)에 열고, 고른 줄이 표시된다.
 struct ConceptList: View {
   @Environment(MobileModel.self) private var model
   let subject: String
   let key: String
 
   var body: some View {
+    @Bindable var model = model
     let unit = model.unit(subject, key)
-    List {
+    List(selection: $model.page) {
       Section {
-        NavigationLink(value: PageRoute.summary(subject, key)) { UnitRow() }
+        UnitRow().opensPage().tag(PageRoute.summary(subject, key))
       }
       Section {
         ForEach(unit.concepts) { c in
-          NavigationLink(value: PageRoute.concept(c.id)) { ConceptRow(concept: c) }
+          ConceptRow(concept: c).opensPage().tag(PageRoute.concept(c.id))
         }
       }
     }
     .navigationTitle(unit.title)
     .refreshable { await model.sync(force: true) }
   }
+}
+
+extension EnvironmentValues {
+  // 한 스택(StackLayout) 안이다: 고른 것이 목록 위에 올라간다. iPad 왼쪽 칸도 폭 등급은 좁음이라 그것으로 가르지 않는다.
+  @Entry var stacksPages = false
+}
+
+// 고르면 여는 줄(개념 지도, 단원 요약, 개념). 한 스택에서는 목록 위에 올라가므로 넘어가는 표시를 붙인다.
+// iPad 는 오른쪽 칸에 열고 고른 줄이 표시된다.
+struct OpensPage: ViewModifier {
+  @Environment(\.stacksPages) private var stacksPages
+
+  func body(content: Content) -> some View {
+    if stacksPages {
+      HStack(spacing: 8) {
+        content.frame(maxWidth: .infinity, alignment: .leading)
+        Image(systemName: "chevron.forward").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+      }
+    } else {
+      content
+    }
+  }
+}
+
+extension View {
+  func opensPage() -> some View { modifier(OpensPage()) }
 }
 
 // 단원의 개념 목록 첫 줄: 단원 요약을 연다 (DECISIONS.md 34)

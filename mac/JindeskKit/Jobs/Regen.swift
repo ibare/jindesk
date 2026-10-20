@@ -33,14 +33,16 @@ public enum Regen {
   }
 
   // 다시 돌아야 하는 요구: 요청했는데 아직 결과가 없거나, 원문이 바뀌어 다시 확인해야 하거나, 곁 층이 낡은 것.
-  // 대상 단위가 페이지에 아직 없으면(다시 정리로 옮겨 간 개념의 페이지를 아직 만들지 않았을 때) 페이지가 생길 때까지 기다린다.
+  // 다시 정리로 옮겨 간 요구는 옮겨 간 개념의 페이지에 그 문단이 생길 때까지 기다린다 (DECISIONS.md 47).
+  // 그 밖의 요구는 기다리지 않는다. 대상 단위가 페이지에서 빠졌으면 돌아서 "단위를 찾지 못했습니다"로 끝난다.
   public static func pending(_ data: DataFolder) -> [Directive] {
     let all = DirectiveStore.load(data)
-    func onPage(_ d: Directive) -> Bool {
-      guard let cid = ConceptID(d.target.concept), let page = Page.load(ConceptFolder(cid, in: data)) else { return false }
-      return page.units.contains { $0.id == d.target.unit }
+    func waiting(_ d: Directive) -> Bool {
+      guard d.moved, !d.target.unit.isEmpty else { return false }
+      guard let cid = ConceptID(d.target.concept), let page = Page.load(ConceptFolder(cid, in: data)) else { return true }
+      return !page.units.contains { $0.id == d.target.unit }
     }
-    var out = all.filter { ($0.status == .requested || $0.status == .recheck) && onPage($0) }
+    var out = all.filter { ($0.status == .requested || $0.status == .recheck) && !waiting($0) }
     for d in all where d.status == .applied && (d.op == .easy || d.op == .detail) {
       guard let cid = ConceptID(d.target.concept) else { continue }
       let folder = ConceptFolder(cid, in: data)

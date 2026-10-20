@@ -507,8 +507,20 @@ public enum ConceptCuration {
       for id in existingIDs.subtracting(seenIDs).subtracting(removed.map(\.id)).sorted() where !movedRefs.contains("\(existingKey ?? "").\(id)") {
         problems.append("\(at): 기존 단위 \(id) 가 빠졌습니다. 그대로 두려면 units 에 id 와 함께 넣고, 빼려면 removed_units 에 까닭을 적는다")
       }
-      if let selected = input.recurate, let key = existingKey, !selected.contains(key), !removed.isEmpty {
-        problems.append("\(at): 고르지 않은 개념(\(key))은 보강만 한다. 단위를 빼지 않는다")
+      // 다시 정리에서 고르지 않은 개념은 보강만 한다: 새 단위를 받을 수 있지만 제목과 기존 단위(차례, 글, 조건, 주장)는 그대로다.
+      // 사람은 대응표에서 고른 개념과 받은 단위만 보므로, 그 밖의 원문이 반영으로 바뀌지 않게 한다
+      if let selected = input.recurate, let key = existingKey, !selected.contains(key), let old = existing {
+        if !removed.isEmpty { problems.append("\(at): 고르지 않은 개념(\(key))은 보강만 한다. 단위를 빼지 않는다") }
+        if let title, title != old.title { problems.append("\(at).title: 고르지 않은 개념(\(key))의 제목은 바꾸지 않는다 (\(old.title))") }
+        for o in old.units {
+          guard let u = units.first(where: { $0.id == o.id }) else { continue }
+          let same = u.text == o.text && u.conditions == o.conditions && u.claims.map { $0.text } == o.claims.map(\.text) && u.claims.map { $0.src } == o.claims.map(\.src)
+          if !same { problems.append("\(at).units: 고르지 않은 개념(\(key))의 기존 단위 \(o.id) 는 글, 조건, 주장을 input/concepts/ 그대로 옮긴다") }
+        }
+        let order = units.compactMap(\.id)
+        if Set(order) == Set(old.units.map(\.id)) && order != old.units.map(\.id) {
+          problems.append("\(at).units: 고르지 않은 개념(\(key))의 기존 단위는 차례를 바꾸지 않는다. 받은 단위는 사이에 넣을 수 있다")
+        }
       }
       let symbols = AgentJSON.symbols(raw["symbols"])
       let item = AgentJSON.string(raw["item"])
@@ -642,7 +654,9 @@ public enum ConceptCuration {
   static func apply(_ plan: Plan, input: Input, data: DataFolder, provenance: YAMLMap) throws -> [Concept] {
     let syllabus = Syllabus.load(data, subject: input.subject)
     let conceptByKey = Dictionary(input.concepts.map { ($0.key, $0.concept) }, uniquingKeysWith: { a, _ in a })
-    var taken = Set(input.concepts.map { $0.concept.cid.slug })
+    // 쓰인 slug: 입력의 개념, 지금 폴더의 개념, 옮기거나 없앤 개념의 옛 id (Moves.formerConcepts)
+    var taken = Set(input.concepts.map { $0.concept.cid.slug } + ConceptStore.all(data, subject: input.subject).map(\.cid.slug))
+    taken.formUnion(Moves.formerConcepts(data).compactMap { ConceptID($0) }.filter { $0.subject == input.subject }.map(\.slug))
     var out: [Concept] = []
     for p in plan.concepts {
       var concept: Concept

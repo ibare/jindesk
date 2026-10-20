@@ -299,6 +299,7 @@ struct RecurateCommand: AsyncParsableCommand {
       return
     }
     if let job = apply {
+      // 반영이 데이터 폴더 잠금을 잡는다. 앱이 작업을 돌리고 있으면 던진다. 끝나면 풀리므로 그 뒤의 작업 관리자가 잡는다
       let r = try Recuration.apply(folder, job: job)
       print("· 반영: 개념 \(r.written.count)개를 쓰고 \(r.retired.count)개를 없앴습니다. 단위 옮김 \(r.unitMoves)줄")
       for id in r.retired { print("  없앰 \(id)") }

@@ -41,8 +41,9 @@ public enum Recuration {
     guard case .success(let raw) = planValue else { throw ToolError("out/plan.json 을 다시 읽지 못했습니다") }
     let provenance = AgentStep.provenance(ctx, .conceptCuration, instructions)
     let rows = rows(plan, input: input)
+    let after = afterCount(plan, input: input)
     let record = ctx.data.record(JobKind.conceptCuration.rawValue, ctx.id)
-    try FileOps.writeNew(JSONText.record(proposalJSON(input: input, plan: raw, rows: rows, job: ctx.id, provenance: provenance)), to: record.appending(path: "proposal.json"))
+    try FileOps.writeNew(JSONText.record(proposalJSON(input: input, plan: raw, rows: rows, after: after, job: ctx.id, provenance: provenance)), to: record.appending(path: "proposal.json"))
     let report = FileOps.readIfExists(dirs.out.appending(path: "report.md")) ?? ""
     let head: YAMLMap = [
       "kind": "recuration-report", "v": 1, "job": .string(ctx.id), "subject": .string(subject),
@@ -52,7 +53,7 @@ public enum Recuration {
 
     await ctx.report(
       counts: [
-        JobCount(key: "selected", label: "고른 개념", count: ids.count), JobCount(key: "after", label: "다시 정리한 뒤", count: plan.concepts.count),
+        JobCount(key: "selected", label: "고른 개념", count: ids.count), JobCount(key: "after", label: "다시 정리한 뒤", count: after),
         JobCount(key: "retired", label: "없앰", count: plan.retired.count), JobCount(key: "held", label: "보류", count: plan.held.count),
       ], warnings: warnings.isEmpty ? nil : warnings)
     for r in rows { await ctx.log(.info, "\(r.title): \(r.action)\(r.targets.isEmpty ? "" : " → " + r.targets.joined(separator: ", "))") }
@@ -89,6 +90,9 @@ public enum Recuration {
       guard ConceptStore.fileHash(data, id: c.cid) == hashes[id] else { throw RequestError("다시 정리한 사이 개념이 바뀌었습니다: \(id). 다시 정리를 다시 합니다") }
       keyed.append((key, c))
     }
+    // 그 사이 이 과목에 생긴 개념이 있으면 반영하지 않는다. 계획이 모르는 개념이라, 새 개념의 slug 가 겹치면 덮어쓸 수 있다
+    let added = Set(all.map(\.id)).subtracting(concepts.map(\.id))
+    guard added.isEmpty else { throw RequestError("다시 정리한 사이 이 과목에 개념이 생겼습니다: \(added.sorted().joined(separator: ", ")). 다시 정리를 다시 합니다") }
     let pool = EntryStore.all(data, subject: subject)
     var entries: [(key: String, entry: Entry)] = []
     for (i, id) in entryIDs.enumerated() {
@@ -113,12 +117,12 @@ public enum Recuration {
 
   // MARK: - 후보
 
-  // 대응표의 한 줄: 고른 개념 하나가 무엇이 되었는지, 또는 엔트리에서 새로 생긴 개념
+  // 대응표의 한 줄: 고른 개념 하나가 무엇이 되었는지, 새 단위를 받은 고르지 않은 개념, 또는 엔트리에서 새로 생긴 개념
   public struct Row: Sendable, Equatable {
-    // 고른 개념의 id. 새로 생긴 개념이면 빈 글
+    // 고른 개념이나 받은 개념의 id. 새로 생긴 개념이면 빈 글
     public let concept: String
     public let title: String
-    // 그대로, 보강, 다시 씀, 나눔, 합침, 없앰, 새 개념
+    // 그대로, 보강, 다시 씀, 나눔, 합침, 없앰, 받음(고르지 않은 개념), 새 개념
     public let action: String
     // 내용이 간 개념의 제목 (새 개념은 "(새)"를 붙인다)
     public let targets: [String]
@@ -169,13 +173,25 @@ public enum Recuration {
         rows.append(Row(concept: old.id, title: old.title, action: action, targets: ([p] + out).map(name)))
       }
     }
+    // 고르지 않은 개념은 새 단위를 받을 때만 바뀐다 (제목과 기존 단위는 검사로 그대로다)
+    for (key, old) in input.concepts where !selected.contains(key) {
+      guard let p = plan.concepts.first(where: { $0.existing == key }) else { continue }
+      let added = p.units.filter { $0.id == nil }.count
+      if added > 0 { rows.append(Row(concept: old.id, title: old.title, action: "받음", targets: ["\(old.title) · 새 단위 \(added)개"])) }
+    }
     for p in plan.concepts where p.existing == nil && !named.contains(p.slug) {
       rows.append(Row(concept: "", title: p.title, action: "새 개념", targets: []))
     }
     return rows
   }
 
-  static func proposalJSON(input: ConceptCuration.Input, plan: JSONValue, rows: [Row], job: String, provenance: YAMLMap) -> JSONValue {
+  // 다시 정리한 뒤의 개념 수: 남긴 고른 개념과 새 개념 (새 단위를 받은 고르지 않은 개념은 세지 않는다)
+  static func afterCount(_ plan: ConceptCuration.Plan, input: ConceptCuration.Input) -> Int {
+    let selected = input.recurate ?? []
+    return plan.concepts.filter { p in p.existing.map(selected.contains) ?? true }.count
+  }
+
+  static func proposalJSON(input: ConceptCuration.Input, plan: JSONValue, rows: [Row], after: Int, job: String, provenance: YAMLMap) -> JSONValue {
     let selected = input.recurate ?? []
     return .object([
       "v": .number(1), "kind": .string("recuration-proposal"), "job": .string(job), "subject": .string(input.subject), "at": .string(Clock.isoLocal()),
@@ -192,7 +208,7 @@ public enum Recuration {
           return .object(o)
         }),
       "before": .number(Double(selected.count)),
-      "after": .number(Double(plan["concepts"]?.arrayValue?.count ?? 0)),
+      "after": .number(Double(after)),
       "held_count": .number(Double(plan["held"]?.arrayValue?.count ?? 0)),
     ])
   }
@@ -253,7 +269,11 @@ public enum Recuration {
   }
 
   // 후보를 반영한다. 다시 정리한 사이 개념이 바뀌었거나 후보가 지금 데이터와 맞지 않으면 아무것도 쓰지 않고 던진다.
+  // 작업이 도는 동안에는 반영하지 않는다. 작업 관리자가 쥐는 데이터 폴더 잠금을 잡지 못하면 던진다 (앱과 명령줄이 같다).
   public static func apply(_ data: DataFolder, job: String) throws -> Applied {
+    let lock = DataLock(data)
+    guard lock.tryAcquire() else { throw RequestError("작업이 도는 중이거나 다른 Jindesk 프로세스가 이 데이터 폴더를 쓰고 있습니다. 작업이 끝난 뒤 다시 반영합니다") }
+    defer { lock.release() }
     let dir = folder(data, job: job)
     guard let v = readProposal(data, job: job), let subject = v["subject"]?.stringValue, let rawPlan = v["plan"] else {
       throw RequestError("다시 정리 후보를 찾지 못했습니다: \(job)")
@@ -278,8 +298,18 @@ public enum Recuration {
     let byKey = Dictionary(input.concepts.map { ($0.key, $0.concept) }, uniquingKeysWith: { a, _ in a })
     // 옛 페이지의 단위: 페이지 단위가 어느 원문 단위에서 왔는지 (지우거나 다시 만들기 전에 읽어 둔다)
     var oldPages: [String: [PageUnit]] = [:]
-    for key in selected { if let c = byKey[key] { oldPages[key] = Page.load(ConceptFolder(c.cid, in: data))?.units ?? [] } }
-    let living = DirectiveStore.load(data).filter(\.status.isLiving)
+    // 옛 페이지의 지난 판에서 빠진 단위 id (history.jsonl). 없앤 개념이면 이 id 에도 단위 줄을 남긴다
+    var oldHistory: [String: Set<String>] = [:]
+    for key in selected {
+      guard let c = byKey[key] else { continue }
+      let folder = ConceptFolder(c.cid, in: data)
+      oldPages[key] = Page.load(folder)?.units ?? []
+      oldHistory[key] = Set(((try? JSONLines.read(folder.history))?.values ?? []).compactMap { $0["unit"]?["id"]?.stringValue })
+    }
+    let directives = DirectiveStore.load(data)
+    let living = directives.filter(\.status.isLiving)
+    // 코멘트와 요구가 지금 가리키는 자리 ("<개념 id>#<단위 id>")
+    let anchored = Set(CommentStore.load(data).compactMap(\.anchor).map { "\($0.concept)#\($0.unit)" } + directives.map { "\($0.target.concept)#\($0.target.unit)" })
 
     let provenance = YAMLValue(json: v["provenance"] ?? .object([:])).map ?? YAMLMap([])
     let written = try ConceptCuration.apply(plan, input: input, data: data, provenance: provenance)
@@ -295,6 +325,8 @@ public enum Recuration {
     // 옛 단위와 그 페이지 단위가 간 자리. 남은 개념에서 뺀 단위는 적지 않는다(페이지를 다시 만들면 그 문단이 빠지고 id 는 다시 쓰지 않는다).
     var moves: [(from: (concept: String, unit: String), to: (concept: String, unit: String?))] = []
     var movedPageUnits: Set<String> = []
+    // 뺀 단위 ("<개념 id>#<단위 id>"): 개념 단위와, 페이지를 다시 만들면 없어지는 그 문단
+    var dropped: Set<String> = []
     for key in selected.sorted() {
       guard let old = byKey[key] else { continue }
       let retired = plan.retired.first { $0.key == key }
@@ -308,17 +340,29 @@ public enum Recuration {
         } else if let into {
           to = (into, nil)
         } else {
+          dropped.insert("\(old.id)#\(u.id)")
+          for pu in oldPages[key] ?? [] where pu.fromUnit == u.id { dropped.insert("\(old.id)#\(pu.id)") }
           continue
         }
         moves.append(((old.id, u.id), to))
+        if to.unit == nil { dropped.insert("\(old.id)#\(u.id)") }
         for pu in oldPages[key] ?? [] where pu.fromUnit == u.id {
           moves.append(((old.id, pu.id), to))
           covered.insert(pu.id)
-          if to.unit != nil { movedPageUnits.insert("\(old.id)#\(pu.id)") }
+          if to.unit != nil { movedPageUnits.insert("\(old.id)#\(pu.id)") } else { dropped.insert("\(old.id)#\(pu.id)") }
         }
       }
-      // 없앤 개념의 페이지 단위는 하나도 빠짐없이 자리를 남긴다 (개념 줄만 따라가 받는 개념의 엉뚱한 단위에 붙지 않게)
-      if let into { for pu in oldPages[key] ?? [] where !covered.contains(pu.id) { moves.append(((old.id, pu.id), (into, nil))) } }
+      // 없앤 개념은 단위 id 마다 빠짐없이 자리를 남긴다. 개념 줄만 따라가면 받는 개념의 같은 id 단위에 붙는다.
+      // 지금 페이지의 단위와 함께, 지난 판에서 빠진 단위(history.jsonl)와 코멘트·요구가 가리키는 단위도 적는다
+      if let into {
+        let prefix = "\(old.id)#"
+        var ids = Set((oldPages[key] ?? []).map(\.id)).union(oldHistory[key] ?? [])
+        ids.formUnion(anchored.filter { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }.filter { !$0.isEmpty })
+        for id in ids.subtracting(covered).subtracting(old.units.map(\.id)).sorted() {
+          moves.append(((old.id, id), (into, nil)))
+          dropped.insert(prefix + id)
+        }
+      }
     }
 
     // 없앤 개념: 폴더를 지우고, 가리키던 선수 개념을 바꾸고, 코멘트가 따라갈 개념을 적는다
@@ -337,6 +381,12 @@ public enum Recuration {
     // 옮겨 간 단위에 달린 살아 있는 요구는 원문이 바뀌었으므로 다시 확인한다 (REGENERATION.md)
     for d in living where movedPageUnits.contains("\(d.target.concept)#\(d.target.unit)") {
       try DirectiveStore.update(data, id: d.id, status: .recheck)
+    }
+    // 뺀 단위의 끝나지 않은 요구(요청함, 새 판 비교, 다시 확인)는 대상 문단이 없어지므로 실패로 끝낸다.
+    // 살아 있는 요구는 그대로 둔다. 뺀 단위의 코멘트처럼 어느 문단에도 붙지 않는다.
+    let open: Set<DirectiveStatus> = [.requested, .candidate, .recheck]
+    for d in directives where open.contains(d.status) && dropped.contains("\(d.target.concept)#\(d.target.unit)") {
+      try DirectiveStore.update(data, id: d.id, status: .failed, extra: ["reason": .string("다시 정리로 대상 문단이 빠졌습니다 (\(job))")])
     }
 
     // 기록: 반영한 계획과 결정

@@ -63,15 +63,18 @@ import Testing
     #expect(loaded[0].anchor == CommentAnchor(concept: "math/unplaced/new", unit: "p3", rev: 0, quote: "q"))
     #expect(loaded[1].anchor?.concept == "math/unplaced/new" && loaded[1].anchor?.unit == "")
 
-    // 요구도 따라가고, 대상 단위가 페이지에 없으면 부분 다시 만들기가 기다린다
+    // 요구도 따라간다. 옮기지 않은 요구는 대상 단위가 페이지에 없어도 기다리지 않는다 (돌아서 "단위를 찾지 못했습니다"로 끝난다)
     _ = try DirectiveStore.request(t.data, op: .easy, target: DirectiveTarget(concept: "math/unplaced/old", unit: "p2", rev: 1), note: nil, fromComment: nil)
     _ = try DirectiveStore.request(t.data, op: .easy, target: DirectiveTarget(concept: "math/unplaced/old", unit: "p1", rev: 1), note: nil, fromComment: nil)
-    #expect(DirectiveStore.load(t.data).map(\.target.unit) == ["p3", ""])
-    #expect(Regen.pending(t.data).map(\.target.unit) == ["p3"])
+    _ = try DirectiveStore.request(t.data, op: .easy, target: DirectiveTarget(concept: "math/unplaced/new", unit: "p9", rev: 1), note: nil, fromComment: nil)
+    #expect(DirectiveStore.load(t.data).map(\.target.unit) == ["p3", "", "p9"])
+    #expect(DirectiveStore.load(t.data).map(\.moved) == [true, true, false])
+    #expect(Regen.pending(t.data).map(\.target.unit) == ["p3", "", "p9"])
 
-    // 다시 옮기면 끝까지 따라간다
+    // 다시 옮기면 끝까지 따라간다. 옮겨 간 개념의 페이지에 그 문단이 생길 때까지 그 요구는 기다린다
     try Moves.appendUnit(t.data, from: ("math/unplaced/new", "u7"), to: ("math/unplaced/third", "u2"), why: "다시 정리")
     #expect(Moves.resolve(concept: "math/unplaced/old", unit: "p2", moves: Moves.all(t.data)) == ("math/unplaced/third", "u2", true))
+    #expect(Regen.pending(t.data).map(\.target.unit) == ["", "p9"])
   }
 
   @Test func 과목_이름을_바꾸면_꼬리표와_엔트리와_개념이_새_과목으로_간다() async throws {
@@ -102,6 +105,16 @@ import Testing
     // 개념 정리가 이 엔트리를 다시 고르지 않는다
     let bundle = try #require(BundleStore.bundle(of: sid, in: t.data))
     #expect(ConceptCuration.pending(t.data, bundle: bundle).isEmpty)
+  }
+
+  @Test func 과목_이름을_바꿀_때_옮기거나_없앤_개념의_옛_id_는_다시_쓰지_않는다() throws {
+    let t = TempPlace()
+    try t.data.initialize(app: testApp)
+    _ = try concept(t.data, "extended-math/unplaced/logs")
+    // mathematics/unplaced/logs 는 예전에 다른 자리로 옮긴 개념의 id 다
+    try Moves.append(t.data, kind: "concept", from: "mathematics/unplaced/logs", to: "mathematics/u1/logs", why: "목차 U1")
+    _ = try SubjectRename.run(t.data, from: "extended-math", toName: "Mathematics")
+    #expect(ConceptStore.all(t.data, subject: "mathematics").map(\.id) == ["mathematics/unplaced/logs-2"])
   }
 }
 

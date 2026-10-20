@@ -327,6 +327,63 @@ extension URL {
     #expect(problems.contains { $0.contains("k01.u9") })
   }
 
+  @Test func 다시_정리에서_고르지_않은_개념은_새_단위만_받고_대응표에_받음으로_나온다() throws {
+    // 고른 개념은 k02 하나다. k01 은 고르지 않았고 k02 의 u1 을 받는다
+    let chosen = Concept(
+      cid: ConceptID(subject: "math", item: "unplaced", slug: "zero-exponent"), title: "Zero exponent", itemProposed: "Exponents", occurrences: [], symbols: [], nextID: 2,
+      units: [ConceptUnit(id: "u1", text: "Zero one", conditions: [], claims: [UnitClaim(id: "c1", text: "z", src: ["20261017-aaaabbbb#p2"])])], provenance: YAMLMap([]))
+    let base = input()
+    var input = ConceptCuration.Input(subject: "math", entries: base.entries, concepts: base.concepts + [("k02", chosen)], conceptHashes: [:])
+    input.recurate = ["k02"]
+    let one: [String: Any] = ["id": "u1", "text": "Old one", "claims": [["text": "x", "src": ["20261010-11112222#p3"]]]]
+    let two: [String: Any] = ["id": "u2", "text": "Old two"]
+    let received: [String: Any] = ["id": NSNull(), "text": "Zero one, moved", "from": ["k02.u1"], "claims": [["text": "z", "src": ["20261017-aaaabbbb#p2"]]]]
+    func check(title: String = "Laws of indices", _ units: [[String: Any]]) throws -> ConceptCuration.Checked {
+      ConceptCuration.check(
+        out: try plan([
+          "concepts": [["concept": "k01", "title": title, "entries": ["e01", "e02"], "units": units]],
+          "retired": [["concept": "k02", "into": "k01", "reason": "k01 에 합쳤다"]], "held": [],
+        ]), input: input, math: nil)
+    }
+    let ok = try check([one, received, two])
+    #expect(ok.problems.isEmpty, "\(ok.problems)")
+    let rows = Recuration.rows(try #require(ok.plan), input: input)
+    #expect(rows.map(\.action) == ["합침", "받음"])
+    #expect(rows[1].concept == "math/unplaced/laws-of-indices" && rows[1].targets == ["Laws of indices · 새 단위 1개"])
+    // 받은 개념은 다시 정리한 뒤의 개념 수에 세지 않는다
+    #expect(Recuration.afterCount(try #require(ok.plan), input: input) == 0)
+
+    // 제목, 기존 단위의 글과 주장, 차례를 바꾸면 틀린다
+    #expect(try check(title: "Indices", [one, received, two]).problems.contains { $0.contains("제목") })
+    var edited = one
+    edited["text"] = "Old one, revised"
+    #expect(try check([edited, received, two]).problems.contains { $0.contains("u1") })
+    var unsourced = one
+    unsourced["claims"] = []
+    #expect(try check([unsourced, received, two]).problems.contains { $0.contains("u1") })
+    #expect(try check([two, received, one]).problems.contains { $0.contains("차례") })
+  }
+
+  @Test func 새_개념은_옮기거나_없앤_개념의_옛_id_를_다시_쓰지_않는다() throws {
+    let t = TempPlace()
+    try t.data.initialize(app: testApp)
+    // math/unplaced/zero-exponent 는 앞선 다시 정리로 없앤 개념이다. 그 id 를 다시 쓰면 줄이 새 개념의 코멘트를 끌고 간다
+    try Moves.append(t.data, kind: "concept", from: "math/unplaced/zero-exponent", to: "math/unplaced/laws-of-indices", why: "다시 정리로 없앰")
+    let out = try plan([
+      "concepts": [
+        [
+          "concept": NSNull(), "slug": "zero-exponent", "title": "Zero exponent", "entries": ["e01", "e02"],
+          "units": [["id": NSNull(), "text": "Any base to the zero is one.", "claims": [["text": "z", "src": ["20261017-aaaabbbb#p2"]]]]],
+        ]
+      ],
+      "held": [],
+    ])
+    let input = input()
+    let c = ConceptCuration.check(out: out, input: input, math: nil)
+    let written = try ConceptCuration.apply(try #require(c.plan), input: input, data: t.data, provenance: ["job": "j"])
+    #expect(written.map(\.id) == ["math/unplaced/zero-exponent-2"])
+  }
+
   @Test func 맞는_계획을_반영하면_기존_id_를_지키고_새_단위에_id_를_붙인다() throws {
     let out = try plan([
       "concepts": [
@@ -977,6 +1034,13 @@ extension CurationCheckTests {
     try CommentStore.append(t.data, gone)
     let directive = try DirectiveStore.request(t.data, op: .easy, target: DirectiveTarget(concept: b.id, unit: "p1", rev: 1), note: nil, fromComment: nil)
     try DirectiveStore.update(t.data, id: directive.id, status: .accepted)
+    // 뺄 문단에 요청한 요구, 지난 판에서 빠진 b 의 p3 에 단 코멘트 (a 의 페이지에 옮겨 올 문단도 p3 이 된다)
+    let doomed = try DirectiveStore.request(t.data, op: .detail, target: DirectiveTarget(concept: b.id, unit: "p2", rev: 1), note: nil, fromComment: nil)
+    try FileOps.appendLine(
+      JSONText.line(.object(["v": .number(1), "at": .string("t"), "reason": .string("removed"), "unit": .object(["id": .string("p3"), "rev": .number(1)])])),
+      to: ConceptFolder(b.cid, in: t.data).history)
+    let earlier = Comment(id: "cm-3", at: "t", by: "learner", kind: .memo, anchor: CommentAnchor(concept: b.id, unit: "p3", rev: 1, quote: "b old"), text: "지난 판의 문단")
+    try CommentStore.append(t.data, earlier)
 
     // 다시 정리는 후보만 남기고 데이터를 바꾸지 않는다
     let m = JobManager(data: t.data, folders: t.folders)
@@ -988,6 +1052,13 @@ extension CurationCheckTests {
     #expect(proposal.rows.map(\.action) == ["다시 씀", "없앰"])
     #expect(proposal.rows[1].targets == ["A"])
     #expect(ConceptStore.all(t.data, subject: "math").count == 2)
+
+    // 작업이 돌거나 다른 프로세스가 데이터 폴더를 쥐고 있으면 반영하지 않는다
+    let other = DataLock(t.data)
+    #expect(other.tryAcquire())
+    #expect(throws: RequestError.self) { try Recuration.apply(t.data, job: job) }
+    other.release()
+    #expect(Recuration.pending(t.data).count == 1)
 
     // 반영하면 b 가 없어지고, b.u1 은 a 의 새 단위가 되며, 코멘트와 요구가 따라간다
     let applied = try Recuration.apply(t.data, job: job)
@@ -1001,6 +1072,9 @@ extension CurationCheckTests {
     #expect(FileOps.exists(Recuration.folder(t.data, job: job).appending(path: "plan.json")))
     #expect(throws: RequestError.self) { try Recuration.apply(t.data, job: job) }
     #expect(DirectiveStore.load(t.data).first?.status == .recheck)
+    // 뺀 문단의 요구는 실패로 끝나고, 옮겨 간 요구는 a 의 페이지에 그 문단이 생길 때까지 기다린다
+    #expect(DirectiveStore.load(t.data).first { $0.id == doomed.id }?.status == .failed)
+    #expect(Regen.pending(t.data).isEmpty)
 
     // a 의 페이지를 다시 만들면 옮겨 온 단위의 문단에 코멘트가 "이전 판"으로 붙고, 뺀 문단의 코멘트는 어디에도 붙지 않는다
     #expect(Pipeline.pending(t.data).map(\.kind).contains(.pageBuild))
@@ -1011,7 +1085,11 @@ extension CurationCheckTests {
     let comments = CommentStore.load(t.data)
     #expect(comments[0].anchor == CommentAnchor(concept: a.id, unit: moved.id, rev: 0, quote: "b one"))
     #expect(comments[1].anchor?.concept == a.id && comments[1].anchor?.unit == "")
+    // 지난 판에서 빠진 단위의 코멘트도 a 의 같은 id 문단(p3)에 붙지 않는다
+    #expect(moved.id == "p3")
+    #expect(comments[2].anchor?.concept == a.id && comments[2].anchor?.unit == "")
     #expect(DirectiveStore.load(t.data).first?.target.unit == moved.id)
+    #expect(Regen.pending(t.data).map(\.id) == [directive.id])
   }
 
   @Test func 다시_정리한_사이_개념이_바뀌면_반영하지_않고_버릴_수_있다() async throws {
@@ -1044,6 +1122,14 @@ extension CurationCheckTests {
     let m = JobManager(data: t.data, folders: t.folders)
     let job = try await m.submit(config: config) { try Recuration.prepare(subject: "math", concepts: made.map(\.id), $0) }
     #expect(await m.waitForEnd(job).phase == "done")
+    // 그 사이 이 과목에 개념이 생겼다 (계획이 모르는 개념이라 새 개념이 덮어쓸 수 있다)
+    let added = Concept(
+      cid: ConceptID(subject: "math", item: "unplaced", slug: "c"), title: "c", itemProposed: "Exponents", occurrences: [], symbols: [], nextID: 2,
+      units: [ConceptUnit(id: "u1", text: "three", conditions: [], claims: [])], provenance: YAMLMap([]))
+    try added.write(t.data)
+    let refused = #expect(throws: RequestError.self) { try Recuration.apply(t.data, job: job) }
+    #expect(refused?.message.contains("math/unplaced/c") == true)
+    FileOps.remove(ConceptFolder(added.cid, in: t.data).url)
     // 그 사이 a 가 바뀌었다
     var changed = made[0]
     changed.title = "A, changed"

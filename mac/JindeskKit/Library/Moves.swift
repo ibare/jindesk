@@ -31,6 +31,11 @@ public enum Moves {
     }
   }
 
+  // 옮기거나 없앤 개념의 옛 id. 새 개념에 다시 쓰지 않는다: 쓰면 그 id 의 줄이 새 개념의 코멘트와 요구를 옛 개념이 간 자리로 끌고 간다
+  public static func formerConcepts(_ data: DataFolder) -> Set<String> {
+    Set(all(data).filter { $0.kind == "concept" }.map(\.from))
+  }
+
   // 옛 개념 id 를 지금 id 로 (여러 번 옮겼으면 끝까지 따라간다)
   public static func resolve(_ id: String, moves: [MoveRecord]) -> String {
     var current = id
@@ -169,11 +174,16 @@ public enum SubjectRename {
       result.entries += 1
     }
     FileOps.remove(data.entriesDir(subject))
-    // 개념: 같은 slug 가 있으면 뒤에 수를 붙인다
+    // 개념: 같은 slug 가 있거나 옮기거나 없앤 개념의 옛 id 면 뒤에 수를 붙인다
+    let former = Moves.formerConcepts(data)
     for c in ConceptStore.all(data, subject: subject) {
       var slug = c.cid.slug
       var n = 2
-      while FileOps.exists(data.conceptDir(ConceptID(subject: target, item: c.cid.item, slug: slug))) {
+      func taken(_ s: String) -> Bool {
+        let id = ConceptID(subject: target, item: c.cid.item, slug: s)
+        return FileOps.exists(data.conceptDir(id)) || former.contains(id.text)
+      }
+      while taken(slug) {
         slug = "\(c.cid.slug)-\(n)"
         n += 1
       }

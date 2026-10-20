@@ -912,13 +912,8 @@ final class AppModel {
   func applyRecuration(_ job: String) async throws {
     guard let data, let jobs else { throw RequestError("데이터 폴더가 열려 있지 않습니다") }
     guard !jobs.isBusy else { throw RequestError("작업이 도는 동안에는 반영할 수 없습니다. 작업이 끝난 뒤 다시 하세요") }
-    let lock = DataLock(data)
-    guard lock.tryAcquire() else { throw RequestError("다른 Jindesk 프로세스가 이 데이터 폴더를 쓰고 있습니다") }
-    let applied: Recuration.Applied
-    do {
-      defer { lock.release() }
-      applied = try Recuration.apply(data, job: job)
-    }
+    // 데이터 폴더 잠금은 반영이 잡는다 (다른 프로세스가 쓰고 있으면 던진다)
+    let applied = try Recuration.apply(data, job: job)
     selection = applied.written.first.map { .concept($0) }
     reloadLibrary()
     scheduleSync("다시 정리 반영 · \(job)")

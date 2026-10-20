@@ -2,6 +2,7 @@
 // 시작할 때 한국어가 없거나 낡은 단위를 고른다. 낡은 것은 한국어를 만든 단위의 판이나 해시가 지금과 다른 것이다.
 // 러너 검사: 숫자와 수식이 영어와 같은지, 영어 문장이 남지 않았는지, 어휘의 용어를 정해진 한국어로 옮겼는지, 길이 비율.
 import Foundation
+import NaturalLanguage
 
 public enum Translation {
   static let concurrency = 3
@@ -201,7 +202,7 @@ public enum Translation {
     let enNumbers = TexText.numbers(en).sorted()
     let koNumbers = TexText.numbers(ko).sorted()
     if enNumbers != koNumbers { out.append("수식 밖의 숫자가 영어와 다릅니다 (영어 \(enNumbers.joined(separator: " ")), 한국어 \(koNumbers.joined(separator: " ")))") }
-    if let left = leftoverEnglish(ko) { out.append("영어 문장이 남았습니다: \"\(left)\"") }
+    if let left = leftoverEnglish(ko, en: en) { out.append("영어 문장이 남았습니다: \"\(left)\"") }
     for term in glossary.terms where mentions(en, term) && !ko.contains(term.ko) {
       out.append("\(termProblemPrefix)\(term.en) 이 어휘의 뜻으로 쓰였으면 \(term.ko) 로 옮긴다 (다른 뜻이면 그대로 둔다)")
     }
@@ -214,15 +215,28 @@ public enum Translation {
     return out
   }
 
-  // 괄호 밖에 영어 낱말이 여섯 개 이상 이어지면 옮기지 않은 문장으로 본다
-  static func leftoverEnglish(_ ko: String) -> String? {
+  // 괄호 밖에 영어 낱말이 여섯 개 이상 이어지면 옮기지 않은 문장으로 본다.
+  // 영어 단위에 그대로 나온 다른 언어의 글(언어 습득 과목의 목표 언어 예문)은 옮기지 않고 두는 것이라 세지 않는다.
+  static func leftoverEnglish(_ ko: String, en: String = "") -> String? {
     var plain = TexText.strip(ko)
     plain = plain.replacingOccurrences(of: #"\([^()]*\)"#, with: " ", options: .regularExpression)
     // 모두 대문자인 낱말(계산기 단추 이름, 약어)은 옮기지 않는 이름이라 세지 않는다
     plain = plain.replacingOccurrences(of: #"\b[A-Z][A-Z0-9-]+\b"#, with: " ", options: .regularExpression)
     let regex = try! NSRegularExpression(pattern: #"(?:[A-Za-z][A-Za-z'’-]*[\s,]+){5,}[A-Za-z][A-Za-z'’-]*"#)
-    guard let m = regex.firstMatch(in: plain, range: NSRange(plain.startIndex..., in: plain)), let r = Range(m.range, in: plain) else { return nil }
-    return FileOps.prefix(String(plain[r]), 80)
+    let source = LabelMatch.key(TexText.strip(en))
+    for m in regex.matches(in: plain, range: NSRange(plain.startIndex..., in: plain)) {
+      guard let r = Range(m.range, in: plain) else { continue }
+      let run = String(plain[r])
+      if source.contains(LabelMatch.key(run)) && !isEnglish(run) { continue }
+      return FileOps.prefix(run, 80)
+    }
+    return nil
+  }
+
+  static func isEnglish(_ text: String) -> Bool {
+    let recognizer = NLLanguageRecognizer()
+    recognizer.processString(text)
+    return recognizer.dominantLanguage.map { $0 == .english } ?? true
   }
 
   // 영어 글에 그 용어(또는 다른 이름)가 나오는가. 복수형(-s, -es)도 같게 본다.

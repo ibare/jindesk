@@ -545,6 +545,50 @@ extension CurationCheckTests {
   }
 }
 
+@Suite struct LanguageAcquisitionTests {
+  @Test func 과목_이름으로_언어_습득_과목과_목표_언어를_알아본다() {
+    #expect(LanguageAcquisition.target(of: "Spanish") == "Spanish")
+    #expect(LanguageAcquisition.target(of: "spanish") == "Spanish")
+    #expect(LanguageAcquisition.target(of: "Español") == "Spanish")
+    #expect(LanguageAcquisition.target(of: "French ab initio") == "French")
+    #expect(LanguageAcquisition.target(of: "Language Acquisition: Spanish") == "Spanish")
+    #expect(LanguageAcquisition.target(of: "English B") == "English")
+    #expect(LanguageAcquisition.target(of: "Language B") == LanguageAcquisition.unnamed)
+    #expect(LanguageAcquisition.target(of: "language-acquisition") == LanguageAcquisition.unnamed)
+    // 영어와 문학 과목, 내용 과목은 언어 습득 과목이 아니다
+    for name in ["English", "Language and Literature", "Language A: Literature", "Spanish A: Literature", "Physics", "Extended Mathematics", "Individuals and Societies"] {
+      #expect(LanguageAcquisition.target(of: name) == nil, "\(name)")
+    }
+  }
+
+  @Test func 언어_습득_과목이면_요청과_판정자에게_알린다() {
+    let t = TempPlace()
+    func lead(_ subject: String) -> SourceSummary {
+      let meta = SourceMeta(
+        id: "20261020-aaaa0000", original: .init(name: "x.pdf", bytes: 1, sha256: "s"), received: "r", converted: nil, pages: 1,
+        textLayer: .init(by: "pdfkit", pagesWithText: 1, ocrPages: []), buildUps: [])
+      let labels = SourceLabels(grade: "MYP 5", subject: subject, level: nil)
+      return SourceSummary(folder: SourceFolder(id: meta.id, in: t.data), meta: meta, labels: SourceLabelsFile(source: meta.id, labels: labels, memo: nil, syllabusBasis: false))
+    }
+    let bundle = SourceBundle(id: "20261020-bbbb0000", created: "r", sources: ["20261020-aaaa0000"])
+    let spanish = SourceReading.requestMarkdown(bundle, targets: [lead("Spanish")], earlier: [], earlierEntries: [])
+    #expect(spanish.contains("- 과목 갈래: 언어 습득 (목표 언어: Spanish)"))
+    #expect(!SourceReading.requestMarkdown(bundle, targets: [lead("Physics")], earlier: [], earlierEntries: []).contains("과목 갈래"))
+
+    let item = [ReaderTest.Item(key: "u1", text: "*Ayer comí paella.* (Yesterday I ate paella.)")]
+    #expect(ReaderTest.prompt(item, level: "an IB student in MYP 5", subject: "Spanish").contains("Spanish 를 배우는 중"))
+    #expect(!ReaderTest.prompt(item, level: "an IB student in MYP 5", subject: "Physics").contains("언어 습득"))
+
+    let goals = [OutcomeTest.Goal(key: "o1", text: "Explain why recycling matters.")]
+    let verdicts = [OutcomeTest.Verdict(key: "o1", applies: true, met: false, practiced: false, missing: "x")]
+    #expect(OutcomeTest.prompt(text: "x", goals: goals, level: "an IB student in MYP 5", subject: "Spanish").contains("Spanish 로 해낼 수 있으면"))
+    #expect(OutcomeTest.prompt(text: "x", goals: goals, level: "an IB student in MYP 5", subject: "Physics").contains("왜 그런지"))
+    #expect(OutcomeTest.unmet(verdicts, goals: goals, subject: "Spanish").first?.contains("주제 내용의 까닭") == true)
+    #expect(OutcomeTest.unpracticed(verdicts, goals: goals, subject: "Spanish").first?.contains("활용, 문장 만들기") == true)
+    #expect(OutcomeTest.unpracticed(verdicts, goals: goals).first?.contains("계산만 시키지 않는다") == true)
+  }
+}
+
 @Suite struct TranslationCheckTests {
   @Test func 수식_숫자_남은_영어_어휘를_본다() {
     let g = Glossary(terms: [GlossaryTerm(en: "exponent", ko: "지수")])
@@ -556,6 +600,17 @@ extension CurationCheckTests {
     #expect(Translation.leftoverEnglish("지수는 (exponent of the base here now) 이다") == nil)
     #expect(Translation.leftoverEnglish("그래서 add the exponents when you multiply them 이다") != nil)
     #expect(Translation.leftoverEnglish("화면 아래에 SELECT, DELETE, TYPE, TOOL, MODIFY, DRAW 명령이 있다") == nil)
+  }
+
+  @Test func 영어_단위에_그대로_나온_외국어_예문은_남은_영어로_세지_않는다() {
+    let g = Glossary()
+    let en = "Use *ir a* + infinitive for plans: *Mañana voy a reciclar el papel y el cartón.* Another example: *Me gusta mucho la comida de mi abuela.* (I really like my grandmother's food.)"
+    let ko = "계획은 *ir a* + 동사원형으로 말한다: *Mañana voy a reciclar el papel y el cartón.* 다른 예: *Me gusta mucho la comida de mi abuela.* (나는 할머니의 음식을 정말 좋아한다.)"
+    #expect(Translation.unitProblems(en: en, ko: ko, glossary: g).isEmpty)
+    // 영어 단위에 없는 외국어 글이나, 옮기지 않은 영어 설명은 그대로 잡는다
+    #expect(Translation.leftoverEnglish("예: *Me gusta mucho la comida de mi abuela* 이다") != nil)
+    let untranslated = "계획은 use ir a plus the infinitive to talk about plans 로 말한다: *Mañana voy a reciclar el papel y el cartón.*"
+    #expect(Translation.leftoverEnglish(untranslated, en: en + " Use ir a plus the infinitive to talk about plans.") != nil)
   }
 
   @Test func 고쳐_쓴_뒤에는_어휘와_다른_뜻으로_쓴_낱말로_막지_않는다() throws {

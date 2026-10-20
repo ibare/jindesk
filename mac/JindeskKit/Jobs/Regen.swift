@@ -173,7 +173,11 @@ public enum Regen {
       r += ["- 이 요구가 나온 코멘트(\(comment.kind.label)): \(comment.text ?? "")"]
     }
     let level = ReaderTest.level(library.sources.first { $0.labels.labels.subjectID == concept.subject }?.labels.labels)
-    r += ["- 학생: \(level)", "", "## 대상 단위의 지금 글", ""]
+    r.append("- 학생: \(level)")
+    if let target = LanguageAcquisition.target(of: library.subjects.first { $0.id == concept.subject }?.name ?? concept.subject) {
+      r.append(LanguageAcquisition.requestLine(target))
+    }
+    r += ["", "## 대상 단위의 지금 글", ""]
     r.append(unit.english ?? (unit.block.map { YAML.stringify($0) } ?? ""))
     if let source {
       r += ["", "## 이 단위가 온 원문 단위 (\(source.id))", "", source.text, ""]

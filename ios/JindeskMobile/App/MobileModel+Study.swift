@@ -15,27 +15,29 @@ enum Lookup: Identifiable, Equatable {
   }
 }
 
-// 개념 목록 위에 올리는 화면 (DECISIONS.md 39)
+// 스택의 단계 (DECISIONS.md 39, 43). iPad 왼쪽 칸의 스택에는 목록 단계(과목, 단원, 사전)만 쌓이고,
+// iPhone 의 한 스택에는 그 위에 고른 것이 올라간다.
+enum Route: Hashable {
+  // 과목의 단원 목록
+  case subject(String)
+  // 단원의 개념 목록 (과목 id, 단원 키). 단원 키는 "item:<목차 코드>" 또는 "proposed:<단원 제안>"
+  case unit(String, String)
+  // 사전: 용어 또는 기호
+  case dictionary(symbols: Bool)
+  // 고른 것 (iPhone 의 스택에서만)
+  case page(PageRoute)
+}
+
+// 오른쪽 칸(iPhone 은 목록 위)에 여는 것
 enum PageRoute: Hashable {
   case concept(String)
   // 단원 요약 (과목 id, 단원 키)
   case summary(String, String)
+  // 과목 개념 지도 (과목 id)
+  case map(String)
 }
 
 extension MobileModel {
-  // 사전 줄의 선택 값 (과목 목록의 선택)
-  static let termsSelection = "dict:terms"
-  static let symbolsSelection = "dict:symbols"
-
-  // 단원 요약의 선택 값 ("unit:<과목 id>|<단원 키>", 단원 키는 "item:<목차 코드>" 또는 "proposed:<단원 제안>")
-  static func unitSelection(_ subject: String, _ key: String) -> String { "unit:\(subject)|\(key)" }
-
-  static func unitKey(_ selection: String?) -> (subject: String, key: String)? {
-    guard let selection, selection.hasPrefix("unit:") else { return nil }
-    let parts = selection.dropFirst(5).split(separator: "|", maxSplits: 1).map(String.init)
-    return parts.count == 2 ? (parts[0], parts[1]) : nil
-  }
-
   // 배우는 순서 (과목이 섞이면 과목끼리)
   func inLearningOrder(_ list: [Concept]) -> [Concept] {
     var ranks: [String: [String: Int]] = [:]

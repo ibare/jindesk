@@ -11,10 +11,12 @@ struct ConceptPage: View {
   // 과목 지도에서 연 페이지는 옮겨 가기와 지도 열기를 그 지도 안에서 한다
   var onOpenConcept: ((String) -> Void)?
   var onOpenMap: ((String) -> Void)?
+  // 오른쪽 칸(iPhone 은 목록 위)의 학습 페이지: 보기를 칸 바깥에 두고 다시 쓴다 (PageWebView)
+  var kept = false
 
   var body: some View {
     @Bindable var model = model
-    PageWebView(json: model.pageJSON(concept), data: model.data) { message in
+    PageWebView(json: model.pageJSON(concept), data: model.data, kept: kept) { message in
       switch message["type"]?.stringValue {
       case "openConcept":
         if let id = message["id"]?.stringValue {
@@ -47,44 +49,62 @@ struct ConceptPage: View {
 struct PageWebView: UIViewRepresentable {
   let json: String
   let data: DataFolder?
+  // 오른쪽 칸의 학습 페이지는 보기를 칸 바깥에 두고 다시 쓴다. iPad 를 돌리면 칸 나누기를 새로 만드는데(SplitLayout),
+  // 그때 페이지를 다시 그리지 않고 옮겨 붙여 펼친 한국어, 그림의 상태, 읽던 자리를 지킨다.
+  var kept = false
   let onMessage: (JSONValue) -> Void
 
-  func makeCoordinator() -> Coordinator { Coordinator(onMessage: onMessage) }
+  func makeCoordinator() -> Coordinator { kept ? Coordinator.kept(data: data) : Coordinator(data: data) }
 
-  func makeUIView(context: Context) -> WKWebView {
-    let configuration = WKWebViewConfiguration()
-    let renderer = Bundle.main.resourceURL!.appending(path: "renderer")
-    configuration.setURLSchemeHandler(RendererSchemeHandler(root: renderer, data: data), forURLScheme: FigureFrame.pageScheme)
-    // 그림 블록의 바깥 라이브러리: 받아 둔 사본만 돌려준다
-    if let data { configuration.setURLSchemeHandler(VendorSchemeHandler(store: VendorStore(data)), forURLScheme: FigureFrame.vendorScheme) }
-    configuration.userContentController.add(context.coordinator, name: "jindesk")
-    configuration.websiteDataStore = .nonPersistent()
-    let view = WKWebView(frame: .zero, configuration: configuration)
-    view.navigationDelegate = context.coordinator
-    view.isOpaque = false
-    view.backgroundColor = .clear
-    view.scrollView.backgroundColor = .clear
-    context.coordinator.view = view
-    context.coordinator.pending = json
-    view.load(URLRequest(url: URL(string: "\(FigureFrame.pageScheme)://app/page.html")!))
-    return view
+  // 보기를 받침 위에 얹는다. 다시 쓰는 보기는 새 받침이 가져가고, 칸에서 빠지는 옛 받침은 빈 채로 버려진다.
+  func makeUIView(context: Context) -> UIView {
+    let base = UIView()
+    base.backgroundColor = .clear
+    let view = context.coordinator.view
+    view.frame = base.bounds
+    view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    base.addSubview(view)
+    return base
   }
 
-  func updateUIView(_ view: WKWebView, context: Context) {
+  func updateUIView(_ base: UIView, context: Context) {
     context.coordinator.onMessage = onMessage
     context.coordinator.show(json)
   }
 
   @MainActor
   final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
-    var onMessage: (JSONValue) -> Void
-    weak var view: WKWebView?
-    var pending: String?
+    private static var keptOne: Coordinator?
+
+    static func kept(data: DataFolder?) -> Coordinator {
+      if let keptOne { return keptOne }
+      let made = Coordinator(data: data)
+      keptOne = made
+      return made
+    }
+
+    let view: WKWebView
+    var onMessage: (JSONValue) -> Void = { _ in }
+    private var pending: String?
     private var ready = false
     private var shown: String?
 
-    init(onMessage: @escaping (JSONValue) -> Void) {
-      self.onMessage = onMessage
+    init(data: DataFolder?) {
+      let configuration = WKWebViewConfiguration()
+      let renderer = Bundle.main.resourceURL!.appending(path: "renderer")
+      configuration.setURLSchemeHandler(RendererSchemeHandler(root: renderer, data: data), forURLScheme: FigureFrame.pageScheme)
+      // 그림 블록의 바깥 라이브러리: 받아 둔 사본만 돌려준다
+      if let data { configuration.setURLSchemeHandler(VendorSchemeHandler(store: VendorStore(data)), forURLScheme: FigureFrame.vendorScheme) }
+      configuration.websiteDataStore = .nonPersistent()
+      view = WKWebView(frame: .zero, configuration: configuration)
+      super.init()
+      // 보기가 이 객체를 붙들면 서로 붙들어 풀리지 않으므로 약하게 잇는다
+      configuration.userContentController.add(WeakHandler(self), name: "jindesk")
+      view.navigationDelegate = self
+      view.isOpaque = false
+      view.backgroundColor = .clear
+      view.scrollView.backgroundColor = .clear
+      view.load(URLRequest(url: URL(string: "\(FigureFrame.pageScheme)://app/page.html")!))
     }
 
     func show(_ json: String) {
@@ -94,7 +114,7 @@ struct PageWebView: UIViewRepresentable {
       }
       guard json != shown else { return }
       shown = json
-      view?.evaluateJavaScript("window.jindesk.render(\(json))")
+      view.evaluateJavaScript("window.jindesk.render(\(json))")
     }
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -113,6 +133,19 @@ struct PageWebView: UIViewRepresentable {
     // 렌더러 밖으로 나가는 이동은 막는다. 그림 블록의 iframe 은 같은 주소 체계다.
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
       action.request.url?.scheme == FigureFrame.pageScheme ? .allow : .cancel
+    }
+  }
+
+  // 렌더러의 메시지를 Coordinator 로 넘긴다. WKUserContentController 는 받는 쪽을 강하게 붙든다.
+  final class WeakHandler: NSObject, WKScriptMessageHandler {
+    weak var target: Coordinator?
+
+    init(_ target: Coordinator) {
+      self.target = target
+    }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+      target?.userContentController(controller, didReceive: message)
     }
   }
 }

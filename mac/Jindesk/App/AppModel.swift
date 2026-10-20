@@ -437,11 +437,10 @@ final class AppModel {
     reloading = true
     let generation = reloadGeneration
     let folders = folders
-    let instructions = AppPaths.instructions
     Task { [weak self] in
       let loaded = await Task.detached(priority: .utility) {
         var s = LibrarySnapshot.load(data)
-        s.pending = Pipeline.pending(data, instructions: instructions)
+        s.pending = Pipeline.pending(data)
         s.history = RunHistory.load(folders, data: data)
         return s
       }.value

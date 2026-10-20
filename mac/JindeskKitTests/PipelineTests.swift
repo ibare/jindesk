@@ -504,8 +504,12 @@ extension CurationCheckTests {
     #expect(second.page.units.map(\.rev) == [1, 2])
     #expect(second.page.nextID == 5)
     #expect(second.history.count == 3)
-    #expect(PageBuild.needsPage(changed, page: first.page, version: nil))
-    #expect(!PageBuild.needsPage(changed, page: second.page, version: nil))
+    #expect(PageBuild.needsPage(changed, page: first.page))
+    #expect(!PageBuild.needsPage(changed, page: second.page))
+    // 옛 지침 판으로 만든 페이지도 원문이 그대로면 낡지 않는다 (DECISIONS.md 45)
+    let old = PageBuild.assemble(draft, concept: changed, old: first.page, provenance: ["job": "j0", "instructions": ["kind": "page-build", "version": "0.1"]])
+    #expect(old.page.instructionsVersion == "0.1")
+    #expect(!PageBuild.needsPage(changed, page: old.page))
   }
 
   @Test func 다시_만들어도_요구로_더한_단위는_제자리에_남고_새_판_풀이는_단계와_함께_옮긴다() {
@@ -813,7 +817,7 @@ extension CurationCheckTests {
     #expect(Set(layers.ko.keys) == ["p1", "n2", "b3"])
     #expect(Translation.targets(page, layers: layers).isEmpty)
     #expect(Glossary.load(t.data).term("exponent")?.ko == "지수")
-    #expect(Pipeline.pending(t.data, instructions: repoInstructions).isEmpty)
+    #expect(Pipeline.pending(t.data).isEmpty)
     // 관점은 어휘에 맞춰 붙고, 열어 보지 않은 레퍼런스는 버려 빈 목록으로 남는다
     #expect(ConceptFacets.load(ConceptFolder(concept.cid, in: t.data))?.keyConcepts == ["Form"])
     #expect(References.load(t.data).concepts[concept.id]?.items.isEmpty == true)
@@ -837,7 +841,7 @@ extension CurationCheckTests {
       id: Comment.makeID(), at: Clock.isoLocal(), by: "learner", kind: .ask, anchor: CommentAnchor(concept: concept.id, unit: unit.id, rev: unit.rev, quote: "Multiply"),
       text: "Why do the exponents add?")
     try CommentStore.append(t.data, question)
-    #expect(Pipeline.pending(t.data, instructions: repoInstructions).map(\.kind) == [.ask])
+    #expect(Pipeline.pending(t.data).map(\.kind) == [.ask])
     let askID = try await m.submit(config: config) { try Ask.prepare(commentID: question.id, $0) }
     let asked = await m.waitForEnd(askID)
     #expect(asked.phase == "done", "\(asked.error ?? "")")
@@ -897,7 +901,7 @@ extension CurationCheckTests {
     _ = try await m.submit(config: config) { try SourceIntake.prepare(request, $0) }
     await m.waitUntilIdle()
     // 한 쪽짜리 자료는 나눌 수 없어 나누기를 보지 않고 바로 읽는다
-    let pending = Pipeline.pending(t.data, instructions: repoInstructions)
+    let pending = Pipeline.pending(t.data)
     #expect(pending.map(\.kind) == [.sourceReading])
   }
 
@@ -959,7 +963,7 @@ extension CurationCheckTests {
     #expect(m.queue.filter { $0.kind == .sourceReading }.map(\.target) == pieces.map(\.id))
     // 나누기를 본 자료와 쪼갠 자료는 다시 나누기를 보지 않는다
     #expect(SourceSplit.checkedSources(t.data) == [parent.id])
-    #expect(Pipeline.pending(t.data, instructions: repoInstructions).map(\.kind) == [.sourceReading, .sourceReading, .sourceReading])
+    #expect(Pipeline.pending(t.data).map(\.kind) == [.sourceReading, .sourceReading, .sourceReading])
     let issues = DataValidation.validate(t.data, schemas: SchemaSet(repoRoot.appending(path: "schemas/\(CurrentSchema.version)")))
     #expect(issues.isEmpty, "\(issues)")
     m.shutdown()

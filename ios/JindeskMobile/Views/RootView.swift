@@ -11,7 +11,8 @@ struct RootView: View {
   var body: some View {
     @Bindable var model = model
     Group {
-      if sizeClass == .compact { StackLayout() } else { SplitLayout() }
+      // iPhone 은 가로로 돌려 폭 등급이 넓음이 되어도(Plus·Max) 한 스택이다 (DECISIONS.md 43)
+      if UIDevice.current.userInterfaceIdiom == .phone || sizeClass == .compact { StackLayout() } else { SplitLayout() }
     }
     .sheet(isPresented: $model.showSettings) { SettingsView() }
     .sheet(item: $model.sourcePeek) { SourcePageView(peek: $0) }
@@ -30,7 +31,7 @@ struct RootView: View {
 
 // iPad: 왼쪽 칸은 과목 → 단원 → 개념의 스택, 오른쪽 칸은 고른 것 (DECISIONS.md 43).
 // 가로는 두 칸이 나란히 서고(balanced) 개념을 골라도 왼쪽 칸을 그대로 둔다. 세로는 오른쪽 칸이 전체 폭이고 왼쪽 칸을 그 위에
-// 띄우며(prominentDetail), 고르면 닫는다. 모양은 방향마다 갈아 끼우므로 돌리면 칸을 새로 만든다. 목록 단계와 고른 것은 모델에 있고,
+// 띄우며(prominentDetail), 고르면 닫는다. 모양은 방향마다 갈아 끼우므로 돌리면 칸을 새로 만든다. 목록 단계, 고른 것, 개념 지도의 상태는 모델에 있고,
 // 학습 페이지 보기는 칸 바깥에 두고 다시 쓴다(PageWebView). UISplitViewController 의 분할 방식을 직접 바꾸는 것은 SwiftUI 가 되돌린다.
 struct SplitLayout: View {
   @Environment(MobileModel.self) private var model
@@ -46,7 +47,8 @@ struct SplitLayout: View {
       portrait = tall
       columns = tall && model.page != nil ? .detailOnly : .all
     }
-    .onChange(of: model.page) { if portrait { columns = .detailOnly } }
+    // 세로에서 고르면 왼쪽 칸을 닫고, 고른 것이 없어지면(새 판에서 사라짐) 다시 띄운다
+    .onChange(of: model.page) { if portrait { columns = model.page == nil ? .all : .detailOnly } }
   }
 
   private var split: some View {

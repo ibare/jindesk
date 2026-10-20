@@ -44,16 +44,19 @@ final class MobileModel {
   // 과목 → 단원 → 개념 → 학습 페이지 (DECISIONS.md 39, 43).
   // 왼쪽 칸(iPhone 은 한 스택)에서 들어간 목록 단계. 비어 있으면 첫 화면(과목 목록)이다. 고른 것(.page)은 넣지 않는다.
   var lists: [Route] = []
-  // 오른쪽 칸(iPhone 은 목록 위)에 연 것
-  var page: PageRoute?
+  // 오른쪽 칸(iPhone 은 목록 위)에 연 것. 바뀌면 개념 지도의 상태를 비운다.
+  var page: PageRoute? {
+    didSet { if page != oldValue { mapSelected = nil; mapPage = nil } }
+  }
+  // 과목 개념 지도에서 고른 개념과, 지도에서 연 학습 페이지. iPad 를 돌리면 칸을 새로 만들므로(SplitLayout) 화면이 아니라 모델에 둔다.
+  var mapSelected: String?
+  var mapPage: String?
   var sourcePeek: SourcePeek?
   private(set) var bucketName = UserDefaults.standard.string(forKey: bucketKey) ?? ""
   private(set) var hasBucketKey = bucketKeys.exists
   @ObservationIgnored private var pagesFrom: URL?
   // 스키마 버전이 달라 받지 못했을 때 띄울 업데이트 안내 (MOBILE.md 의 안내)
   var updateNotice: String?
-  // 과목 개념 지도를 열 때 골라 둘 개념 (학습 페이지의 "개념 지도에서 보기")
-  var mapFocus: String?
   var showSettings = false
   // 찾기와 사전에서 고른 용어나 기호 (시트로 보인다, DECISIONS.md 34)
   var lookup: Lookup?
@@ -92,6 +95,8 @@ final class MobileModel {
     // 새 판에서 사라진 과목, 단원, 개념은 닫는다
     if let end = lists.firstIndex(where: { !exists($0) }) { lists.removeSubrange(end...) }
     if let page, !exists(page) { self.page = nil }
+    if let mapSelected, concept(mapSelected) == nil { self.mapSelected = nil }
+    if let mapPage, concept(mapPage) == nil { self.mapPage = nil }
   }
 
   private func exists(_ route: Route) -> Bool {
@@ -148,9 +153,10 @@ final class MobileModel {
   // 학습 페이지의 "개념 지도에서 보기": 목록을 그 과목의 단원 목록(개념 지도 줄이 있는 곳)으로 옮기고, 지도를 그 개념을 고른 채 연다
   func openMap(focus id: String) {
     guard let cid = ConceptID(id) else { return }
-    mapFocus = id
     if lists != [.subject(cid.subject)] { lists = [.subject(cid.subject)] }
     page = .map(cid.subject)
+    mapPage = nil
+    mapSelected = id
   }
 
   // 저장하지 않고 지금 받아 둔 개념에서 계산한다 (맥과 같은 엔진, PAGES.md 의 개념 지도)

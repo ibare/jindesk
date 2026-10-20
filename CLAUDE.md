@@ -48,7 +48,7 @@ xcodebuild -project Jindesk.xcodeproj -scheme Jindesk -configuration Debug -deri
 xcodebuild -project Jindesk.xcodeproj -scheme Jindesk -configuration Debug -derivedDataPath build/dd test
 ```
 
-- 명령줄 모드: `build/dd/Build/Products/Debug/Jindesk.app/Contents/MacOS/Jindesk doctor | intake --data <폴더> --subject … [--follow] <파일>… | continue --data <폴더> [--list] [--only <종류>] | check-figure --vendor <폴더> <조각.html> | migrate --check <폴더나 zip> | backup --out <폴더> | version`. `--follow`와 `continue`는 키체인의 토큰으로 실제 에이전트를 돌린다.
+- 명령줄 모드: `build/dd/Build/Products/Debug/Jindesk.app/Contents/MacOS/Jindesk doctor | intake --data <폴더> --subject … [--follow] <파일>… | continue --data <폴더> [--list] [--only <종류>] | rebuild-pages --data <폴더> [--unit <과목 id>/<단원 키>] [--list] [<개념 id>…] | check-figure --vendor <폴더> <조각.html> | migrate --check <폴더나 zip> | backup --out <폴더> | version`. `--follow`, `continue`, `rebuild-pages`는 키체인의 토큰으로 실제 에이전트를 돌린다.
 - 에이전트 작업의 흐름 시험(`PipelineRunTests`)은 가짜 claude(파이썬 스크립트)로 자료 넣기부터 번역까지 돌린다. 지침의 출력 모양을 바꾸면 가짜도 함께 고친다.
 - 실제 학교 자료로 시험할 때는 임시 데이터 폴더(`--data`)에 넣고, 끝나면 `~/Library/Caches/com.mintae.Jindesk/pages/` 에 남은 쪽 이미지를 지운다. 학교 자료는 리포에 넣지 않는다. 시험 자료는 `SampleFiles`(JindeskKitTests)로 만든다.
 - 화면 확인: `Jindesk.app/Contents/MacOS/Jindesk -snapshotDir <폴더> [-snapshotOnly <이름,…>]` (디버그 빌드). 과목 목록의 과목 단계는 `subjects-units`, 단원 단계는 `subjects-list-dark`다. 단원 개요는 `unit-overview`이고 `-snapshotUnitSection <summary|formulas|words|mistakes|references|ib>`로 그 절까지 내려 찍는다. 묶음 보기는 `bundle`, 파일을 채운 자료 넣기는 `intake-groups`이고 `-snapshotIntakeFiles "<경로>,<경로>|<경로>"`(| 로 묶음을 나눈다)로 채운다. 실제 데이터 폴더와 앱 지원 폴더 대신 `<폴더>` 아래를 쓰고, 정해 둔 화면을 PNG 로 찍은 뒤 끝난다. 설정 창은 화면 밖에서 그려지지 않아 화면 위에서 잠깐 보였다 닫힌다.

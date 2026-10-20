@@ -818,6 +818,18 @@ extension CurationCheckTests {
     #expect(Translation.targets(page, layers: layers).isEmpty)
     #expect(Glossary.load(t.data).term("exponent")?.ko == "지수")
     #expect(Pipeline.pending(t.data).isEmpty)
+    // 페이지 다시 만들기: 낡지 않았어도 고른 개념의 페이지를 지금 지침으로 다시 짠다. 이전 페이지는 에이전트에게 주지 않고, 단위 id 는 이어 쓴다 (DECISIONS.md 46)
+    let rebuildID = try await m.submit(config: config) { try PageBuild.prepare(subject: "extended-math", rebuild: [concept.id], $0) }
+    let rebuildEnd = await m.waitForEnd(rebuildID)
+    #expect(rebuildEnd.phase == "done", "\(rebuildEnd.error ?? "")")
+    await m.waitUntilIdle()
+    let rebuiltDirs = AgentDirs(t.folders, rebuildID, sub: "c1")
+    #expect(!FileOps.exists(rebuiltDirs.input.appending(path: "page.yaml")))
+    #expect(FileOps.readIfExists(rebuiltDirs.input.appending(path: "request.md"))?.contains("이전 페이지: 주지 않는다") == true)
+    let again = try #require(Page.load(folder))
+    #expect(again.provenance["job"]?.string == rebuildID)
+    #expect(again.units.map(\.id) == page.units.map(\.id))
+    #expect(Pipeline.pending(t.data).isEmpty)
     // 관점은 어휘에 맞춰 붙고, 열어 보지 않은 레퍼런스는 버려 빈 목록으로 남는다
     #expect(ConceptFacets.load(ConceptFolder(concept.cid, in: t.data))?.keyConcepts == ["Form"])
     #expect(References.load(t.data).concepts[concept.id]?.items.isEmpty == true)

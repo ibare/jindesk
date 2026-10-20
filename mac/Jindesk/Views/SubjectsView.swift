@@ -4,17 +4,22 @@ import SwiftUI
 // 과목 화면 (DECISIONS.md 39): 사이드바에서 고른 과목을 목록 칸의 스택으로 연다.
 // 과목 단계(과목 머리, 개념 지도, 단원)에서 단원을 누르면 단원 단계(단원 머리, 개념)로 들어간다.
 // 단원 머리를 고르면 단원 개요, 개념을 고르면 학습 페이지가 내용 칸에 열린다.
+// ⌘ 로 개념 여러 줄을 고를 수 있다. 하나만 고르면 내용 칸이 그것을 열고, 여럿을 고르면 줄 메뉴가 고른 것 모두에 한다.
 struct SubjectsView: View {
   @Environment(AppModel.self) private var model
+  // 목록 칸에서 고른 줄
+  @State private var picked: Set<SubjectSelection> = []
+  // 확인을 기다리는 페이지 다시 만들기
+  @State private var rebuild: PageRebuildAsk?
+  @State private var error: String?
 
   var body: some View {
-    @Bindable var model = model
     if let id = model.currentSubject, let subject = model.library.subjects.first(where: { $0.id == id }) {
       // 목록 칸. 고른 것은 내용 칸(SelectionDetail)에 보인다.
       VStack(spacing: 0) {
         if !model.waitingWork.isEmpty { PendingBanner().card().padding(.horizontal, 10).padding(.top, 8) }
         ScrollViewReader { proxy in
-          List(selection: $model.selection) {
+          List(selection: $picked) {
             // 줄 사이에 구분선을 긋지 않는다 (DECISIONS.md 32)
             Group {
               if let key = model.openUnit {
@@ -25,14 +30,41 @@ struct SubjectsView: View {
             }
             .listRowSeparator(.hidden)
           }
+          .contextMenu(forSelectionType: SubjectSelection.self) { items in rowMenu(items) }
           // 학습 페이지의 앞뒤 개념이나 개념 지도에서 옮겨 가면 그 개념의 줄이 보이게 내린다
           .onChange(of: model.revealInList) { reveal(proxy) }
           .onAppear { reveal(proxy) }
         }
       }
       // 다른 곳에서 연 개념이나 단원을 따라 과목과 단원을 옮긴다
-      .onAppear { model.follow(model.selection) }
-      .onChange(of: model.selection) { model.follow(model.selection) }
+      .onAppear {
+        model.follow(model.selection)
+        picked = Set([model.selection].compactMap { $0 })
+      }
+      .onChange(of: model.selection) {
+        model.follow(model.selection)
+        // 다른 곳에서 고른 것으로 바뀌면 목록의 고른 줄도 그것 하나로 맞춘다 (여럿을 고른 가운데 하나면 그대로 둔다)
+        guard let s = model.selection else { return picked = [] }
+        if !picked.contains(s) { picked = [s] }
+      }
+      .onChange(of: picked) {
+        if picked.count == 1, let one = picked.first, model.selection != one { model.selection = one }
+      }
+      .confirmationDialog(rebuild?.title ?? "", isPresented: Binding(get: { rebuild != nil }, set: { if !$0 { rebuild = nil } }), presenting: rebuild) { ask in
+        Button("다시 만들기") {
+          Task {
+            do { try await model.rebuildPages(ask.ids) } catch { self.error = error.localizedDescription }
+          }
+        }
+        Button("취소", role: .cancel) {}
+      } message: { ask in
+        Text("개념 \(ask.ids.count)개의 학습 페이지를 지금 지침으로 처음부터 다시 짭니다. 문단 글은 개념 원문 그대로이고, 확인 문제, 강조 상자, 그림이 새로 나옵니다. 이전 판은 기록에 남습니다.")
+      }
+      .alert("작업을 넣지 못했습니다", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+        Button("확인", role: .cancel) {}
+      } message: {
+        Text(error ?? "")
+      }
     } else {
       ContentUnavailableView {
         Label("아직 과목이 없어요", systemImage: "books.vertical")
@@ -41,6 +73,23 @@ struct SubjectsView: View {
       } actions: {
         Button("자료 넣기…") { model.showIntake = true }
       }
+    }
+  }
+
+  // 줄 메뉴: 개념 줄이면 고른 개념 모두, 단원 머리면 그 단원의 개념 모두
+  @ViewBuilder private func rowMenu(_ items: Set<SubjectSelection>) -> some View {
+    let ids = items.compactMap { if case .concept(let id) = $0 { id } else { nil } }.sorted()
+    if !ids.isEmpty {
+      Button(ids.count == 1 ? "페이지 다시 만들기" : "페이지 다시 만들기 (\(ids.count)개)") {
+        rebuild = PageRebuildAsk(title: ids.count == 1 ? "이 개념의 페이지를 다시 만들까요?" : "개념 \(ids.count)개의 페이지를 다시 만들까요?", ids: ids)
+      }
+    }
+    ForEach(items.compactMap { if case .unit(let s, let k) = $0 { [s, k] } else { nil } }, id: \.self) { pair in
+      let unit = model.unit(pair[0], pair[1])
+      Button("이 단원 페이지 다시 만들기") {
+        rebuild = PageRebuildAsk(title: "\(unit.title)의 페이지 \(unit.concepts.count)개를 다시 만들까요?", ids: unit.concepts.map(\.id))
+      }
+      .disabled(unit.concepts.isEmpty)
     }
   }
 
@@ -53,6 +102,13 @@ struct SubjectsView: View {
       withAnimation { proxy.scrollTo(id, anchor: .center) }
     }
   }
+}
+
+// 확인을 기다리는 페이지 다시 만들기 (DECISIONS.md 46)
+struct PageRebuildAsk: Identifiable {
+  let title: String
+  let ids: [String]
+  var id: String { ids.joined(separator: ",") }
 }
 
 // 과목 단계: 과목 머리, 목차 확인, 개념 지도 카드, 단원 (이름의 알파벳순)

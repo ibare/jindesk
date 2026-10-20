@@ -2,6 +2,7 @@
 //   Jindesk doctor [--data <데이터 폴더>] [--out <결과 파일>]
 //   Jindesk intake [--data <데이터 폴더>] --subject <과목> [--follow] <파일>…
 //   Jindesk continue [--data <데이터 폴더>] [--only <종류>]
+//   Jindesk rebuild-pages [--data <데이터 폴더>] [--unit <과목 id>/<단원 키>] [--list] [<개념 id>…]
 //   Jindesk check-figure --vendor <폴더> <그림 조각.html>
 //   Jindesk directive --data <데이터 폴더> (--accept | --keep) <요구 id>
 //   Jindesk migrate --check <백업 폴더나 zip> [--sample <n>] [--keep]
@@ -18,7 +19,7 @@ struct JindeskCommand: AsyncParsableCommand {
     commandName: "Jindesk",
     abstract: "Jindesk 명령줄 모드",
     subcommands: [
-      DoctorCommand.self, IntakeCommand.self, ContinueCommand.self, DirectiveCommand.self, FigureCheckCommand.self, OutcomeCheckCommand.self, MigrateCommand.self,
+      DoctorCommand.self, IntakeCommand.self, ContinueCommand.self, RebuildPagesCommand.self, DirectiveCommand.self, FigureCheckCommand.self, OutcomeCheckCommand.self, MigrateCommand.self,
       BackupCommand.self, SyncCommand.self,
       VersionCommand.self,
     ]
@@ -27,7 +28,7 @@ struct JindeskCommand: AsyncParsableCommand {
 
 @MainActor
 enum CommandLineMode {
-  static let commands: Set<String> = ["doctor", "intake", "continue", "directive", "check-figure", "outcome-check", "migrate", "backup", "sync", "version", "help", "--help", "-h"]
+  static let commands: Set<String> = ["doctor", "intake", "continue", "rebuild-pages", "directive", "check-figure", "outcome-check", "migrate", "backup", "sync", "version", "help", "--help", "-h"]
 
   // 첫 인자가 명령이면 명령줄 모드다. "-" 로 시작하는 인자(-snapshotDir, Xcode 가 붙이는 -NSDocumentRevisionsDebugMode 등)만 있으면 앱으로 뜬다.
   // 모르는 명령도 명령줄 모드로 받아 오류를 보인다. 화면 앱으로 떠 버리면 스크립트가 멈춘다.
@@ -228,6 +229,49 @@ struct ContinueCommand: AsyncParsableCommand {
     let jobs = CommandLineMode.manager(folder)
     let config = try await CommandLineMode.agentConfig(folder)
     try await jobs.submitAll(config: config, work.map { Pipeline.prepare($0) })
+    try await CommandLineMode.waitAll(jobs)
+  }
+}
+
+// 고른 개념이나 단원의 학습 페이지를 지금 지침으로 다시 만들고 끝날 때까지 기다린다 (화면의 "페이지 다시 만들기"와 같다, DECISIONS.md 46)
+struct RebuildPagesCommand: AsyncParsableCommand {
+  static let configuration = CommandConfiguration(
+    commandName: "rebuild-pages", abstract: "고른 개념이나 단원의 학습 페이지를 지금 지침으로 다시 만든다 (낡지 않았어도)")
+
+  @Option(help: "데이터 폴더. 주지 않으면 앱에서 고른 폴더") var data: String?
+  @Option(help: "단원 하나의 개념 모두: <과목 id>/<단원 키>. 단원 키는 item:<목차 코드> 또는 proposed:<단원 제안>") var unit: String?
+  @Flag(help: "다시 만들 개념만 보이고 넣지 않는다") var list = false
+  @Argument(help: "개념 id (<과목 id>/<항목>/<slug>)") var concepts: [String] = []
+
+  @MainActor
+  func run() async throws {
+    guard let folder = CommandLineMode.dataFolder(data), folder.isInitialized else { throw ValidationError("Jindesk 데이터 폴더를 찾지 못했습니다") }
+    var ids = concepts
+    if let unit {
+      guard let slash = unit.firstIndex(of: "/") else { throw ValidationError("--unit 은 <과목 id>/<단원 키> 다") }
+      let subject = String(unit[..<slash])
+      let key = String(unit[unit.index(after: slash)...])
+      let units = SubjectUnits.make(ConceptStore.all(folder, subject: subject), syllabus: Syllabus.load(folder, subject: subject))
+      guard let found = units.first(where: { $0.key == key }) else {
+        throw ValidationError("단원을 찾지 못했습니다: \(unit). 이 과목의 단원 키: \(units.map(\.key).joined(separator: ", "))")
+      }
+      ids += found.concepts.map(\.id)
+    }
+    guard !ids.isEmpty else { throw ValidationError("개념 id 나 --unit 을 준다") }
+    var bySubject: [String: [String]] = [:]
+    for id in Set(ids) {
+      guard let subject = ConceptID(id)?.subject, ConceptStore.all(folder, subject: subject).contains(where: { $0.id == id }) else {
+        throw ValidationError("개념을 찾지 못했습니다: \(id)")
+      }
+      bySubject[subject, default: []].append(id)
+    }
+    let groups = bySubject.keys.sorted().map { ($0, bySubject[$0]!.sorted()) }
+    for (_, list) in groups { for id in list { print("· \(id)") } }
+    if list { return }
+    let jobs = CommandLineMode.manager(folder)
+    let config = try await CommandLineMode.agentConfig(folder)
+    let prepares: [(PrepareContext) async throws -> PreparedJob] = groups.map { subject, list in { try PageBuild.prepare(subject: subject, rebuild: list, $0) } }
+    try await jobs.submitAll(config: config, prepares)
     try await CommandLineMode.waitAll(jobs)
   }
 }

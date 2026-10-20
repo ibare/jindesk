@@ -872,6 +872,20 @@ final class AppModel {
     try await jobs.submit(config: config) { try SourceReading.prepare(bundle: bundleID, sources: [id], $0) }
   }
 
+  // 고른 개념의 학습 페이지를 지금 지침으로 다시 만든다. 낡지 않았어도 만든다. 과목마다 작업 하나다 (DECISIONS.md 46).
+  func rebuildPages(_ ids: [String]) async throws {
+    guard let jobs else { throw RequestError("데이터 폴더가 열려 있지 않습니다") }
+    var bySubject: [String: [String]] = [:]
+    for id in Set(ids) { if let subject = ConceptID(id)?.subject { bySubject[subject, default: []].append(id) } }
+    guard !bySubject.isEmpty else { return }
+    let config = try await agentConfig()
+    let prepares: [(PrepareContext) async throws -> PreparedJob] = bySubject.keys.sorted().map { subject in
+      let list = bySubject[subject]!.sorted()
+      return { try PageBuild.prepare(subject: subject, rebuild: list, $0) }
+    }
+    try await jobs.submitAll(config: config, prepares)
+  }
+
   // 자료의 꼬리표, 메모, 목차의 근거 표시를 고친다 (labels.yaml)
   func updateLabels(_ source: SourceSummary, labels: SourceLabels, memo: String?, syllabusBasis: Bool) throws {
     let canonical = LabelMatch.canonical(labels) { name in library.usedValues(name) }

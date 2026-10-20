@@ -709,6 +709,16 @@ extension CurationCheckTests {
             "body": "When you multiply powers with the same base, add the exponents: \\(a^m a^n = a^{m+n}\\).",
             "claims": [{"text": "\\(a^m a^n = a^{m+n}\\)", "source": ids[0], "pages": [1]}], "pages": {ids[0]: [1, 2]}}))
         out("report.md", "# Laws of indices\n\n## 무엇인가\n지수 법칙 수업 자료다.\n")
+    elif "# 개념 정리 요청" in req and "## 다시 정리할 개념" in req:
+        # 다시 정리: 고른 k02 를 k01 에 합친다. k02.u1 은 k01 의 새 단위로 옮기고, k02.u2 는 뺀다
+        keys = re.findall(r"^\| (e\d+) \|", req, re.M)
+        def src(k): return re.findall(r"\"(\d{8}-[0-9a-f]{8}#p\d+)\"", read("concepts/" + k + ".yaml"))
+        out("plan.json", json.dumps({"concepts": [{"concept": "k01", "entries": keys, "units": [
+            {"id": "u1", "text": "Rewritten one.", "claims": [{"text": "a", "src": src("k01")[:1]}]},
+            {"id": "u2", "text": "Rewritten two.", "claims": []},
+            {"id": None, "text": "Moved from the other concept.", "from": ["k02.u1"], "claims": [{"text": "b", "src": src("k02")[:1]}]}]}],
+            "retired": [{"concept": "k02", "into": "k01", "reason": "k01 에 합쳤다", "units": [{"id": "u2", "reason": "주제 설명"}]}], "held": []}))
+        out("report.md", "k02 를 k01 에 합쳤다.\n")
     elif "# 개념 정리 요청" in req:
         keys = re.findall(r"^\| (e\d+) \|", req, re.M)
         src = []
@@ -899,6 +909,123 @@ extension CurationCheckTests {
     // 러너가 쓴 모든 데이터 파일이 리포의 스키마에 맞는다
     let issues = DataValidation.validate(t.data, schemas: SchemaSet(repoRoot.appending(path: "schemas/\(CurrentSchema.version)")))
     #expect(issues.isEmpty, "\(issues)")
+  }
+
+  @Test func 고른_개념을_다시_정리하면_후보를_보고_반영한다() async throws {
+    let t = TempPlace()
+    try t.data.initialize(app: testApp)
+    let fake = t.root.appending(path: "bin/claude")
+    try FileManager.default.createDirectory(at: fake.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Self.fakeClaude.write(to: fake, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fake.path)
+    var config = RunnerConfig(
+      claudeToken: "x", timeout: .seconds(60), tools: ToolPaths(claude: fake.path), guardHelper: "/x", instructions: repoInstructions, katex: repoKatex,
+      baseEnvironment: [:])
+    config.model = "test"
+
+    // 개념 둘(a, b)과 그 엔트리, 페이지. b 의 첫 문단에 코멘트와 받아들인 요구가 있다
+    func make(_ slug: String, page n: Int) throws -> Concept {
+      let entry = Entry(
+        id: "math/unplaced/\(slug)", subject: "math", item: nil, itemProposed: "Exponents", title: slug, sources: [EntrySource(source: "20261017-aaaabbbb", pages: [n])],
+        claims: [EntryClaim(text: "c", src: ["20261017-aaaabbbb#p\(n)"])], symbols: [], examples: [], misconceptions: [], body: "b", recorded: "", provenance: YAMLMap([]))
+      try FileOps.writeNew(entry.markdown, to: t.data.entryFile(entry.id))
+      let units = [
+        ConceptUnit(id: "u1", text: "\(slug) one", conditions: [], claims: [UnitClaim(id: "c1", text: "x", src: ["20261017-aaaabbbb#p\(n)"])]),
+        ConceptUnit(id: "u2", text: "\(slug) two", conditions: [], claims: []),
+      ]
+      let c = Concept(
+        cid: ConceptID(subject: "math", item: "unplaced", slug: slug), title: slug.uppercased(), itemProposed: "Exponents",
+        occurrences: [Occurrence(entry: entry.id, source: "20261017-aaaabbbb", pages: [n])], symbols: [], nextID: 3, units: units, provenance: YAMLMap([]))
+      try c.write(t.data)
+      try Page(
+        concept: c.id, titleKo: slug, nextID: 3, units: units.enumerated().map { PageUnit(id: "p\($0.offset + 1)", rev: 1, kind: .para, from: "\($0.element.id)@\($0.element.hash)", prov: "source") },
+        provenance: YAMLMap([])
+      ).write(ConceptFolder(c.cid, in: t.data))
+      return c
+    }
+    let a = try make("a", page: 1)
+    let b = try make("b", page: 2)
+    let note = Comment(id: "cm-1", at: "t", by: "learner", kind: .memo, anchor: CommentAnchor(concept: b.id, unit: "p1", rev: 1, quote: "b one"), text: "옮겨 갈 문단")
+    let gone = Comment(id: "cm-2", at: "t", by: "learner", kind: .memo, anchor: CommentAnchor(concept: b.id, unit: "p2", rev: 1, quote: "b two"), text: "뺄 문단")
+    try CommentStore.append(t.data, note)
+    try CommentStore.append(t.data, gone)
+    let directive = try DirectiveStore.request(t.data, op: .easy, target: DirectiveTarget(concept: b.id, unit: "p1", rev: 1), note: nil, fromComment: nil)
+    try DirectiveStore.update(t.data, id: directive.id, status: .accepted)
+
+    // 다시 정리는 후보만 남기고 데이터를 바꾸지 않는다
+    let m = JobManager(data: t.data, folders: t.folders)
+    let job = try await m.submit(config: config) { try Recuration.prepare(subject: "math", concepts: [a.id, b.id], $0) }
+    let ended = await m.waitForEnd(job)
+    #expect(ended.phase == "done", "\(ended.error ?? "")")
+    let proposal = try #require(Recuration.pending(t.data).first)
+    #expect(proposal.job == job && proposal.before == 2 && proposal.after == 1)
+    #expect(proposal.rows.map(\.action) == ["다시 씀", "없앰"])
+    #expect(proposal.rows[1].targets == ["A"])
+    #expect(ConceptStore.all(t.data, subject: "math").count == 2)
+
+    // 반영하면 b 가 없어지고, b.u1 은 a 의 새 단위가 되며, 코멘트와 요구가 따라간다
+    let applied = try Recuration.apply(t.data, job: job)
+    #expect(applied.retired == [b.id] && applied.written == [a.id])
+    #expect(Recuration.pending(t.data).isEmpty)
+    #expect(!FileOps.exists(ConceptFolder(b.cid, in: t.data).url))
+    let merged = try #require(ConceptStore.all(t.data, subject: "math").first)
+    #expect(merged.units.map(\.id) == ["u1", "u2", "u3"])
+    #expect(Set(merged.occurrences.map(\.entry)) == ["math/unplaced/a", "math/unplaced/b"])
+    #expect(Moves.resolve(b.id, moves: Moves.all(t.data)) == a.id)
+    #expect(FileOps.exists(Recuration.folder(t.data, job: job).appending(path: "plan.json")))
+    #expect(throws: RequestError.self) { try Recuration.apply(t.data, job: job) }
+    #expect(DirectiveStore.load(t.data).first?.status == .recheck)
+
+    // a 의 페이지를 다시 만들면 옮겨 온 단위의 문단에 코멘트가 "이전 판"으로 붙고, 뺀 문단의 코멘트는 어디에도 붙지 않는다
+    #expect(Pipeline.pending(t.data).map(\.kind).contains(.pageBuild))
+    let pages = try await m.submit(config: config) { try PageBuild.prepare(subject: "math", $0) }
+    #expect(await m.waitForEnd(pages).phase == "done")
+    let page = try #require(Page.load(ConceptFolder(merged.cid, in: t.data)))
+    let moved = try #require(page.units.first { $0.kind == .para && $0.fromUnit == "u3" })
+    let comments = CommentStore.load(t.data)
+    #expect(comments[0].anchor == CommentAnchor(concept: a.id, unit: moved.id, rev: 0, quote: "b one"))
+    #expect(comments[1].anchor?.concept == a.id && comments[1].anchor?.unit == "")
+    #expect(DirectiveStore.load(t.data).first?.target.unit == moved.id)
+  }
+
+  @Test func 다시_정리한_사이_개념이_바뀌면_반영하지_않고_버릴_수_있다() async throws {
+    let t = TempPlace()
+    try t.data.initialize(app: testApp)
+    let fake = t.root.appending(path: "bin/claude")
+    try FileManager.default.createDirectory(at: fake.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Self.fakeClaude.write(to: fake, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fake.path)
+    var config = RunnerConfig(
+      claudeToken: "x", timeout: .seconds(60), tools: ToolPaths(claude: fake.path), guardHelper: "/x", instructions: repoInstructions, katex: repoKatex,
+      baseEnvironment: [:])
+    config.model = "test"
+    var made: [Concept] = []
+    for (slug, n) in [("a", 1), ("b", 2)] {
+      let entry = Entry(
+        id: "math/unplaced/\(slug)", subject: "math", item: nil, itemProposed: "Exponents", title: slug, sources: [EntrySource(source: "20261017-aaaabbbb", pages: [n])],
+        claims: [EntryClaim(text: "c", src: ["20261017-aaaabbbb#p\(n)"])], symbols: [], examples: [], misconceptions: [], body: "b", recorded: "", provenance: YAMLMap([]))
+      try FileOps.writeNew(entry.markdown, to: t.data.entryFile(entry.id))
+      let c = Concept(
+        cid: ConceptID(subject: "math", item: "unplaced", slug: slug), title: slug, itemProposed: "Exponents",
+        occurrences: [Occurrence(entry: entry.id, source: "20261017-aaaabbbb", pages: [n])], symbols: [], nextID: 3,
+        units: [
+          ConceptUnit(id: "u1", text: "one", conditions: [], claims: [UnitClaim(id: "c1", text: "x", src: ["20261017-aaaabbbb#p\(n)"])]),
+          ConceptUnit(id: "u2", text: "two", conditions: [], claims: []),
+        ], provenance: YAMLMap([]))
+      try c.write(t.data)
+      made.append(c)
+    }
+    let m = JobManager(data: t.data, folders: t.folders)
+    let job = try await m.submit(config: config) { try Recuration.prepare(subject: "math", concepts: made.map(\.id), $0) }
+    #expect(await m.waitForEnd(job).phase == "done")
+    // 그 사이 a 가 바뀌었다
+    var changed = made[0]
+    changed.title = "A, changed"
+    try changed.write(t.data)
+    #expect(throws: RequestError.self) { try Recuration.apply(t.data, job: job) }
+    #expect(ConceptStore.all(t.data, subject: "math").count == 2)
+    try Recuration.discard(t.data, job: job)
+    #expect(Recuration.pending(t.data).isEmpty)
   }
 
   @Test func 토큰_없이_넣은_자료는_남은_일로_보인다() async throws {

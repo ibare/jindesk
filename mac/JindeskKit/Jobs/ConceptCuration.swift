@@ -82,6 +82,10 @@ public enum ConceptCuration {
     var others: [Concept] = []
     // h01 → 보류된 엔트리와 까닭. 개념에 붙이거나 그대로 둔다
     var held: [(key: String, entry: Entry, reason: String)] = []
+    // 고른 개념 다시 정리(DECISIONS.md 47)면 고른 개념의 키. 고르지 않은 개념은 보강만 한다
+    var recurate: Set<String>?
+    // 다시 정리에서 고르지 않은 개념도 쓰는 엔트리의 키. 그 개념에 그대로 남으므로 적지 않아도 된다
+    var placedElsewhere: Set<String> = []
 
     // 키 → 엔트리 (정리할 것과 보류된 것)
     var entryByKey: [String: Entry] {
@@ -126,54 +130,7 @@ public enum ConceptCuration {
     await ctx.setPhase("running")
     let options = AgentStep.options(ctx, dirs, instructions: instructionsFile, prompt: prompt, events: "curate")
     let result = try await AgentStep.run(options, ctx, label: "개념 정리")
-
-    await ctx.setPhase("checking")
-    let math = ctx.config.katex.flatMap(MathChecker.init(katex:))
-    var checked = check(out: dirs.out, input: input, math: math)
-    // 부드러운 검사(빠진 주장)도 한 번 고쳐 쓰게 한다. 그래도 남으면 기록에만 남긴다 (DECISIONS.md 38)
-    if !checked.problems.isEmpty || !checked.soft.isEmpty {
-      let all = checked.problems + checked.soft
-      await ctx.log(.warn, "검사에서 \(all.count)건이 나와 고쳐 쓰게 합니다")
-      for p in all.prefix(20) { await ctx.log(.warn, p) }
-      await ctx.setPhase("fixing")
-      try await AgentStep.fix(options, session: result.sessionID, problems: all, ctx: ctx, label: "개념 정리", events: "curate-fix")
-      await ctx.setPhase("checking")
-      checked = check(out: dirs.out, input: input, math: math)
-    }
-    guard checked.problems.isEmpty, var plan = checked.plan else {
-      throw ToolError("개념 정리 검사 실패: " + checked.problems.prefix(10).joined(separator: " · "))
-    }
-
-    // 학생 독자 시험(새로 쓰거나 바뀐 단위)과 학습 목표 시험(새로 쓰거나 바뀐 개념). 실패하면 함께 한 번 고쳐 쓰게 하고,
-    // 그래도 실패하면 기록에 남긴다.
-    let labels = SourceLibrary.load(ctx.data).sources.first { $0.labels.labels.subjectID == subject }?.labels.labels
-    let level = ReaderTest.level(labels)
-    var readerWarnings: [String] = []
-    var failed = await readerTest(plan, input: input, level: level, subject: labels?.subject ?? subject, ctx: ctx, scratch: dirs.run.appending(path: "reader-1"))
-    var gaps = await outcomeTest(plan, input: input, level: level, subject: labels?.subject ?? subject, ctx: ctx, scratch: dirs.run.appending(path: "outcome-1"))
-    if !failed.isEmpty || !gaps.isEmpty {
-      if !failed.isEmpty { await ctx.log(.warn, "학생 독자 시험에서 단위 \(failed.count)개가 실패해 고쳐 쓰게 합니다") }
-      for g in gaps { await ctx.log(.warn, "학습 목표 시험: \(g)") }
-      await ctx.setPhase("fixing")
-      let problems = failed.sorted { $0.key < $1.key }.flatMap { key, lines in lines.map { "\(key): \($0)" } } + gaps
-      try await AgentStep.fix(options, session: result.sessionID, problems: problems, ctx: ctx, label: "개념 정리", events: "curate-reader-fix")
-      await ctx.setPhase("checking")
-      checked = check(out: dirs.out, input: input, math: math)
-      guard checked.problems.isEmpty, let fixed = checked.plan else {
-        throw ToolError("개념 정리 검사 실패: " + checked.problems.prefix(10).joined(separator: " · "))
-      }
-      plan = fixed
-      failed = await readerTest(plan, input: input, level: level, subject: labels?.subject ?? subject, ctx: ctx, scratch: dirs.run.appending(path: "reader-2"))
-      gaps = await outcomeTest(plan, input: input, level: level, subject: labels?.subject ?? subject, ctx: ctx, scratch: dirs.run.appending(path: "outcome-2"))
-      readerWarnings = failed.sorted { $0.key < $1.key }.map { "학생 독자 시험 실패: \($0.key) — \($0.value.first ?? "")" }
-      readerWarnings += gaps.map { "학습 목표 시험 실패: \($0)" }
-      for w in readerWarnings { await ctx.log(.warn, w) }
-    }
-    // 고쳐 써도 남은 빠진 주장은 기록에 남긴다
-    if !checked.soft.isEmpty {
-      readerWarnings += checked.soft
-      for w in checked.soft { await ctx.log(.warn, w) }
-    }
+    let (plan, readerWarnings) = try await checkAndFix(input: input, dirs: dirs, options: options, session: result.sessionID, ctx: ctx, label: "개념 정리")
 
     await ctx.setPhase("finalizing")
     // 반영 직전에 기준이 그대로인지 다시 본다
@@ -204,6 +161,59 @@ public enum ConceptCuration {
     if !written.isEmpty, await ctx.queueFollowUp("학습 페이지 만들기", { try PageBuild.prepare(subject: subject, $0) }) != nil {
       await ctx.log(.info, "학습 페이지 만들기를 대기열에 넣었습니다")
     }
+  }
+
+  // 검사하고 틀리면 한 번 고쳐 쓰게 한다. 학생 독자 시험(새로 쓰거나 바뀐 단위)과 학습 목표 시험(새로 쓰거나 바뀐 개념)도 실패하면
+  // 함께 한 번 고쳐 쓰게 하고, 그래도 실패하면 경고로 돌려준다. 고쳐 써도 남은 빠진 주장도 경고다 (DECISIONS.md 38). 개념 정리와 다시 정리가 함께 쓴다.
+  static func checkAndFix(
+    input: Input, dirs: AgentDirs, options: AgentOptions, session: String?, ctx: JobContext, label: String
+  ) async throws -> (plan: Plan, warnings: [String]) {
+    let subject = input.subject
+    await ctx.setPhase("checking")
+    let math = ctx.config.katex.flatMap(MathChecker.init(katex:))
+    var checked = check(out: dirs.out, input: input, math: math)
+    if !checked.problems.isEmpty || !checked.soft.isEmpty {
+      let all = checked.problems + checked.soft
+      await ctx.log(.warn, "검사에서 \(all.count)건이 나와 고쳐 쓰게 합니다")
+      for p in all.prefix(20) { await ctx.log(.warn, p) }
+      await ctx.setPhase("fixing")
+      try await AgentStep.fix(options, session: session, problems: all, ctx: ctx, label: label, events: "curate-fix")
+      await ctx.setPhase("checking")
+      checked = check(out: dirs.out, input: input, math: math)
+    }
+    guard checked.problems.isEmpty, var plan = checked.plan else {
+      throw ToolError("\(label) 검사 실패: " + checked.problems.prefix(10).joined(separator: " · "))
+    }
+
+    let labels = SourceLibrary.load(ctx.data).sources.first { $0.labels.labels.subjectID == subject }?.labels.labels
+    let level = ReaderTest.level(labels)
+    var warnings: [String] = []
+    var failed = await readerTest(plan, input: input, level: level, subject: labels?.subject ?? subject, ctx: ctx, scratch: dirs.run.appending(path: "reader-1"))
+    var gaps = await outcomeTest(plan, input: input, level: level, subject: labels?.subject ?? subject, ctx: ctx, scratch: dirs.run.appending(path: "outcome-1"))
+    if !failed.isEmpty || !gaps.isEmpty {
+      if !failed.isEmpty { await ctx.log(.warn, "학생 독자 시험에서 단위 \(failed.count)개가 실패해 고쳐 쓰게 합니다") }
+      for g in gaps { await ctx.log(.warn, "학습 목표 시험: \(g)") }
+      await ctx.setPhase("fixing")
+      let problems = failed.sorted { $0.key < $1.key }.flatMap { key, lines in lines.map { "\(key): \($0)" } } + gaps
+      try await AgentStep.fix(options, session: session, problems: problems, ctx: ctx, label: label, events: "curate-reader-fix")
+      await ctx.setPhase("checking")
+      checked = check(out: dirs.out, input: input, math: math)
+      guard checked.problems.isEmpty, let fixed = checked.plan else {
+        throw ToolError("\(label) 검사 실패: " + checked.problems.prefix(10).joined(separator: " · "))
+      }
+      plan = fixed
+      failed = await readerTest(plan, input: input, level: level, subject: labels?.subject ?? subject, ctx: ctx, scratch: dirs.run.appending(path: "reader-2"))
+      gaps = await outcomeTest(plan, input: input, level: level, subject: labels?.subject ?? subject, ctx: ctx, scratch: dirs.run.appending(path: "outcome-2"))
+      warnings = failed.sorted { $0.key < $1.key }.map { "학생 독자 시험 실패: \($0.key) — \($0.value.first ?? "")" }
+      warnings += gaps.map { "학습 목표 시험 실패: \($0)" }
+      for w in warnings { await ctx.log(.warn, w) }
+    }
+    // 고쳐 써도 남은 빠진 주장은 기록에 남긴다
+    if !checked.soft.isEmpty {
+      warnings += checked.soft
+      for w in checked.soft { await ctx.log(.warn, w) }
+    }
+    return (plan, warnings)
   }
 
   // 새로 쓰거나 바뀐 단위의 학생 독자 시험. 실패한 단위 → 문제 줄. 키는 "concepts[i].units[j]".
@@ -270,10 +280,24 @@ public enum ConceptCuration {
       e.sources.map { s in "\(s.source) (\(library.source(s.source)?.meta.original.name ?? s.source)) \(s.pages.map(String.init).joined(separator: ", "))" }
         .joined(separator: " / ")
     }
+    // 고른 개념 다시 정리 (지침 11장)
+    if let selected = input.recurate {
+      request += [
+        "", "## 다시 정리할 개념", "",
+        "사람이 고른 개념이다. 지침의 \"고른 개념 다시 정리\" 장대로 다시 정리한다. 아래 \"이미 있는 개념\"의 나머지는 보강만 한다.", "",
+        "| 키 | 제목 | 단위 |", "|---|---|---|",
+      ]
+      for (key, c) in input.concepts where selected.contains(key) {
+        request.append("| \(key) | \(c.title) | \(c.units.map(\.id).joined(separator: ", ")) |")
+      }
+    }
     request += ["", "## 정리할 엔트리", "", "| 키 | 제목 | 자료와 쪽 |", "|---|---|---|"]
     for (key, e) in input.entries {
       request.append("| \(key) | \(e.title) | \(where_(e)) |")
       try FileOps.write(e.markdown, to: dirs.input.appending(path: "entries/\(key).md"))
+    }
+    if !input.placedElsewhere.isEmpty {
+      request += ["", "고르지 않은 개념도 쓰는 엔트리: \(input.placedElsewhere.sorted().joined(separator: ", ")). 개념이나 보류에 적지 않아도 그 개념에 그대로 남는다."]
     }
     request += ["", "## 보류된 엔트리", "", "지난 정리나 자료 읽기가 보류한 엔트리다. 맞는 개념이 있으면 그 개념의 entries 에 넣어 붙이고, 없으면 적지 않는다(계속 보류로 남는다).", ""]
     if input.held.isEmpty { request.append("없다.") } else { request += ["| 키 | 제목 | 자료와 쪽 | 보류 까닭 |", "|---|---|---|---|"] }
@@ -312,6 +336,19 @@ public enum ConceptCuration {
     let text: String
     let conditions: [String]
     let claims: [(text: String, src: [String])]
+    // 다시 정리에서 이 단위가 담은 고른 개념의 옛 단위 ("k03.u2")
+    var from: [String] = []
+  }
+
+  // 다시 정리로 없앤 개념 (DECISIONS.md 47)
+  struct RetiredConcept: Sendable {
+    // 고른 개념의 키 (k03)
+    let key: String
+    // 그 개념의 코멘트와 요구가 따라갈 개념: 키(k01) 또는 "new:<slug>"
+    let into: String
+    let reason: String
+    // 어디로도 옮기지 않고 뺀 옛 단위와 까닭
+    let dropped: [(id: String, reason: String)]
   }
 
   struct PlannedConcept: Sendable {
@@ -332,6 +369,7 @@ public enum ConceptCuration {
   struct Plan: Sendable {
     let concepts: [PlannedConcept]
     let held: [(entry: String, reason: String)]
+    var retired: [RetiredConcept] = []
 
     func recordJSON(input: Input, written: [Concept]) -> JSONValue {
       let entryID = input.entryByKey.mapValues(\.id)
@@ -362,14 +400,14 @@ public enum ConceptCuration {
   }
 
   static func check(out: URL, input: Input, math: MathChecker?) -> Checked {
-    var c = Checked()
-    let v: JSONValue
     switch AgentJSON.read(out.appending(path: "plan.json"), label: "out/plan.json") {
-    case .failure(let p):
-      c.problems.append(p.message)
-      return c
-    case .success(let value): v = value
+    case .failure(let p): Checked(problems: [p.message])
+    case .success(let value): check(plan: value, input: input, math: math)
     }
+  }
+
+  static func check(plan v: JSONValue, input: Input, math: MathChecker?) -> Checked {
+    var c = Checked()
     let entryKeys = Set(input.entries.map(\.key))
     let heldKeys = Set(input.held.map(\.key))
     let conceptByKey = Dictionary(input.concepts.map { ($0.key, $0.concept) }, uniquingKeysWith: { a, _ in a })
@@ -381,6 +419,9 @@ public enum ConceptCuration {
     // 이미 있는 개념들의 출처. 너무 커진 개념을 나눌 때 옮긴 단위가 원래 출처를 그대로 쓴다.
     let existingRefs = input.concepts.reduce(into: Set<String>()) { $0.formUnion($1.concept.refs) }
     var concepts: [PlannedConcept] = []
+    // 다시 정리: 고른 개념의 옛 단위 ("k03.u2")
+    let selected = input.recurate ?? []
+    let oldUnits = Set(input.concepts.filter { selected.contains($0.key) }.flatMap { k in k.concept.units.map { "\(k.key).\($0.id)" } })
 
     for (i, raw) in (v["concepts"]?.arrayValue ?? []).enumerated() {
       let at = "concepts[\(i)]"
@@ -442,7 +483,14 @@ public enum ConceptCuration {
           for phrase in TextChecks.materialPhrases(t) { problems.append("\(field): 원래 자료가 있어야만 통하는 말입니다 (\"\(phrase)\")") }
           if let math { problems += math.problems(inText: t, field: field) }
         }
-        units.append(PlannedUnit(id: id, text: text, conditions: conditions, claims: claims))
+        var from: [String] = []
+        if input.recurate != nil {
+          from = AgentJSON.strings(u["from"])
+          for ref in from where !oldUnits.contains(ref) {
+            problems.append("\(uat).from: 고른 개념의 옛 단위가 아닙니다 (\(ref)). \"<키>.<단위 id>\" 로 적는다")
+          }
+        }
+        units.append(PlannedUnit(id: id, text: text, conditions: conditions, claims: claims, from: from))
       }
       if units.isEmpty { problems.append("\(at).units 가 비었습니다") }
       var removed: [(id: String, reason: String)] = []
@@ -455,6 +503,9 @@ public enum ConceptCuration {
       }
       for id in existingIDs.subtracting(seenIDs).subtracting(removed.map(\.id)).sorted() {
         problems.append("\(at): 기존 단위 \(id) 가 빠졌습니다. 그대로 두려면 units 에 id 와 함께 넣고, 빼려면 removed_units 에 까닭을 적는다")
+      }
+      if let selected = input.recurate, let key = existingKey, !selected.contains(key), !removed.isEmpty {
+        problems.append("\(at): 고르지 않은 개념(\(key))은 보강만 한다. 단위를 빼지 않는다")
       }
       let symbols = AgentJSON.symbols(raw["symbols"])
       let item = AgentJSON.string(raw["item"])
@@ -496,16 +547,73 @@ public enum ConceptCuration {
       heldEntries.insert(e)
       held.append((e, reason))
     }
+    var retired: [RetiredConcept] = []
+    if input.recurate != nil {
+      (retired, c.problems) = checkRecuration(v, input: input, concepts: concepts, problems: c.problems)
+    }
     for key in entryKeys.sorted() {
       let used = placedEntries[key] ?? 0
-      if used == 0 && !heldEntries.contains(key) { c.problems.append("엔트리 \(key) 가 어느 개념에도, 보류에도 없습니다") }
+      if used == 0 && !heldEntries.contains(key) && !input.placedElsewhere.contains(key) { c.problems.append("엔트리 \(key) 가 어느 개념에도, 보류에도 없습니다") }
       if used > 0 && heldEntries.contains(key) { c.problems.append("엔트리 \(key) 가 개념과 보류에 함께 들어갔습니다. 개념에 쓰면 보류에서 뺀다") }
     }
     if c.problems.isEmpty {
-      c.plan = Plan(concepts: concepts, held: held)
+      c.plan = Plan(concepts: concepts, held: held, retired: retired)
       c.soft = missingClaims(concepts, entryByKey: entryByKey)
     }
     return c
+  }
+
+  // 다시 정리의 검사 (DECISIONS.md 47): 고른 개념마다 개념에 남거나 없어지고, 옛 단위마다 남거나 옮겨 가거나 까닭과 함께 빠진다
+  static func checkRecuration(_ v: JSONValue, input: Input, concepts: [PlannedConcept], problems: [String]) -> ([RetiredConcept], [String]) {
+    var problems = problems
+    let selected = input.recurate ?? []
+    let conceptByKey = Dictionary(input.concepts.map { ($0.key, $0.concept) }, uniquingKeysWith: { a, _ in a })
+    let kept = Set(concepts.compactMap(\.existing))
+    let newSlugs = Set(concepts.filter { $0.existing == nil }.map(\.slug))
+    var retired: [RetiredConcept] = []
+    for (i, r) in (v["retired"]?.arrayValue ?? []).enumerated() {
+      let at = "retired[\(i)]"
+      guard let key = AgentJSON.string(r["concept"]) else {
+        problems.append("\(at).concept 가 없습니다")
+        continue
+      }
+      if !selected.contains(key) { problems.append("\(at).concept: 고른 개념만 없앨 수 있습니다 (\(key))") }
+      if kept.contains(key) { problems.append("\(at).concept: \(key) 가 concepts 에도 있습니다. 남기거나 없애거나 하나만 한다") }
+      if retired.contains(where: { $0.key == key }) { problems.append("\(at).concept: 같은 개념(\(key))을 두 번 없앱니다") }
+      let into = AgentJSON.string(r["into"]) ?? ""
+      let intoKnown = (conceptByKey[into] != nil && !selected.subtracting(kept).contains(into)) || (into.hasPrefix("new:") && newSlugs.contains(String(into.dropFirst(4))))
+      if !intoKnown || into == key {
+        problems.append("\(at).into: 코멘트가 따라갈 개념을 남는 개념의 키(k01)나 새 개념(\"new:<slug>\")으로 적는다 (\(into))")
+      }
+      let reason = AgentJSON.string(r["reason"]) ?? ""
+      if reason.isEmpty { problems.append("\(at).reason: 없앤 까닭이 없습니다") }
+      problems += TextChecks.recordProblems(reason, field: "\(at).reason")
+      var dropped: [(id: String, reason: String)] = []
+      for u in r["units"]?.arrayValue ?? [] {
+        guard let id = AgentJSON.string(u["id"]) else { continue }
+        let why = AgentJSON.string(u["reason"]) ?? ""
+        if why.isEmpty { problems.append("\(at).units: \(id) 를 뺀 까닭(reason)이 없습니다") }
+        if conceptByKey[key]?.units.contains(where: { $0.id == id }) != true { problems.append("\(at).units: 이 개념에 없는 단위입니다 (\(id))") }
+        dropped.append((id, why))
+      }
+      retired.append(RetiredConcept(key: key, into: into, reason: reason, dropped: dropped))
+    }
+    // 고른 개념은 개념에 남거나 없어진다
+    for key in selected.sorted() where !kept.contains(key) && !retired.contains(where: { $0.key == key }) {
+      problems.append("고른 개념 \(key) 가 concepts 에도 retired 에도 없습니다. 남기려면 concepts 에, 없애려면 retired 에 둔다")
+    }
+    // 옛 단위마다 남거나(같은 개념의 같은 id), 옮겨 가거나(새 단위의 from), 까닭과 함께 빠진다
+    let moved = Set(concepts.flatMap { $0.units.flatMap(\.from) })
+    for key in selected.sorted() {
+      guard let old = conceptByKey[key] else { continue }
+      let plan = concepts.first { $0.existing == key }
+      let stays = Set(plan?.units.compactMap(\.id) ?? [])
+      let dropped = Set((plan?.removed.map(\.id) ?? []) + (retired.first { $0.key == key }?.dropped.map(\.id) ?? []))
+      for u in old.units where !stays.contains(u.id) && !moved.contains("\(key).\(u.id)") && !dropped.contains(u.id) {
+        problems.append("고른 개념 \(key) 의 옛 단위 \(u.id) 가 어디로 갔는지 없습니다. 옮겼으면 새 단위의 from 에 \"\(key).\(u.id)\" 를, 뺐으면 까닭을 적는다")
+      }
+    }
+    return (retired, problems)
   }
 
   // 엔트리의 주장 가운데 그 엔트리를 쓰는 개념들의 단위 어디에도 출처가 남지 않은 것 (DECISIONS.md 38)
@@ -586,6 +694,7 @@ public enum ConceptCuration {
 
   // 출현 목록은 러너가 계산한다: 이 개념에 넣은 엔트리와, 주장의 출처가 이 개념의 출처와 겹치는 엔트리.
   // 이전에 개념에 들어 있던 엔트리가 이번 정리로 어디에도 남지 않으면(그 출처의 단위가 모두 빠졌을 때) 원래 개념에 그대로 둔다.
+  // 이번 정리가 보류한 엔트리는 되돌리지 않는다 (다시 정리가 단원 틀을 보류로 돌릴 때, DECISIONS.md 47).
   static func occurrences(_ concepts: inout [Concept], plan: Plan, input: Input, data: DataFolder) {
     let entryByKey = input.entryByKey
     var pool: [Entry] = input.entries.map(\.entry) + input.held.map(\.entry)
@@ -603,7 +712,8 @@ public enum ConceptCuration {
       concepts[i].occurrences = pool.filter { assigned.contains($0.id) || !$0.refs.isDisjoint(with: refs) }.flatMap(Self.occurrences(of:))
     }
     let placed = Set(concepts.flatMap { $0.occurrences.map(\.entry) })
-    for (entry, conceptID) in previous where !placed.contains(entry) {
+    let held = Set(plan.held.compactMap { entryByKey[$0.entry]?.id })
+    for (entry, conceptID) in previous where !placed.contains(entry) && !held.contains(entry) {
       guard let i = concepts.firstIndex(where: { $0.id == conceptID }), let e = pool.first(where: { $0.id == entry }) else { continue }
       concepts[i].occurrences += Self.occurrences(of: e)
     }

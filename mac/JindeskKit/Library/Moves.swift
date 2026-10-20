@@ -103,12 +103,7 @@ public enum ConceptMove {
         try layers.write(target, order: page.units.map(\.id))
       }
     }
-    // 이 개념을 가리키는 다른 개념의 선수 개념과 연결
-    for var other in ConceptStore.everything(data) where other.prerequisites.contains(from.text) || other.links.contains(where: { $0.concept == from.text }) {
-      other.prerequisites = other.prerequisites.map { $0 == from.text ? to.text : $0 }
-      other.links = other.links.map { $0.concept == from.text ? ConceptLink(concept: to.text, note: $0.note) : $0 }
-      try other.write(data)
-    }
+    try repoint(data, from: from.text, to: to.text)
     // 레퍼런스는 개념 id 로 묶여 있다. 옮긴 id 로 다시 묶어야 다시 찾지 않는다.
     var refs = References.load(data)
     if let r = refs.concepts.removeValue(forKey: from.text) {
@@ -116,6 +111,17 @@ public enum ConceptMove {
       try refs.write(data)
     }
     try Moves.append(data, kind: "concept", from: from.text, to: to.text, why: why)
+  }
+
+  // 옛 개념을 가리키는 다른 개념의 선수 개념과 연결을 새 개념으로 바꾼다. 자기 자신을 가리키게 되면 뺀다 (다시 정리로 합쳤을 때).
+  static func repoint(_ data: DataFolder, from: String, to: String) throws {
+    for var other in ConceptStore.everything(data) where other.prerequisites.contains(from) || other.links.contains(where: { $0.concept == from }) {
+      var prerequisites: [String] = []
+      for p in other.prerequisites.map({ $0 == from ? to : $0 }) where p != other.id && !prerequisites.contains(p) { prerequisites.append(p) }
+      other.prerequisites = prerequisites
+      other.links = other.links.map { $0.concept == from ? ConceptLink(concept: to, note: $0.note) : $0 }
+      try other.write(data)
+    }
   }
 }
 

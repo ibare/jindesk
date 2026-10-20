@@ -129,6 +129,21 @@ struct AppCommands: Commands {
       }
       .disabled(model.data == nil)
     }
+    // 찾기 (DECISIONS.md 48): ⌘F 는 학습 페이지가 열려 있으면 페이지 안 찾기, 아니면 사이드바의 찾기 칸
+    CommandGroup(replacing: .textEditing) {
+      Button("찾기…") {
+        AppDelegate.showMainWindow()
+        model.showFind()
+      }
+      .keyboardShortcut("f", modifiers: .command)
+      .disabled(model.phase != .ready)
+      Button("다음 찾기") { model.stepPageFind(1) }
+        .keyboardShortcut("g", modifiers: .command)
+        .disabled(model.pageFind?.query.isEmpty ?? true)
+      Button("이전 찾기") { model.stepPageFind(-1) }
+        .keyboardShortcut("g", modifiers: [.command, .shift])
+        .disabled(model.pageFind?.query.isEmpty ?? true)
+    }
   }
 }
 

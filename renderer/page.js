@@ -3,6 +3,7 @@
 //   openSource { source, page }   출처 칩을 눌렀다
 //   openConcept { id }            앞뒤 개념 지도의 이웃이나 개념 카드를 눌렀다
 //   openMap { concept }           앞뒤 개념 지도의 "개념 지도에서 보기"를 눌렀다
+//   find { total, index }         페이지 안 찾기: 찾은 곳 수와 지금 몇 번째 (없으면 0)
 // page.readOnly 이면(폰 앱) 쓰는 단추(코멘트 남기기·지우기, 다시 만들기, 새 판 받아들이기)를 그리지 않는다.
 //   ready                         그릴 준비가 됐다
 (function () {
@@ -118,6 +119,147 @@
       });
       openCount();
     });
+  }
+
+  // 페이지 안 찾기 (DECISIONS.md 48). 질의는 SearchQuery(Swift)와 같게 나눈다: 따옴표로 묶은 것은 구절, 나머지는 빈칸으로 나눈 낱말.
+  // 학습 글(영어, 한국어, 제목)의 모든 낱말에 표시를 한다. 대소문자와 라틴 문자의 악센트는 가리지 않는다. 수식과 단추 안은 건드리지 않는다.
+  var findQuery = "", findMarks = [], findIndex = -1;
+
+  function findTerms(q) {
+    var out = [], cur = "", quoted = false;
+    function flush() {
+      var t = cur.trim().split(/\s+/).join(" ");
+      if (t && out.indexOf(t) < 0) out.push(t);
+      cur = "";
+    }
+    for (var i = 0; i < q.length; i++) {
+      var c = q[i];
+      if (c === '"' || c === "“" || c === "”") { flush(); quoted = !quoted; }
+      else if (/\s/.test(c) && !quoted) flush();
+      else cur += c;
+    }
+    flush();
+    return out;
+  }
+
+  // 글자 하나를 접는다: 라틴 문자는 악센트를 떼고, 모두 소문자로. 한글은 그대로 둔다 (자모로 풀면 다른 글자 안에서 맞는다)
+  function foldChar(c) {
+    var stripped = c.normalize("NFD").replace(/[̀-ͯ]/g, "");
+    return (stripped && /^[\u0000-ɏ]+$/.test(stripped) ? stripped : c).toLowerCase();
+  }
+
+  function fold(text) {
+    var folded = "", map = [];
+    for (var i = 0; i < text.length;) {
+      var ch = String.fromCodePoint(text.codePointAt(i)), f = foldChar(ch);
+      for (var k = 0; k < f.length; k++) { folded += f[k]; map.push(i); }
+      i += ch.length;
+    }
+    map.push(text.length);
+    return { text: folded, map: map };
+  }
+
+  function clearFind() {
+    Array.prototype.forEach.call(document.querySelectorAll("mark.find"), function (m) {
+      var parent = m.parentNode;
+      parent.replaceChild(document.createTextNode(m.textContent), m);
+      parent.normalize();
+    });
+    findMarks = [];
+  }
+
+  function applyFind(q) {
+    clearFind();
+    var terms = findTerms(q).map(function (t) { return fold(t).text; }).filter(function (t) { return t; });
+    var root = document.getElementById("page");
+    if (!terms.length || !root) return;
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: function (n) {
+        var p = n.parentElement;
+        if (!p || !p.closest(".en, .ko, article.concept h1")) return NodeFilter.FILTER_REJECT;
+        if (p.closest(".katex, button, .srcchip, .prov, .pc, .katex-error")) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    var nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(function (node) {
+      var text = node.nodeValue, f = fold(text), ranges = [];
+      terms.forEach(function (t) {
+        for (var at = f.text.indexOf(t); at >= 0; at = f.text.indexOf(t, at + 1)) ranges.push([f.map[at], f.map[at + t.length]]);
+      });
+      if (!ranges.length) return;
+      ranges.sort(function (a, b) { return a[0] - b[0]; });
+      var merged = [];
+      ranges.forEach(function (r) {
+        var last = merged[merged.length - 1];
+        if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]); else merged.push([r[0], r[1]]);
+      });
+      var frag = document.createDocumentFragment(), pos = 0;
+      merged.forEach(function (r) {
+        if (r[0] > pos) frag.appendChild(document.createTextNode(text.slice(pos, r[0])));
+        var m = el("mark", "find");
+        m.textContent = text.slice(r[0], r[1]);
+        frag.appendChild(m);
+        pos = r[1];
+      });
+      if (pos < text.length) frag.appendChild(document.createTextNode(text.slice(pos)));
+      node.parentNode.replaceChild(frag, node);
+    });
+    findMarks = Array.prototype.slice.call(document.querySelectorAll("mark.find"));
+  }
+
+  // 지금 곳을 진하게 하고 알린다. 접힌 한국어 안이면 그 한국어를 펼친다
+  function focusFind(i, scroll) {
+    findMarks.forEach(function (m) { m.classList.remove("cur"); });
+    if (!findMarks.length) {
+      findIndex = -1;
+      post({ type: "find", total: 0, index: 0 });
+      return;
+    }
+    findIndex = ((i % findMarks.length) + findMarks.length) % findMarks.length;
+    var m = findMarks[findIndex];
+    m.classList.add("cur");
+    var ko = m.closest(".ko");
+    if (ko && ko.hidden) {
+      var t = ko.parentElement.querySelector(".g-tr");
+      if (t) t.click(); else ko.hidden = false;
+    }
+    if (scroll) m.scrollIntoView({ block: "center" });
+    post({ type: "find", total: findMarks.length, index: findIndex + 1 });
+  }
+
+  // { query, unit, step, keep }: step 0 은 처음(unit 이 있으면 그 단위 안의 첫 곳), 1 다음, -1 이전.
+  // keep 은 다시 그린 뒤 같은 질의를 다시 걸고 지금 곳을 지킨다 (내려가지 않는다). query 가 비면 표시를 걷는다.
+  function find(o) {
+    o = o || {};
+    var q = String(o.query || "").trim();
+    if (!q) {
+      clearFind();
+      findQuery = "";
+      findIndex = -1;
+      return;
+    }
+    if (o.keep) {
+      if (q !== findQuery) return;
+      var kept = findIndex;
+      applyFind(q);
+      focusFind(kept < 0 ? 0 : kept, false);
+      return;
+    }
+    if (q === findQuery && findMarks.length && o.step) {
+      focusFind(findIndex + o.step, true);
+      return;
+    }
+    applyFind(q);
+    findQuery = q;
+    var first = 0;
+    if (o.unit) {
+      var host = document.getElementById(o.unit) || document.querySelector('[id^="' + CSS.escape(o.unit) + '-"]');
+      var at = host ? findMarks.findIndex(function (m) { return host.contains(m); }) : -1;
+      if (at >= 0) first = at;
+    }
+    focusFind(first, true);
   }
 
   // 코멘트 스레드: 단위 아래에 열린다. 메모, 질문(물어보기가 답한다), 이상해요.
@@ -654,6 +796,9 @@
     var same = current && current.concept === page.concept;
     var keepY = window.scrollY;
     if (!same) openThreads = {};
+    // 다시 그리면 찾기 표시가 사라진다. 같은 개념이면 앱이 keep 으로 다시 건다
+    findMarks = [];
+    if (!same) { findQuery = ""; findIndex = -1; }
     current = page;
     var root = document.getElementById("page");
     root.innerHTML = "";
@@ -813,6 +958,9 @@
       try { render(page); } catch (e) { post({ type: "error", message: String(e && e.stack ? e.stack : e) }); throw e; }
     },
     follow: function (on) { setFollow(!!on); },
+    find: function (o) {
+      try { find(o); } catch (e) { post({ type: "error", message: String(e && e.stack ? e.stack : e) }); }
+    },
   };
   document.addEventListener("DOMContentLoaded", function () { post({ type: "ready" }); });
 })();

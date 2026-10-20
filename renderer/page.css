@@ -5,6 +5,7 @@
   --accent: #1b5fae; --accent-soft: #e2ecf8;
   --good: #1d7a44; --bad: #b9382a; --bad-soft: #fae5e2; --key-soft: #e6f3ea;
   --next: #8a3fc4; --other: #13808f; --wait: #c97a1e; --dot: #dde3e9;
+  --find: #fbe7a1; --find-cur: #f5b942;
   --f-display: "AppleMyungjo", "Apple SD Gothic Neo", serif;
   --f-body: -apple-system, "Apple SD Gothic Neo", system-ui, sans-serif;
   --f-mono: ui-monospace, "SF Mono", Menlo, monospace;
@@ -17,6 +18,7 @@
     --accent: #6ea8ec; --accent-soft: #1b2c41;
     --good: #4cba78; --bad: #e66767; --bad-soft: #3a1d1d; --key-soft: #17301f;
     --next: #c08af0; --other: #4fbfcf; --wait: #e6a256; --dot: #353b42;
+    --find: #5b4a14; --find-cur: #a87412;
     color-scheme: dark;
   }
 }
@@ -26,6 +28,7 @@
   --accent: #6ea8ec; --accent-soft: #1b2c41;
   --good: #4cba78; --bad: #e66767; --bad-soft: #3a1d1d; --key-soft: #17301f;
   --next: #c08af0; --other: #4fbfcf; --wait: #e6a256; --dot: #353b42;
+  --find: #5b4a14; --find-cur: #a87412;
   color-scheme: dark;
 }
 
@@ -237,3 +240,7 @@ button.nm { transition: border-color .15s ease, box-shadow .15s ease; }
 .ref-title { font-weight: 500; font-size: 14px; color: var(--accent); }
 .ref-kind { font-family: var(--f-mono); font-size: 11px; color: var(--ink-3); }
 .ref-why { grid-column: 1 / -1; font-size: 13px; color: var(--ink-2); }
+
+/* 페이지 안 찾기 (DECISIONS.md 48): 찾은 말 모두와 지금 곳 */
+mark.find { background: var(--find); color: inherit; border-radius: 2px; padding: 0 1px; }
+mark.find.cur { background: var(--find-cur); }

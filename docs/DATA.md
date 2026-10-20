@@ -43,7 +43,7 @@
     syllabus-build/<작업 id>/   decisions.json(근거 문서, 목차 밖 개념을 옮긴 곳), report.md
     source-split/<작업 id>/     result.json(본 자료와 나눈 수업: 쪽 범위, 이름, 새 자료 id), report.md
     source-reading/<작업 id>/   request.md(머리말에 묶음과 읽은 자료), report.md(머리말에 묶음 이름, 자료마다 제목·종류·평가 과제 여부·학습 목표), report.first-pass.md, coverage.json
-    concept-curation/<작업 id>/ plan.json, report.md, apply.json
+    concept-curation/<작업 id>/ plan.json, report.md, apply.json. 개념 다시 정리면 proposal.json(후보), decision.json(반영·버림)도 있다
     ask/<작업 id>/              question.json, answer.json, coverage.json
     regen/<작업 id>/            request.json, base.json, candidate.json, checks.json, figures/(그림 후보), decision.json(고치기)
     migration/<시작 버전>-<끝 버전>/  plan.json, checks.json
@@ -60,7 +60,7 @@
     glossary.yaml               용어 어휘: 영어 용어 → 한국어
     facets.yaml                 관점 어휘: 과목별 관련 개념과 NOS 값 (kind: facet-vocab)
     references.yaml             레퍼런스 (관점 붙이기가 찾는다). 찾았는데 없으면 빈 목록으로 남아 다시 찾지 않는다
-    moves.jsonl                 옮긴 개념·엔트리·과목의 옛 id → 새 id. 덧붙이기만 한다. 코멘트와 요구가 이것으로 새 자리를 찾는다
+    moves.jsonl                 옮긴 개념·엔트리·과목의 옛 id → 새 id, 다시 정리로 옮긴 단위의 옛 자리 → 새 자리. 덧붙이기만 한다. 코멘트와 요구가 이것으로 새 자리를 찾는다
     vendor/<호스트>/<경로>       그림 블록이 쓰는 바깥 라이브러리 사본. 그림을 만들 때 받는다. 질의가 있는 주소는 끝에 질의 해시를 붙인다
     vendor/index.jsonl          받은 주소, 파일, 형식(Content-Type), 해시, 받은 때. 덧붙이기만 한다
   learner/
@@ -234,13 +234,13 @@
 ```yaml
 kind: "schema"
 v: 1
-schema: 1
+schema: 2
 created: "2026-09-01T20:10:00+09:00"
 last_opened_by: { app: "0.4.0", build: "41" }
 history: []
 ```
 
-출시 전에는 스키마가 1 이다(`MIGRATION.md`의 출시 전). `history`에는 출시 후 마이그레이션할 때마다 `{ from, to, app, at, kind, backup }` 한 줄이 쌓인다. `last_opened_by`는 폴더를 만들 때 적는다. 0.1.1 은 열 때마다 고쳐 적었지만, 판이 다른 맥이 열기만 해도 커밋이 생겨 이제 고치지 않는다(`DECISIONS.md` 42).
+지금 스키마는 2 다(`MIGRATION.md`의 단계). `history`에는 출시 후 마이그레이션할 때마다 `{ from, to, app, at, kind, backup }` 한 줄이 쌓인다. `last_opened_by`는 폴더를 만들 때 적는다. 0.1.1 은 열 때마다 고쳐 적었지만, 판이 다른 맥이 열기만 해도 커밋이 생겨 이제 고치지 않는다(`DECISIONS.md` 42).
 
 `sources/20260903-3fa2c1d0/meta.yaml` (받을 때 정해진 사실. 고치지 않는다)
 
@@ -323,6 +323,11 @@ Without air resistance, no force acts horizontally …
 ```
 
 같은 경로가 이미 있으면 `<slug>--<작업 id>.md`로 나란히 둔다. 엔트리 id 는 `entries/` 아래 경로에서 `.md`를 뗀 것이다. 엔트리는 묶음의 여러 자료에 걸칠 수 있고, `sources`는 자료마다 이 엔트리의 내용이 나온 쪽이다. 주장처럼 예제도 출처(`src`)를 단다(`DECISIONS.md` 38). 엔트리 하나를 여러 개념이 나눠 쓸 수 있고, 그때 그 엔트리는 그 개념들의 출현 목록에 모두 든다.
+
+**개념 다시 정리** (`DECISIONS.md` 47). 사람이 고른 개념을 지금 지침으로 다시 정리한 결과는 바로 반영하지 않고 후보로 둔다.
+- `records/concept-curation/<작업 id>/proposal.json`: 후보. 그때의 개념 키와 id, 개념 파일 해시, 정리할 엔트리와 보류된 엔트리, 에이전트의 계획, 대응표의 줄(고른 개념마다 그대로, 보강, 다시 씀, 나눔, 합침, 없앰). 반영할 때 이 키로 입력을 다시 짓고, 개념 파일 해시가 다르면 반영하지 않는다.
+- `decision.json`: `{ v, decision: "applied" | "discarded", at, … }`. 이 파일이 없으면 검토를 기다리는 후보다. 반영하면 `plan.json`이 함께 생기고, 거기에 `recuration: true`와 없앤 개념(`retired`: 개념 id, 코멘트가 따라갈 `into`, 까닭, 뺀 단위와 까닭)이 있다.
+- `moves.jsonl`의 단위 줄: `{"v":1,"kind":"unit","from":"<옛 개념 id>#<단위 id>","to":"<새 개념 id>#<개념 단위 id>","why":"…","at":"…"}`. 옛 자리는 개념 단위(`u3`)와 그 페이지 단위(`p5`) 모두 적는다. 옮겨 갈 단위가 없으면(뺀 단위) `to`의 단위 id 가 비어 있다. 없앤 개념은 지난 판에서 빠진 페이지 단위와 코멘트·요구가 가리키는 단위까지 적는다. 개념 줄의 `from`(옮기거나 없앤 개념의 옛 id)은 새 개념의 id 로 다시 쓰지 않는다. 없앤 개념은 개념 줄(`kind: "concept"`)로 `into`를 가리킨다. 코멘트와 요구는 단위 줄을 먼저, 없으면 개념 줄을 끝까지 따라가고, 옮겨 간 개념 단위는 그 페이지의 문단으로 바꾼다. 옮겨 간 코멘트는 "이전 판에 단 코멘트"로 보인다.
 
 **보류.** 개념이 되지 못한 엔트리는 보류로 남는다(`DECISIONS.md` 35). 개념 정리가 보류한 것은 그 작업의 `records/concept-curation/<작업 id>/plan.json`의 `held`에 까닭과 함께 남는다. 자료 읽기에서 학생 독자 시험에 고쳐 써도 떨어진 엔트리는 머리말에 `held: "<까닭>"`을 달고 들어간다. 보류된 엔트리는 그 과목의 다음 정리마다 까닭과 함께 다시 넘어가고, 개념에 붙으면(그 개념의 출현 목록에 들면) 보류가 풀린다.
 

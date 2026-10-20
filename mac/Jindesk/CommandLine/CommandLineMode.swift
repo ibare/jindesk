@@ -2,6 +2,8 @@
 //   Jindesk doctor [--data <데이터 폴더>] [--out <결과 파일>]
 //   Jindesk intake [--data <데이터 폴더>] --subject <과목> [--follow] <파일>…
 //   Jindesk continue [--data <데이터 폴더>] [--only <종류>]
+//   Jindesk rebuild-pages [--data <데이터 폴더>] [--unit <과목 id>/<단원 키>] [--list] [<개념 id>…]
+//   Jindesk recurate [--data <데이터 폴더>] (<개념 id>… | --pending | --apply <작업 id> | --discard <작업 id>)
 //   Jindesk check-figure --vendor <폴더> <그림 조각.html>
 //   Jindesk directive --data <데이터 폴더> (--accept | --keep) <요구 id>
 //   Jindesk migrate --check <백업 폴더나 zip> [--sample <n>] [--keep]
@@ -18,7 +20,7 @@ struct JindeskCommand: AsyncParsableCommand {
     commandName: "Jindesk",
     abstract: "Jindesk 명령줄 모드",
     subcommands: [
-      DoctorCommand.self, IntakeCommand.self, ContinueCommand.self, DirectiveCommand.self, FigureCheckCommand.self, OutcomeCheckCommand.self, MigrateCommand.self,
+      DoctorCommand.self, IntakeCommand.self, ContinueCommand.self, RebuildPagesCommand.self, RecurateCommand.self, DirectiveCommand.self, FigureCheckCommand.self, OutcomeCheckCommand.self, MigrateCommand.self,
       BackupCommand.self, SyncCommand.self,
       VersionCommand.self,
     ]
@@ -27,7 +29,7 @@ struct JindeskCommand: AsyncParsableCommand {
 
 @MainActor
 enum CommandLineMode {
-  static let commands: Set<String> = ["doctor", "intake", "continue", "directive", "check-figure", "outcome-check", "migrate", "backup", "sync", "version", "help", "--help", "-h"]
+  static let commands: Set<String> = ["doctor", "intake", "continue", "rebuild-pages", "recurate", "directive", "check-figure", "outcome-check", "migrate", "backup", "sync", "version", "help", "--help", "-h"]
 
   // 첫 인자가 명령이면 명령줄 모드다. "-" 로 시작하는 인자(-snapshotDir, Xcode 가 붙이는 -NSDocumentRevisionsDebugMode 등)만 있으면 앱으로 뜬다.
   // 모르는 명령도 명령줄 모드로 받아 오류를 보인다. 화면 앱으로 떠 버리면 스크립트가 멈춘다.
@@ -229,6 +231,116 @@ struct ContinueCommand: AsyncParsableCommand {
     let config = try await CommandLineMode.agentConfig(folder)
     try await jobs.submitAll(config: config, work.map { Pipeline.prepare($0) })
     try await CommandLineMode.waitAll(jobs)
+  }
+}
+
+// 고른 개념이나 단원의 학습 페이지를 지금 지침으로 다시 만들고 끝날 때까지 기다린다 (화면의 "페이지 다시 만들기"와 같다, DECISIONS.md 46)
+struct RebuildPagesCommand: AsyncParsableCommand {
+  static let configuration = CommandConfiguration(
+    commandName: "rebuild-pages", abstract: "고른 개념이나 단원의 학습 페이지를 지금 지침으로 다시 만든다 (낡지 않았어도)")
+
+  @Option(help: "데이터 폴더. 주지 않으면 앱에서 고른 폴더") var data: String?
+  @Option(help: "단원 하나의 개념 모두: <과목 id>/<단원 키>. 단원 키는 item:<목차 코드> 또는 proposed:<단원 제안>") var unit: String?
+  @Flag(help: "다시 만들 개념만 보이고 넣지 않는다") var list = false
+  @Argument(help: "개념 id (<과목 id>/<항목>/<slug>)") var concepts: [String] = []
+
+  @MainActor
+  func run() async throws {
+    guard let folder = CommandLineMode.dataFolder(data), folder.isInitialized else { throw ValidationError("Jindesk 데이터 폴더를 찾지 못했습니다") }
+    var ids = concepts
+    if let unit {
+      guard let slash = unit.firstIndex(of: "/") else { throw ValidationError("--unit 은 <과목 id>/<단원 키> 다") }
+      let subject = String(unit[..<slash])
+      let key = String(unit[unit.index(after: slash)...])
+      let units = SubjectUnits.make(ConceptStore.all(folder, subject: subject), syllabus: Syllabus.load(folder, subject: subject))
+      guard let found = units.first(where: { $0.key == key }) else {
+        throw ValidationError("단원을 찾지 못했습니다: \(unit). 이 과목의 단원 키: \(units.map(\.key).joined(separator: ", "))")
+      }
+      ids += found.concepts.map(\.id)
+    }
+    guard !ids.isEmpty else { throw ValidationError("개념 id 나 --unit 을 준다") }
+    var bySubject: [String: [String]] = [:]
+    for id in Set(ids) {
+      guard let subject = ConceptID(id)?.subject, ConceptStore.all(folder, subject: subject).contains(where: { $0.id == id }) else {
+        throw ValidationError("개념을 찾지 못했습니다: \(id)")
+      }
+      bySubject[subject, default: []].append(id)
+    }
+    let groups = bySubject.keys.sorted().map { ($0, bySubject[$0]!.sorted()) }
+    for (_, list) in groups { for id in list { print("· \(id)") } }
+    if list { return }
+    let jobs = CommandLineMode.manager(folder)
+    let config = try await CommandLineMode.agentConfig(folder)
+    let prepares: [(PrepareContext) async throws -> PreparedJob] = groups.map { subject, list in { try PageBuild.prepare(subject: subject, rebuild: list, $0) } }
+    try await jobs.submitAll(config: config, prepares)
+    try await CommandLineMode.waitAll(jobs)
+  }
+}
+
+// 고른 개념을 지금 지침으로 다시 정리한다 (화면의 "개념 다시 정리…"와 같다, DECISIONS.md 47).
+// 다시 정리는 후보만 만든다. 대응표를 보고 --apply 로 반영하거나 --discard 로 버린다.
+struct RecurateCommand: AsyncParsableCommand {
+  static let configuration = CommandConfiguration(
+    commandName: "recurate", abstract: "고른 개념을 지금 지침으로 다시 정리해 후보를 만들고, 후보를 반영하거나 버린다")
+
+  @Option(help: "데이터 폴더. 주지 않으면 앱에서 고른 폴더") var data: String?
+  @Flag(help: "반영하지도 버리지도 않은 후보를 보인다") var pending = false
+  @Option(help: "이 후보를 반영하고 페이지 만들기를 이어서 한다 (작업 id)") var apply: String?
+  @Option(help: "이 후보를 버린다 (작업 id)") var discard: String?
+  @Argument(help: "다시 정리할 개념 id (<과목 id>/<항목>/<slug>). 과목마다 작업 하나다") var concepts: [String] = []
+
+  @MainActor
+  func run() async throws {
+    guard let folder = CommandLineMode.dataFolder(data), folder.isInitialized else { throw ValidationError("Jindesk 데이터 폴더를 찾지 못했습니다") }
+    if pending {
+      let list = Recuration.pending(folder)
+      if list.isEmpty { print("검토를 기다리는 후보가 없습니다") }
+      for p in list { Self.show(p) }
+      return
+    }
+    if let job = apply {
+      // 반영이 데이터 폴더 잠금을 잡는다. 앱이 작업을 돌리고 있으면 던진다. 끝나면 풀리므로 그 뒤의 작업 관리자가 잡는다
+      let r = try Recuration.apply(folder, job: job)
+      print("· 반영: 개념 \(r.written.count)개를 쓰고 \(r.retired.count)개를 없앴습니다. 단위 옮김 \(r.unitMoves)줄")
+      for id in r.retired { print("  없앰 \(id)") }
+      let jobs = CommandLineMode.manager(folder)
+      let config = try await CommandLineMode.agentConfig(folder)
+      _ = try await jobs.submit(config: config) { try PageBuild.prepare(subject: r.subject, $0) }
+      try await CommandLineMode.waitAll(jobs, also: ["다시 정리 반영 · \(job)"])
+      return
+    }
+    if let job = discard {
+      try Recuration.discard(folder, job: job)
+      print("· 버림: \(job)")
+      await CommandLineMode.syncRepo(folder, ["다시 정리 버림 · \(job)"])
+      return
+    }
+    guard !concepts.isEmpty else { throw ValidationError("개념 id, --pending, --apply, --discard 가운데 하나를 준다") }
+    var bySubject: [String: [String]] = [:]
+    for id in Set(concepts) {
+      guard let subject = ConceptID(id)?.subject, ConceptStore.all(folder, subject: subject).contains(where: { $0.id == id }) else {
+        throw ValidationError("개념을 찾지 못했습니다: \(id)")
+      }
+      bySubject[subject, default: []].append(id)
+    }
+    let jobs = CommandLineMode.manager(folder)
+    let config = try await CommandLineMode.agentConfig(folder)
+    let prepares: [(PrepareContext) async throws -> PreparedJob] = bySubject.keys.sorted().map { subject in
+      let list = bySubject[subject]!.sorted()
+      return { try Recuration.prepare(subject: subject, concepts: list, $0) }
+    }
+    let ids = try await jobs.submitAll(config: config, prepares)
+    try await CommandLineMode.waitAll(jobs)
+    for id in ids { if let p = Recuration.proposal(folder, job: id) { Self.show(p) } }
+  }
+
+  // 대응표: 고른 개념마다 무엇이 되었는지
+  static func show(_ p: Recuration.Proposal) {
+    print("· 후보 \(p.job) (\(p.subject)): 개념 \(p.before)개 → \(p.after)개\(p.held > 0 ? ", 보류 \(p.held)" : "")")
+    for r in p.rows {
+      print("  \(r.title): \(r.action)\(r.targets.isEmpty ? "" : " → " + r.targets.joined(separator: ", "))\(r.into.map { " (코멘트 → \($0))" } ?? "")")
+    }
+    print("  반영: Jindesk recurate --apply \(p.job)   버리기: Jindesk recurate --discard \(p.job)")
   }
 }
 

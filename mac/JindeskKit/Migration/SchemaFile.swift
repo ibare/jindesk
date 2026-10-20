@@ -3,7 +3,7 @@ import Foundation
 // 앱이 쓰는 데이터 폴더의 스키마 버전. 데이터 스펙(파일과 필드의 추가, 삭제, 모양)을 바꾸면 무조건 올리고, Migration/ 에 단계를 더한다.
 // 스펙은 그대로 두고 로직만 바꾸면 올리지 않는다 (MIGRATION.md, DECISIONS.md 42).
 public enum CurrentSchema {
-  public static let version = 1
+  public static let version = 2
 }
 
 // meta/schema.yaml: 스키마 버전, 마이그레이션 이력, 연 앱 판(last_opened_by).

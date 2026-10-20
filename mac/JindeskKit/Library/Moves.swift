@@ -1,5 +1,6 @@
 // 개념과 과목 옮기기. 목차가 생겨 목차 밖 개념을 항목으로 옮길 때, 과목 꼬리표의 이름을 바꾸거나 합칠 때 쓴다 (DATA.md 의 id).
 // 옮기면 id 가 바뀐다. 옛 id → 새 id 를 library/moves.jsonl 에 덧붙여, 옛 id 를 가리키는 코멘트와 요구가 새 자리를 찾게 한다.
+// 개념 다시 정리는 단위도 옮긴다(kind "unit", DECISIONS.md 47). 자리는 "<개념 id>#<단위 id>"이고, 옮겨 갈 단위가 없으면(뺀 단위) 단위 id 가 비어 있다.
 import Foundation
 
 public struct MoveRecord: Sendable, Equatable {
@@ -18,11 +19,21 @@ public enum Moves {
     try FileOps.appendLine(JSONText.line(line), to: file(data))
   }
 
+  // 단위 하나를 옮긴 줄. to 의 단위가 nil 이면 그 개념으로만 옮기고 단위는 없다 (뺀 단위)
+  static func appendUnit(_ data: DataFolder, from: (concept: String, unit: String), to: (concept: String, unit: String?), why: String) throws {
+    try append(data, kind: "unit", from: "\(from.concept)#\(from.unit)", to: "\(to.concept)#\(to.unit ?? "")", why: why)
+  }
+
   public static func all(_ data: DataFolder) -> [MoveRecord] {
     ((try? JSONLines.read(file(data)))?.values ?? []).compactMap { v in
       guard let k = v["kind"]?.stringValue, let f = v["from"]?.stringValue, let t = v["to"]?.stringValue else { return nil }
       return MoveRecord(kind: k, from: f, to: t)
     }
+  }
+
+  // 옮기거나 없앤 개념의 옛 id. 새 개념에 다시 쓰지 않는다: 쓰면 그 id 의 줄이 새 개념의 코멘트와 요구를 옛 개념이 간 자리로 끌고 간다
+  public static func formerConcepts(_ data: DataFolder) -> Set<String> {
+    Set(all(data).filter { $0.kind == "concept" }.map(\.from))
   }
 
   // 옛 개념 id 를 지금 id 로 (여러 번 옮겼으면 끝까지 따라간다)
@@ -33,6 +44,46 @@ public enum Moves {
       current = m.to
     }
     return current
+  }
+
+  // 옛 자리(개념, 단위)를 지금 자리로. 단위를 옮긴 줄이 있으면 그것을, 없으면 개념을 옮긴 줄을 따라간다.
+  // moved: 단위를 옮긴 줄을 하나라도 따라갔다. 그때 단위는 개념 단위(u…)이거나, 옮겨 갈 단위가 없으면 빈 문자열이다.
+  public static func resolve(concept: String, unit: String, moves: [MoveRecord]) -> (concept: String, unit: String, moved: Bool) {
+    var c = concept
+    var u = unit
+    var moved = false
+    for _ in 0..<40 {
+      if !u.isEmpty, let m = moves.last(where: { $0.kind == "unit" && $0.from == "\(c)#\(u)" }), let hash = m.to.lastIndex(of: "#") {
+        c = String(m.to[..<hash])
+        u = String(m.to[m.to.index(after: hash)...])
+        moved = true
+        continue
+      }
+      guard let m = moves.last(where: { $0.kind == "concept" && $0.from == c }) else { break }
+      c = m.to
+    }
+    return (c, u, moved)
+  }
+}
+
+// 옮겨 간 자리를 지금 페이지의 단위로 (DECISIONS.md 47). 단위를 옮긴 줄은 개념 단위(u…)를 가리키므로,
+// 그 개념의 페이지에서 그 원문 단위의 문단을 찾는다. 페이지가 아직 없거나 문단이 없으면 개념 단위 그대로 둔다.
+public struct AnchorResolver {
+  let data: DataFolder
+  let moves: [MoveRecord]
+  private var pages: [String: Page?] = [:]
+
+  public init(_ data: DataFolder, moves: [MoveRecord]) {
+    self.data = data
+    self.moves = moves
+  }
+
+  public mutating func resolve(concept: String, unit: String) -> (concept: String, unit: String, moved: Bool) {
+    let r = Moves.resolve(concept: concept, unit: unit, moves: moves)
+    guard r.moved, !r.unit.isEmpty else { return r }
+    if pages[r.concept] == nil { pages[r.concept] = ConceptID(r.concept).flatMap { Page.load(ConceptFolder($0, in: data)) } }
+    let para = pages[r.concept]??.units.first { $0.kind == .para && $0.fromUnit == r.unit }
+    return (r.concept, para?.id ?? r.unit, true)
   }
 }
 
@@ -57,12 +108,7 @@ public enum ConceptMove {
         try layers.write(target, order: page.units.map(\.id))
       }
     }
-    // 이 개념을 가리키는 다른 개념의 선수 개념과 연결
-    for var other in ConceptStore.everything(data) where other.prerequisites.contains(from.text) || other.links.contains(where: { $0.concept == from.text }) {
-      other.prerequisites = other.prerequisites.map { $0 == from.text ? to.text : $0 }
-      other.links = other.links.map { $0.concept == from.text ? ConceptLink(concept: to.text, note: $0.note) : $0 }
-      try other.write(data)
-    }
+    try repoint(data, from: from.text, to: to.text)
     // 레퍼런스는 개념 id 로 묶여 있다. 옮긴 id 로 다시 묶어야 다시 찾지 않는다.
     var refs = References.load(data)
     if let r = refs.concepts.removeValue(forKey: from.text) {
@@ -70,6 +116,17 @@ public enum ConceptMove {
       try refs.write(data)
     }
     try Moves.append(data, kind: "concept", from: from.text, to: to.text, why: why)
+  }
+
+  // 옛 개념을 가리키는 다른 개념의 선수 개념과 연결을 새 개념으로 바꾼다. 자기 자신을 가리키게 되면 뺀다 (다시 정리로 합쳤을 때).
+  static func repoint(_ data: DataFolder, from: String, to: String) throws {
+    for var other in ConceptStore.everything(data) where other.prerequisites.contains(from) || other.links.contains(where: { $0.concept == from }) {
+      var prerequisites: [String] = []
+      for p in other.prerequisites.map({ $0 == from ? to : $0 }) where p != other.id && !prerequisites.contains(p) { prerequisites.append(p) }
+      other.prerequisites = prerequisites
+      other.links = other.links.map { $0.concept == from ? ConceptLink(concept: to, note: $0.note) : $0 }
+      try other.write(data)
+    }
   }
 }
 
@@ -117,11 +174,16 @@ public enum SubjectRename {
       result.entries += 1
     }
     FileOps.remove(data.entriesDir(subject))
-    // 개념: 같은 slug 가 있으면 뒤에 수를 붙인다
+    // 개념: 같은 slug 가 있거나 옮기거나 없앤 개념의 옛 id 면 뒤에 수를 붙인다
+    let former = Moves.formerConcepts(data)
     for c in ConceptStore.all(data, subject: subject) {
       var slug = c.cid.slug
       var n = 2
-      while FileOps.exists(data.conceptDir(ConceptID(subject: target, item: c.cid.item, slug: slug))) {
+      func taken(_ s: String) -> Bool {
+        let id = ConceptID(subject: target, item: c.cid.item, slug: s)
+        return FileOps.exists(data.conceptDir(id)) || former.contains(id.text)
+      }
+      while taken(slug) {
         slug = "\(c.cid.slug)-\(n)"
         n += 1
       }

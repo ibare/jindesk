@@ -202,7 +202,7 @@ public enum Translation {
     let enNumbers = TexText.numbers(en).sorted()
     let koNumbers = TexText.numbers(ko).sorted()
     if enNumbers != koNumbers { out.append("수식 밖의 숫자가 영어와 다릅니다 (영어 \(enNumbers.joined(separator: " ")), 한국어 \(koNumbers.joined(separator: " ")))") }
-    if let left = leftoverEnglish(ko, en: en) { out.append("영어 문장이 남았습니다: \"\(left)\"") }
+    if let left = leftoverEnglish(ko) { out.append("영어 문장이 남았습니다: \"\(left)\"") }
     for term in glossary.terms where mentions(en, term) && !ko.contains(term.ko) {
       out.append("\(termProblemPrefix)\(term.en) 이 어휘의 뜻으로 쓰였으면 \(term.ko) 로 옮긴다 (다른 뜻이면 그대로 둔다)")
     }
@@ -216,16 +216,14 @@ public enum Translation {
   }
 
   // 괄호 밖에 영어 낱말이 여섯 개 이상 이어지면 옮기지 않은 문장으로 본다.
-  // 영어 단위에 그대로 나온 다른 언어의 글(언어 습득 과목의 목표 언어 예문)은 옮기지 않고 두는 것이라 세지 않는다.
-  static func leftoverEnglish(_ ko: String, en: String = "") -> String? {
+  // 영어가 아닌 언어의 글(언어 습득 과목의 목표 언어 예문과 낱말 나열)은 옮기지 않고 두는 것이라 세지 않는다. 영어인지는 언어 인식으로 가린다.
+  static func leftoverEnglish(_ ko: String) -> String? {
     let plain = countable(ko)
     let regex = try! NSRegularExpression(pattern: #"(?:[A-Za-z][A-Za-z'’-]*[\s,]+){5,}[A-Za-z][A-Za-z'’-]*"#)
-    // 영어 단위도 같게 덜어 내야 덜어 낸 자리에서 끊긴 구절이 맞춰진다
-    let source = LabelMatch.key(countable(en))
     for m in regex.matches(in: plain, range: NSRange(plain.startIndex..., in: plain)) {
       guard let r = Range(m.range, in: plain) else { continue }
       let run = String(plain[r])
-      if source.contains(LabelMatch.key(run)) && !isEnglish(run) { continue }
+      if !isEnglish(run) { continue }
       return FileOps.prefix(run, 80)
     }
     return nil

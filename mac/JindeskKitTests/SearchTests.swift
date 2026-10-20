@@ -186,3 +186,36 @@ import Testing
     #expect(index.search("product").concepts.count == 1)
   }
 }
+
+@Suite struct PageFindTests {
+  @Test func 찾을_말이_바뀌면_처음부터_다시_찾고_다음_이전은_찾은_곳이_있을_때만() {
+    var find = PageFind(concept: "math/unplaced/laws", query: " log laws ", unit: "p3")
+    #expect(find.query == "log laws" && find.request.unit == "p3" && find.request.step == 0)
+    let first = find.request
+    // 찾은 곳이 없으면 다음·이전은 요청을 만들지 않는다
+    find.step(1)
+    #expect(find.request == first)
+    find.total = 4
+    find.index = 1
+    #expect(find.countLabel == "1 / 4")
+    find.step(1)
+    #expect(find.request != first && find.request.step == 1 && find.request.unit == nil)
+    // 같은 말이면 그대로, 다른 말이면 처음부터
+    let stepped = find.request
+    find.setQuery("log laws ")
+    #expect(find.request == stepped)
+    find.setQuery("")
+    #expect(find.countLabel == "" && find.total == 0)
+    find.setQuery("nothing")
+    #expect(find.countLabel == "없음")
+  }
+
+  @Test func 렌더러에_보낼_글() {
+    let script = FindRequest(query: "say \"hi\"", unit: "p2", step: -1).script(keep: true)
+    #expect(script.hasPrefix("window.jindesk.find({") && script.hasSuffix("})"))
+    #expect(script.contains("\"unit\": \"p2\"") || script.contains("\"unit\":\"p2\""))
+    #expect(script.contains("\\\"hi\\\""))
+    #expect(script.contains("keep"))
+    #expect(!FindRequest(query: "x").script().contains("keep"))
+  }
+}

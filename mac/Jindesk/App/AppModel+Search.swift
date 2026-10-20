@@ -1,29 +1,6 @@
 import Foundation
 import JindeskKit
 
-// 학습 페이지 안 찾기의 상태 (DECISIONS.md 48). 찾기 막대의 찾을 말, 렌더러에 보낸 요청, 렌더러가 알려 온 수
-struct PageFind: Equatable {
-  // 이 개념의 학습 페이지에서 찾는다. 다른 개념을 열면 막대가 닫힌다
-  let concept: String
-  var query: String
-  var request: FindRequest
-  // 모두 몇 곳, 지금 몇 번째 (렌더러가 알린다. 없으면 0)
-  var total = 0
-  var index = 0
-  // 막대의 찾을 말 칸에 커서를 둔다 (⌘F). 오를 때마다 칸이 받는다
-  var focus = 0
-}
-
-// 렌더러의 window.jindesk.find 에 보낼 요청. 같은 요청을 두 번 보내지 않게 seq 가 오른다
-struct FindRequest: Equatable {
-  var seq: Int
-  var query: String
-  // 처음 내려갈 단위 (찾기 결과에서 연 개념)
-  var unit: String?
-  // 0 처음, 1 다음, -1 이전
-  var step: Int
-}
-
 extension AppModel {
   func runSearch() {
     let q = searchText
@@ -72,8 +49,7 @@ extension AppModel {
   func openSearchResult(_ match: ConceptMatch) {
     selection = .concept(match.concept)
     revealInList = match.concept
-    let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-    pageFind = PageFind(concept: match.concept, query: query, request: nextFind(query: query, unit: match.firstUnit, step: 0))
+    pageFind = PageFind(concept: match.concept, query: searchText, unit: match.firstUnit)
   }
 
   // ⌘F: 학습 페이지가 열려 있으면 페이지 안 찾기 막대를, 아니면 사이드바의 찾기 칸을 연다
@@ -82,25 +58,14 @@ extension AppModel {
       focusSearchField += 1
       return
     }
-    if pageFind?.concept != id {
-      pageFind = PageFind(concept: id, query: "", request: nextFind(query: "", unit: nil, step: 0))
-    }
+    if pageFind?.concept != id { pageFind = PageFind(concept: id) }
     pageFind?.focus += 1
   }
 
-  func setPageFindQuery(_ query: String) {
-    guard var find = pageFind, find.query != query else { return }
-    find.query = query
-    find.request = nextFind(query: query, unit: nil, step: 0)
-    pageFind = find
-  }
+  func setPageFindQuery(_ query: String) { pageFind?.setQuery(query) }
 
   // ⌘G, ⇧⌘G
-  func stepPageFind(_ step: Int) {
-    guard var find = pageFind, !find.query.isEmpty else { return }
-    find.request = nextFind(query: find.query, unit: nil, step: step)
-    pageFind = find
-  }
+  func stepPageFind(_ step: Int) { pageFind?.step(step) }
 
   func closePageFind() { pageFind = nil }
 
@@ -109,10 +74,5 @@ extension AppModel {
     guard pageFind?.concept == concept else { return }
     pageFind?.total = total
     pageFind?.index = index
-  }
-
-  private func nextFind(query: String, unit: String?, step: Int) -> FindRequest {
-    findSeq += 1
-    return FindRequest(seq: findSeq, query: query, unit: unit, step: step)
   }
 }

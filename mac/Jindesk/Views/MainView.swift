@@ -197,13 +197,13 @@ struct SearchResultsView: View {
           Section("개념 · \(concepts.count)") {
             ForEach(concepts) { m in
               row(selected: model.selection == .concept(m.concept), action: { model.openSearchResult(m) }) {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                   HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(TitleParts(m.title).head).font(.system(size: 13, weight: .semibold))
-                    if let ko = m.titleKo { Text(TitleParts(ko).head).font(.system(size: 12)).foregroundStyle(.secondary) }
                     Spacer(minLength: 4)
                     if m.count > 0 { Text("\(m.count)곳").font(.system(size: 11)).foregroundStyle(.tertiary).monospacedDigit() }
                   }
+                  if let ko = m.titleKo { Text(TitleParts(ko).head).font(.system(size: 12)).foregroundStyle(.secondary) }
                   if let first = m.snippets.first {
                     Text(Self.highlight(TexText.display(first.text))).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
                   } else {

@@ -13,7 +13,7 @@
 - 코멘트와 요구 쓰기, 다시 만들기, 새 판 받아들이기. 쓰는 쪽은 맥 하나다.
 - 원본 파일 받기와 자료 목록. 원래 자료는 출처로 연 쪽 이미지로만 본다.
 - 오늘, 모아 보기. 맥의 오늘과 모아 보기를 다시 짤 때 함께 정한다.
-- 찾기. 첫 화면 위의 찾기 칸에서 개념, 용어(영어 ↔ 한국어), 기호를 찾는다. 용어를 고르면 한국어, 기호, 나온 개념을 시트로 보인다(`DECISIONS.md` 34). 찾기에서 개념을 열면 학습 페이지의 찾은 말에 표시를 하고, 페이지 안 찾기 막대에 친 말을 넣어 둔다. 본문과 원래 자료의 쪽은 아직 찾지 않는다(`DECISIONS.md` 48 의 다음 단계).
+- 찾기. 첫 화면 위의 찾기 칸에서 개념, 용어(영어 ↔ 한국어), 기호를 찾는다. 용어를 고르면 한국어, 기호, 나온 개념을 시트로 보인다(`DECISIONS.md` 34). 맥과 같은 낱말 규칙(모든 낱말이 들어야 맞고, 대소문자와 악센트를 가리지 않는다)으로 찾는다. 찾기에서 개념을 열면 학습 페이지의 찾은 말에 표시를 하고, 페이지 안 찾기 막대에 친 말을 넣어 둔다. 본문과 원래 자료의 쪽은 아직 찾지 않는다(`DECISIONS.md` 48 의 다음 단계).
 - 단원 요약. 과목 아래 단원 줄을 누르면 맥의 단원 개요와 같은 것을 읽기로 보인다.
 
 ## 받기
@@ -89,4 +89,4 @@ xcodebuild -project JindeskMobile.xcodeproj -scheme JindeskMobile -destination '
 
 - `ios/project.yml`은 `mac/JindeskKit/`의 일부 파일을 함께 빌드한다. 그 파일을 고치면 iOS 빌드도 확인한다.
 - 받기 시험(`JindeskMobileTests`)은 가짜 GitHub(URLProtocol)로 처음 받기, 바뀐 파일만 받기, 지워진 파일, 스키마가 다를 때, 끊겼을 때를 본다.
-- 화면 확인(디버그 빌드): `-mirrorFrom <폴더>`를 주고 띄우면 GitHub 대신 그 데이터 폴더에서 받는 경로만 옮겨 받아 둔 사본으로 쓴다. `-openConcept <개념 id>`는 그 학습 페이지를 열고, `-walkTo <이웃 개념 id>`는 앞뒤 개념 지도에서 그 이웃을 누른다. `-openMap <개념 id 또는 과목 id>`는 과목 개념 지도를 그 개념을 고른 채(과목 id 면 고르지 않고) 연다. `-openSettings YES`는 설정을 연다. `-openSource <자료 id>#<쪽>`은 원래 자료의 그 쪽을 열고, `-pagesFrom <폴더>`는 쪽 이미지를 자료 버킷 대신 그 폴더(맥 캐시처럼 `<자료 id>/view/<쪽>.heic`)에서 가져온다. `-searchText <말>`은 찾기 칸에 넣어 둔 채, `-openSubject <과목 id>`는 그 과목의 단원 목록을, `-openUnit "unit:<과목 id>|<단원 키>"`는 그 단원의 개념 목록을(`-openUnitSummary YES`를 더하면 단원 요약까지), `-lookupTerm <영어 용어>`는 용어 시트를 연다. 시뮬레이터에서 지어낸 데이터로 `xcrun simctl io <기기> screenshot`으로 찍는다.
+- 화면 확인(디버그 빌드): `-mirrorFrom <폴더>`를 주고 띄우면 GitHub 대신 그 데이터 폴더에서 받는 경로만 옮겨 받아 둔 사본으로 쓴다. `-openConcept <개념 id>`는 그 학습 페이지를 열고, `-walkTo <이웃 개념 id>`는 앞뒤 개념 지도에서 그 이웃을 누른다. `-openMap <개념 id 또는 과목 id>`는 과목 개념 지도를 그 개념을 고른 채(과목 id 면 고르지 않고) 연다. `-openSettings YES`는 설정을 연다. `-openSource <자료 id>#<쪽>`은 원래 자료의 그 쪽을 열고, `-pagesFrom <폴더>`는 쪽 이미지를 자료 버킷 대신 그 폴더(맥 캐시처럼 `<자료 id>/view/<쪽>.heic`)에서 가져온다. `-searchText <말>`은 찾기 칸에 넣어 둔 채, `-findText <말>`은 `-openConcept`로 연 학습 페이지의 찾기 막대를 그 말로 연 채, `-openSubject <과목 id>`는 그 과목의 단원 목록을, `-openUnit "unit:<과목 id>|<단원 키>"`는 그 단원의 개념 목록을(`-openUnitSummary YES`를 더하면 단원 요약까지), `-lookupTerm <영어 용어>`는 용어 시트를 연다. 시뮬레이터에서 지어낸 데이터로 `xcrun simctl io <기기> screenshot`으로 찍는다.

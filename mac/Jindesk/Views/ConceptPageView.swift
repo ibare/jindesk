@@ -128,9 +128,9 @@ struct PageWebView: NSViewRepresentable {
     private var shown: String?
     private var follow = false
     private var followSent: Bool?
-    // 페이지 안 찾기: 보낼 요청과 마지막으로 보낸 요청 번호 (nil 이면 페이지에 표시가 없다)
+    // 페이지 안 찾기: 보낼 요청과 마지막으로 보낸 요청 (nil 이면 페이지에 표시가 없다)
     var find: FindRequest?
-    private var findSent: Int?
+    private var findSent: UUID?
 
     func setFollow(_ on: Bool) {
       follow = on
@@ -152,27 +152,20 @@ struct PageWebView: NSViewRepresentable {
       shown = json
       view?.evaluateJavaScript("window.jindesk.render(\(json))")
       // 다시 그리면 찾기 표시가 사라진다. 이미 보낸 요청이면 지금 곳을 지킨 채 다시 건다
-      if let find, findSent == find.seq { sendFind(find, keep: true) }
+      if let find, findSent == find.id { view?.evaluateJavaScript(find.script(keep: true)) }
     }
 
     // 새 찾기 요청을 보내거나, 요청이 없어졌으면 표시를 걷는다
     func flushFind() {
       guard ready, shown != nil else { return }
       if let find {
-        guard findSent != find.seq else { return }
-        findSent = find.seq
-        sendFind(find, keep: false)
+        guard findSent != find.id else { return }
+        findSent = find.id
+        view?.evaluateJavaScript(find.script())
       } else if findSent != nil {
         findSent = nil
-        view?.evaluateJavaScript("window.jindesk.find({query: \"\"})")
+        view?.evaluateJavaScript(FindRequest.clear)
       }
-    }
-
-    private func sendFind(_ r: FindRequest, keep: Bool) {
-      var o: [String: JSONValue] = ["query": .string(r.query), "step": .number(Double(r.step))]
-      if let unit = r.unit { o["unit"] = .string(unit) }
-      if keep { o["keep"] = .bool(true) }
-      view?.evaluateJavaScript("window.jindesk.find(\(JSONText.stringify(YAMLValue(json: .object(o)))))")
     }
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -480,7 +473,7 @@ struct PageFindBar: View {
         .focused($focused)
         .onSubmit { model.stepPageFind(1) }
         .onExitCommand { model.closePageFind() }
-      Text(Self.count(find)).font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
+      Text(find?.countLabel ?? "").font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
       ControlGroup {
         Button { model.stepPageFind(-1) } label: { Image(systemName: "chevron.left") }.help("이전 (⇧⌘G)")
         Button { model.stepPageFind(1) } label: { Image(systemName: "chevron.right") }.help("다음 (⌘G)")
@@ -500,10 +493,5 @@ struct PageFindBar: View {
     .onChange(of: model.pageFind?.focus) { focused = true }
     // 찾기 결과에서 다른 말로 다시 열면 칸도 그 말로
     .onChange(of: model.pageFind?.query) { if let q = model.pageFind?.query, q != text { text = q } }
-  }
-
-  static func count(_ find: PageFind?) -> String {
-    guard let find, !find.query.isEmpty else { return "" }
-    return find.total == 0 ? "없음" : "\(find.index) / \(find.total)"
   }
 }

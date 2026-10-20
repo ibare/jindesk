@@ -194,7 +194,6 @@ final class AppModel {
   var focusSearchField = 0
   // 학습 페이지 안 찾기 (찾기 막대)
   var pageFind: PageFind?
-  @ObservationIgnored var findSeq = 0
   @ObservationIgnored lazy var searchIndex = SearchIndex(folders)
   var showIntake = false
   // 자료 넣기 시트를 그 묶음에 더하는 카드로 연다 (묶음 보기의 "자료 더하기…")

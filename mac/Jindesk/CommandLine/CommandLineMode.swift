@@ -21,7 +21,7 @@ struct JindeskCommand: AsyncParsableCommand {
     abstract: "Jindesk 명령줄 모드",
     subcommands: [
       DoctorCommand.self, IntakeCommand.self, ContinueCommand.self, RebuildPagesCommand.self, RecurateCommand.self, DirectiveCommand.self, FigureCheckCommand.self, OutcomeCheckCommand.self, MigrateCommand.self,
-      BackupCommand.self, SyncCommand.self,
+      BackupCommand.self, SyncCommand.self, SearchCommand.self,
       VersionCommand.self,
     ]
   )
@@ -485,6 +485,53 @@ struct BackupCommand: AsyncParsableCommand {
       print("다른 Jindesk 프로세스가 작업 중입니다. 끝나기를 기다립니다…")
     }
     print(url.path)
+  }
+}
+
+// 찾기를 화면 없이 해 본다 (DECISIONS.md 48). 실제 데이터로 순위를 보고 진단 질의를 다시 잰다.
+// 색인은 앱 캐시의 것을 건드리지 않게 임시 폴더에 데이터 폴더마다 따로 만든다.
+struct SearchCommand: AsyncParsableCommand {
+  static let configuration = CommandConfiguration(
+    commandName: "search", abstract: "데이터 폴더에서 찾기를 해 본다. 질의마다 개념 순위와 용어·기호·원래 자료의 쪽 수를 찍는다")
+
+  @Option(help: "데이터 폴더. 주지 않으면 앱에서 고른 폴더") var data: String?
+  @Option(help: "이 과목만 (과목 id)") var subject: String?
+  @Option(help: "질의마다 찍을 개념 수") var limit = 10
+  @Argument(help: "질의. 여럿이면 하나씩 찾는다. 빈칸이 든 질의는 따옴표로 묶는다") var queries: [String] = []
+
+  @MainActor
+  func run() async throws {
+    guard let folder = CommandLineMode.dataFolder(data), folder.isInitialized else { throw ValidationError("Jindesk 데이터 폴더를 찾지 못했습니다") }
+    guard !queries.isEmpty else { throw ValidationError("질의를 준다") }
+    let url = FileManager.default.temporaryDirectory.appending(path: "jindesk-search/\(Hash.short(Data(folder.path.utf8))).sqlite")
+    let index = SearchIndex(url: url)
+    index.update(folder)
+    let glossary = Glossary.load(folder)
+    let concepts = ConceptStore.everything(folder)
+    let sourceSubject = Dictionary(SourceLibrary.load(folder).sources.map { ($0.id, $0.labels.labels.subjectID) }, uniquingKeysWith: { a, _ in a })
+    for query in queries {
+      let q = SearchQuery(query)
+      var found = index.search(query)
+      if let subject { found.concepts = found.concepts.filter { $0.subject == subject } }
+      let terms = glossary.terms.filter { t in q.matches(t.names + [t.ko]) && (subject.map { t.subjects.isEmpty || t.subjects.contains($0) } ?? true) }
+      var symbols = Set<String>()
+      for c in concepts where subject == nil || c.subject == subject {
+        for s in c.symbols where q.matches([TexText.display(s.symbol), s.meaning]) { symbols.insert(s.symbol) }
+      }
+      let pages = index.sourcePages(query).filter { hit in subject.map { sourceSubject[hit.source] == $0 } ?? true }
+      let bySubject = Dictionary(grouping: found.concepts, by: \.subject).map { "\($0.key) \($0.value.count)" }.sorted().joined(separator: " · ")
+      print("· \(query): 개념 \(found.concepts.count)\(bySubject.isEmpty ? "" : " (\(bySubject))") · 용어 \(terms.count) · 기호 \(symbols.count) · 원래 자료 \(pages.count)쪽")
+      for (i, m) in found.concepts.prefix(limit).enumerated() {
+        let snippet = m.snippets.first.map { " — " + Self.show($0.text) } ?? ""
+        print("  \(i + 1). \(m.title)\(m.titleKo.map { " · \($0)" } ?? "")\(m.inTitle ? " [이름]" : "") \(m.count)곳\(snippet)")
+      }
+      for s in found.suggestions { print("  제안: \(s)") }
+    }
+  }
+
+  // 찾은 말 표시를 눈에 보이는 괄호로
+  static func show(_ marked: String) -> String {
+    marked.replacingOccurrences(of: String(SearchMark.open), with: "⟦").replacingOccurrences(of: String(SearchMark.close), with: "⟧")
   }
 }
 

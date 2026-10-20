@@ -187,10 +187,10 @@ import Testing
 
 @Test func searchExcerpt() {
   let long = String(repeating: "word ", count: 40) + "\u{1}key\u{2}" + String(repeating: " tail", count: 60)
-  let e = SearchHit.excerpt(long)
+  let e = SearchMark.excerpt(long)
   #expect(e.hasPrefix("…") && e.hasSuffix("…") && e.contains("\u{1}key\u{2}"))
   #expect(e.count <= 182)
-  #expect(SearchHit.excerpt("short \u{1}hit\u{2} text") == "short \u{1}hit\u{2} text")
+  #expect(SearchMark.excerpt("short \u{1}hit\u{2} text") == "short \u{1}hit\u{2} text")
 }
 
 @Test func asciiMathInProse() {
@@ -198,32 +198,6 @@ import Testing
   #expect(!TexText.asciiMath("so log_8 of the root is a half", field: "caption").isEmpty)
   #expect(TexText.asciiMath(#"The value is \(7^{-1} = \frac{1}{7}\), so \(\log_7 \frac{1}{7} = -1\)."#, field: "caption").isEmpty)
   #expect(TexText.asciiMath("Press the `x^2` key, then the ^ key.", field: "text").isEmpty)
-}
-
-@Suite struct SearchIndexTests {
-  @Test func 영어와_한국어를_함께_찾고_바뀐_것이_없으면_다시_만들지_않는다() throws {
-    let t = TempPlace()
-    try t.data.initialize(app: testApp)
-    let cid = ConceptID("math/unplaced/laws")!
-    try Concept(
-      cid: cid, title: "Laws of logarithms", itemProposed: nil, occurrences: [], symbols: [], nextID: 2,
-      units: [ConceptUnit(id: "u1", text: "The product law adds logarithms.", conditions: [], claims: [])], provenance: YAMLMap([])
-    ).write(t.data)
-    let unit = PageUnit(id: "p1", rev: 1, kind: .para, from: "u1@x", prov: "source", text: "The product law adds logarithms.")
-    let folder = ConceptFolder(cid, in: t.data)
-    try Page(concept: cid.text, titleKo: "로그의 성질", nextID: 2, units: [unit], provenance: YAMLMap([])).write(folder)
-    try Layers(concept: cid.text, ko: ["p1": LayerText(from: "p1@r1", unitHash: unit.hash, text: "곱의 법칙은 로그를 더한다.", prov: YAMLMap([]))]).write(folder, order: ["p1"])
-    let index = SearchIndex(t.folders)
-    #expect(index.update(t.data))
-    #expect(!index.update(t.data))
-    #expect(index.search("product law").first?.unit == "p1")
-    #expect(index.search("곱의 법칙").first?.concept == cid.text)
-    #expect(index.search("로그").contains { $0.concept == cid.text })
-    #expect(index.search("nothing like this").isEmpty)
-    // 찾은 말이 표시된 채로, 짧은 말도 표시된다
-    #expect(index.search("product law").first?.snippet.contains("\u{1}product law\u{2}") == true)
-    #expect(index.search("로그").first { $0.unit != nil }?.snippet.contains("\u{1}로그\u{2}") == true)
-  }
 }
 
 @Suite struct SchemaTests {

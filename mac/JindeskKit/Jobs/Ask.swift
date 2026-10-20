@@ -66,19 +66,19 @@ public enum Ask {
     try FileOps.write(q.joined(separator: "\n") + "\n", to: dirs.input.appending(path: "question.md"))
     try FileOps.copy(folder.concept, to: dirs.input.appending(path: "concept.yaml"))
     if FileOps.exists(folder.page) { try FileOps.copy(folder.page, to: dirs.input.appending(path: "page.yaml")) }
-    try AgentStep.writeGlossary(ctx.data, into: dirs.input)
+    try AgentStep.writeGlossary(ctx.data, into: dirs.input, subject: concept.subject)
 
     await ctx.setPhase("running")
     let options = AgentStep.options(ctx, dirs, instructions: instructionsFile, prompt: prompt, events: "ask")
     let result = try await AgentStep.run(options, ctx, label: "물어보기")
     await ctx.setPhase("checking")
     let available = Set(pagesBySource.flatMap { s, ps in ps.map { SourceRef.make(s, page: $0) } })
-    var checked = check(out: dirs.out, available: available, glossary: Glossary.load(ctx.data))
+    var checked = check(out: dirs.out, available: available, glossary: Glossary.load(ctx.data).of(subject: concept.subject))
     if !checked.problems.isEmpty {
       await ctx.setPhase("fixing")
       try await AgentStep.fix(options, session: result.sessionID, problems: checked.problems, ctx: ctx, label: "물어보기", events: "ask-fix")
       await ctx.setPhase("checking")
-      checked = check(out: dirs.out, available: available, glossary: Glossary.load(ctx.data))
+      checked = check(out: dirs.out, available: available, glossary: Glossary.load(ctx.data).of(subject: concept.subject))
     }
     guard checked.problems.isEmpty, let answer = checked.answer else { throw ToolError("물어보기 검사 실패: " + checked.problems.prefix(5).joined(separator: " · ")) }
 

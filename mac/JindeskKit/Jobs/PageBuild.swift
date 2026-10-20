@@ -125,6 +125,7 @@ public enum PageBuild {
     if let labels {
       request.append("- 과목: \(labels.name)")
       if !(labels.grades + labels.levels).isEmpty { request.append("- 학년·수준: \((labels.grades + labels.levels).joined(separator: ", "))") }
+      if let target = LanguageAcquisition.target(of: labels.name) { request.append(LanguageAcquisition.requestLine(target)) }
     }
     request.append("- 원문 단위: \(concept.units.map(\.id).joined(separator: ", "))")
     request.append("- 이전 페이지: \(old == nil ? "없다. 처음 만든다" : "input/page.yaml")")
@@ -147,26 +148,27 @@ public enum PageBuild {
     var figures = await checkFigures(checked.draft, ctx: ctx, tag: tag)
     // 학습 목표 시험: 해당하는 목표마다 그것을 연습하는 확인 문제가 있는가. 첫 검사의 문제와 함께 한 번 고쳐 쓰게 한다.
     let level = ReaderTest.level(SourceLibrary.load(ctx.data).sources.first { $0.labels.labels.subjectID == concept.subject }?.labels.labels)
+    let subjectName = labels?.name ?? concept.subject
     func outcomeGaps(_ draft: Draft?, _ round: Int) async -> [OutcomeTest.Verdict] {
       guard let draft, !goals.isEmpty else { return [] }
       let others = ConceptStore.all(ctx.data, subject: concept.subject).filter { $0.id != concept.id }.map(\.title)
       let (verdicts, error) = await OutcomeTest.check(
-        text: studyText(draft, concept: concept), goals: goals, level: level, subject: labels?.name ?? concept.subject, others: others,
+        text: studyText(draft, concept: concept), goals: goals, level: level, subject: subjectName, others: others,
         config: ctx.config, scratch: dirs.run.appending(path: "outcome-\(round)"))
       if let error { await ctx.log(.warn, "[\(tag)] 학습 목표 시험을 하지 못했습니다: \(error)") }
       return verdicts
     }
     var outcome = await outcomeGaps(checked.draft, 1)
-    let first = checked.problems + figures.problems + OutcomeTest.unpracticed(outcome, goals: goals)
+    let first = checked.problems + figures.problems + OutcomeTest.unpracticed(outcome, goals: goals, subject: subjectName)
     if !first.isEmpty {
       await ctx.log(.warn, "[\(tag)] 검사에서 \(first.count)건이 나와 고쳐 쓰게 합니다: \(first.prefix(3).joined(separator: " · "))")
       try await AgentStep.fix(options, session: result.sessionID, problems: first, ctx: ctx, label: "\(tag) 페이지", events: "page-fix")
       checked = check(out: dirs.out, concept: concept, math: math)
       figures = await checkFigures(checked.draft, ctx: ctx, tag: tag)
-      if !OutcomeTest.unpracticed(outcome, goals: goals).isEmpty { outcome = await outcomeGaps(checked.draft, 2) }
+      if !OutcomeTest.unpracticed(outcome, goals: goals, subject: subjectName).isEmpty { outcome = await outcomeGaps(checked.draft, 2) }
     }
     // 고쳐 써도 남은 것은 기록에만 남긴다. 페이지만으로 해낼 수 없는 목표도 기록에 남긴다 (문단은 개념 원문이라 여기서 고치지 못한다).
-    for line in OutcomeTest.unpracticed(outcome, goals: goals) + OutcomeTest.unmet(outcome, goals: goals) {
+    for line in OutcomeTest.unpracticed(outcome, goals: goals, subject: subjectName) + OutcomeTest.unmet(outcome, goals: goals, subject: subjectName) {
       await ctx.log(.warn, "[\(tag)] 학습 목표 시험: \(line)")
     }
     guard checked.problems.isEmpty, var draft = checked.draft else {

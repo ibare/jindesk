@@ -248,7 +248,7 @@ public enum ConceptCuration {
         await ctx.log(.warn, "학습 목표 시험을 하지 못했습니다 (\(p.title)): \(error)")
         continue
       }
-      problems += OutcomeTest.unmet(verdicts, goals: goals).map { "concepts[\(i)] (\(p.title)): \($0)" }
+      problems += OutcomeTest.unmet(verdicts, goals: goals, subject: subject).map { "concepts[\(i)] (\(p.title)): \($0)" }
     }
     return problems
   }
@@ -262,6 +262,7 @@ public enum ConceptCuration {
       request.append("- 과목 꼬리표: \(s.name)")
       if !s.grades.isEmpty { request.append("- 학년: \(s.grades.joined(separator: ", "))") }
       if !s.levels.isEmpty { request.append("- 수준: \(s.levels.joined(separator: ", "))") }
+      if let target = LanguageAcquisition.target(of: s.name) { request.append(LanguageAcquisition.requestLine(target)) }
     }
     request.append("- 목차: \(FileOps.exists(data.syllabusFile(input.subject)) ? "input/syllabus.yaml" : "아직 없다. 모든 개념이 목차 밖이다")")
     if !input.bundle.isEmpty { request.append("- 묶음: \(input.bundle) (같은 내용을 다룬다고 학생이 묶어 넣은 자료들. 주제 하나의 경계는 아니다)") }

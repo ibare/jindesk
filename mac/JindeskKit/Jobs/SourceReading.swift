@@ -215,6 +215,7 @@ public enum SourceReading {
     if let lead = targets.first {
       let tags = lead.labels.labels.entries.map { "\(SourceLabels.displayName($0.name)) \($0.value)" }
       lines.append("- 꼬리표: \(tags.isEmpty ? "없음" : tags.joined(separator: " · "))")
+      if let target = lead.labels.labels.subject.flatMap(LanguageAcquisition.target) { lines.append(LanguageAcquisition.requestLine(target)) }
     }
     if let memo = bundle.memo { lines.append("- 묶음 메모: \(memo)") }
     lines += ["", "## 읽을 자료", "", "| 자료 id | 원본 파일 | 쪽 | 목차의 근거 | 메모 |", "|---|---|---|---|---|"]

@@ -142,7 +142,7 @@ public enum Regen {
     let folder = ConceptFolder(concept.cid, in: ctx.data)
     try FileOps.copy(folder.concept, to: dirs.input.appending(path: "concept.yaml"))
     try FileOps.copy(folder.page, to: dirs.input.appending(path: "page.yaml"))
-    try AgentStep.writeGlossary(ctx.data, into: dirs.input)
+    try AgentStep.writeGlossary(ctx.data, into: dirs.input, subject: concept.subject)
     // 블록(풀이, 확인 문제, 그림)의 모양과 그림 규칙은 학습 페이지 지침에 있다. 참고로 함께 둔다.
     if let reference = FileOps.readIfExists(ctx.config.instructions.file(.pageBuild)) {
       try FileOps.write(reference, to: dirs.input.appending(path: "reference/page-build.md"))
@@ -173,7 +173,11 @@ public enum Regen {
       r += ["- 이 요구가 나온 코멘트(\(comment.kind.label)): \(comment.text ?? "")"]
     }
     let level = ReaderTest.level(library.sources.first { $0.labels.labels.subjectID == concept.subject }?.labels.labels)
-    r += ["- 학생: \(level)", "", "## 대상 단위의 지금 글", ""]
+    r.append("- 학생: \(level)")
+    if let target = LanguageAcquisition.target(of: library.subjects.first { $0.id == concept.subject }?.name ?? concept.subject) {
+      r.append(LanguageAcquisition.requestLine(target))
+    }
+    r += ["", "## 대상 단위의 지금 글", ""]
     r.append(unit.english ?? (unit.block.map { YAML.stringify($0) } ?? ""))
     if let source {
       r += ["", "## 이 단위가 온 원문 단위 (\(source.id))", "", source.text, ""]
@@ -251,7 +255,7 @@ public enum Regen {
     case .success(let value): v = value
     }
     let math = ctx.config.katex.flatMap(MathChecker.init(katex:))
-    let glossary = Glossary.load(ctx.data)
+    let glossary = Glossary.load(ctx.data).of(subject: base.concept.subject)
     let original = base.unit.english ?? base.source?.text ?? ""
     let side = d.op == .easy || (d.op == .detail && (d.note?.contains("곁") ?? false))
 

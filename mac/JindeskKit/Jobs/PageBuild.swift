@@ -1,6 +1,6 @@
 // 학습 페이지 만들기 (page-build, JOBS.md). 개념 원문(concept.yaml)에서 학습 페이지(page.yaml)를 만든다. 개념마다 에이전트 하나, 셋씩 함께 돈다.
 // 문단은 원문 단위의 글을 그대로 쓴다. 에이전트는 문단의 차례와 수식 블록, 강조 상자, 한국어 제목을 정하고, 러너가 원문 글을 넣는다.
-// 시작할 때 페이지가 없거나 낡은 개념을 고른다. 낡은 것은 원문 단위의 해시가 바뀌었거나 지침 판이 바뀐 것이다.
+// 시작할 때 페이지가 없거나 낡은 개념을 고른다. 낡은 것은 원문 단위가 바뀐 것이다. 지침 판이 바뀐 것만으로는 낡지 않는다 (DECISIONS.md 45).
 // 블록은 수식(math)과 그림(figure)이 있다. 그림은 에이전트가 HTML 조각으로 짜고, 러너는 화면 밖 웹 보기에서 돌아가는지만 본다.
 // 풀이(derivation) 블록은 다음에 붙인다.
 import Foundation
@@ -17,23 +17,21 @@ public enum PageBuild {
     }
   }
 
-  // 페이지가 없거나 낡았는가
-  public static func needsPage(_ concept: Concept, page: Page?, version: String?) -> Bool {
+  // 페이지가 없거나 낡았는가. 원문 단위(id 와 해시)가 페이지의 문단과 다를 때만 낡았다. 지침 판은 보지 않는다.
+  public static func needsPage(_ concept: Concept, page: Page?) -> Bool {
     guard let page else { return true }
-    if let version, page.instructionsVersion != version { return true }
     let current = Set(concept.units.map { "\($0.id)@\($0.hash)" })
     let paras = page.units.filter { $0.kind == .para }.map(\.from)
     return Set(paras) != current || paras.count != current.count || page.units.contains { !current.contains($0.from) }
   }
 
-  public static func pending(_ data: DataFolder, subject: String, version: String?) -> [Concept] {
-    ConceptStore.all(data, subject: subject).filter { needsPage($0, page: Page.load(ConceptFolder($0.cid, in: data)), version: version) }
+  public static func pending(_ data: DataFolder, subject: String) -> [Concept] {
+    ConceptStore.all(data, subject: subject).filter { needsPage($0, page: Page.load(ConceptFolder($0.cid, in: data))) }
   }
 
   static func run(subject: String, _ ctx: JobContext) async throws {
     await ctx.setPhase("preparing")
-    let instructions = try Instructions.read(ctx.config.instructions, kind: .pageBuild)
-    let todo = pending(ctx.data, subject: subject, version: instructions.version)
+    let todo = pending(ctx.data, subject: subject)
     if todo.isEmpty {
       await ctx.log(.info, "만들 페이지가 없습니다")
       await ctx.report(counts: [JobCount(key: "pages", label: "페이지", count: 0)])

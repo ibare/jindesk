@@ -220,7 +220,7 @@ struct ContinueCommand: AsyncParsableCommand {
   @MainActor
   func run() async throws {
     guard let folder = CommandLineMode.dataFolder(data), folder.isInitialized else { throw ValidationError("Jindesk 데이터 폴더를 찾지 못했습니다") }
-    var work = Pipeline.pending(folder, instructions: AppPaths.instructions)
+    var work = Pipeline.pending(folder)
     if let only { work = work.filter { $0.kind.rawValue == only } }
     for w in work { print("· \(w.kind.label): \(w.label)") }
     if work.isEmpty { print("남은 일이 없습니다") }

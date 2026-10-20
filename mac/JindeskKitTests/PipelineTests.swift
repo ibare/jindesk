@@ -653,13 +653,12 @@ extension CurationCheckTests {
     let en = "Use *ir a* + infinitive for plans: *Mañana voy a reciclar el papel y el cartón.* Another example: *Me gusta mucho la comida de mi abuela.* (I really like my grandmother's food.)"
     let ko = "계획은 *ir a* + 동사원형으로 말한다: *Mañana voy a reciclar el papel y el cartón.* 다른 예: *Me gusta mucho la comida de mi abuela.* (나는 할머니의 음식을 정말 좋아한다.)"
     #expect(Translation.unitProblems(en: en, ko: ko, glossary: g).isEmpty)
-    // 가운데의 약어와 괄호를 덜어 내도 영어 단위와 맞춰 본다
-    let quoted = "*¿Puedes comparar las habilidades del estudiante IB con las de tu familia (ATL skills)?*"
-    #expect(Translation.leftoverEnglish("질문 예: \(quoted) (네 가족의 것과 견줄 수 있는가?)", en: "A question: \(quoted) (Can you compare them?)") == nil)
-    // 영어 단위에 없는 외국어 글이나, 옮기지 않은 영어 설명은 그대로 잡는다
-    #expect(Translation.leftoverEnglish("예: *Me gusta mucho la comida de mi abuela* 이다") != nil)
-    let untranslated = "계획은 use ir a plus the infinitive to talk about plans 로 말한다: *Mañana voy a reciclar el papel y el cartón.*"
-    #expect(Translation.leftoverEnglish(untranslated, en: en + " Use ir a plus the infinitive to talk about plans.") != nil)
+    // 가운데에 약어와 괄호가 있는 외국어 문장, 영어 단위와 모양이 다른 낱말 나열도 세지 않는다
+    #expect(Translation.leftoverEnglish("질문 예: *¿Puedes comparar las habilidades del estudiante IB con las de tu familia (ATL skills)?*") == nil)
+    #expect(Translation.leftoverEnglish("일터의 사람: el doctor, la veterinaria, la enfermera, el piloto, el cocinero 가 있다") == nil)
+    // 옮기지 않은 영어 설명과 영어 낱말 나열은 그대로 잡는다
+    #expect(Translation.leftoverEnglish("계획은 use ir a plus the infinitive to talk about plans 로 말한다: *Mañana voy a reciclar el papel y el cartón.*") != nil)
+    #expect(Translation.leftoverEnglish("기술: teamwork, leadership, creativity, communication, empathy, resilience 이다") != nil)
   }
 
   @Test func 다른_과목의_용어로는_막지_않는다() {

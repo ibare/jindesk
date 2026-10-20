@@ -177,14 +177,25 @@ final class AppModel {
   // 모아 보기에서 고른 범주와 과목 (nil 이면 모든 과목)
   var collectionsTab = CollectionsTab.terms
   var collectionsSubject: String?
-  // 찾기 (영어 원문과 한국어 곁 층)
+  // 찾기 (영어 원문과 한국어 곁 층, DECISIONS.md 48). 찾는 말이 바뀌면 과목 거르기를 전체로 돌린다
   var searchText = "" {
-    didSet { if searchText != oldValue { runSearch() } }
+    didSet {
+      guard searchText != oldValue else { return }
+      searchSubject = nil
+      runSearch()
+    }
   }
-  private(set) var searchResults: [SearchHit] = []
+  var searchResults = SearchResults.empty
   // 찾기의 원래 자료 (자료 쪽 글자층, DECISIONS.md 34)
-  private(set) var searchPageHits: [PageHit] = []
-  @ObservationIgnored private lazy var searchIndex = SearchIndex(folders)
+  var searchPageHits: [PageHit] = []
+  // 찾기 결과를 거르는 과목 (nil 이면 전체)
+  var searchSubject: String?
+  // 사이드바의 찾기 칸에 커서를 둔다 (⌘F 를 눌렀는데 학습 페이지가 열려 있지 않을 때). 오를 때마다 찾기 칸이 받는다
+  var focusSearchField = 0
+  // 학습 페이지 안 찾기 (찾기 막대)
+  var pageFind: PageFind?
+  @ObservationIgnored var findSeq = 0
+  @ObservationIgnored lazy var searchIndex = SearchIndex(folders)
   var showIntake = false
   // 자료 넣기 시트를 그 묶음에 더하는 카드로 연다 (묶음 보기의 "자료 더하기…")
   var intakeBundle: String?
@@ -481,41 +492,6 @@ final class AppModel {
     Task.detached { [weak self] in
       if index.update(data) { await self?.runSearch() }
     }
-  }
-
-  func runSearch() {
-    let q = searchText
-    let index = searchIndex
-    Task.detached { [weak self] in
-      let hits = index.search(q)
-      let pages = index.sourcePages(q)
-      await MainActor.run { [weak self] in
-        guard let self, self.searchText == q else { return }
-        self.searchResults = hits
-        self.searchPageHits = pages
-      }
-    }
-  }
-
-  // 원래 자료의 쪽에서 찾은 곳 (모아 보기의 용어)
-  func sourcePageHits(_ query: String) -> [PageHit] { searchIndex.sourcePages(query) }
-
-  // 찾기의 용어: 영어나 한국어에 찾는 말이 든 용어집의 용어
-  func searchTerms(_ query: String) -> [GlossaryTerm] {
-    let q = query.trimmingCharacters(in: .whitespaces)
-    guard let data, !q.isEmpty else { return [] }
-    return Glossary.load(data).terms.filter { t in (t.names + [t.ko]).contains { $0.localizedCaseInsensitiveContains(q) } }
-      .sorted { $0.en.localizedCaseInsensitiveCompare($1.en) == .orderedAscending }
-  }
-
-  // 찾기의 기호: 기호나 뜻에 찾는 말이 든 개념의 기호
-  func searchSymbols(_ query: String) -> [(symbol: String, meaning: String)] {
-    let q = query.trimmingCharacters(in: .whitespaces)
-    guard !q.isEmpty else { return [] }
-    var seen = Set<String>()
-    return allConcepts.flatMap(\.symbols).filter { s in
-      (TexText.display(s.symbol).localizedCaseInsensitiveContains(q) || s.meaning.localizedCaseInsensitiveContains(q)) && seen.insert(s.symbol).inserted
-    }.map { ($0.symbol, $0.meaning) }
   }
 
   // 원래 자료의 그 쪽을 쓴 개념

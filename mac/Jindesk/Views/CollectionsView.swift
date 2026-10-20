@@ -8,17 +8,22 @@ struct TodayView: View {
   var body: some View {
     let bundles = model.recentBundles(days: 7)
     let candidates = model.candidates()
-    if bundles.isEmpty && candidates.isEmpty && model.waitingWork.isEmpty {
+    let proposals = model.proposals
+    if bundles.isEmpty && candidates.isEmpty && proposals.isEmpty && model.waitingWork.isEmpty {
       ContentUnavailableView("오늘 볼 것이 아직 없어요", systemImage: "sun.max", description: Text("자료를 넣으면 그 묶음에서 정리된 개념이 여기에 모입니다."))
     } else {
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 6) {
-          if !model.waitingWork.isEmpty || !candidates.isEmpty {
-            ListLabel(text: "할 일", trailing: "\((model.waitingWork.isEmpty ? 0 : 1) + candidates.count)").padding(.horizontal, 10).padding(.top, 6)
+          if !model.waitingWork.isEmpty || !candidates.isEmpty || !proposals.isEmpty {
+            ListLabel(text: "할 일", trailing: "\((model.waitingWork.isEmpty ? 0 : 1) + candidates.count + proposals.count)").padding(.horizontal, 10).padding(.top, 6)
             VStack(spacing: 0) {
               if !model.waitingWork.isEmpty { PendingBanner() }
+              ForEach(proposals) { p in
+                if p.id != proposals.first?.id || !model.waitingWork.isEmpty { Divider().padding(.horizontal, 10) }
+                ProposalRow(proposal: p)
+              }
               ForEach(candidates) { d in
-                if d.id != candidates.first?.id || !model.waitingWork.isEmpty { Divider().padding(.horizontal, 10) }
+                if d.id != candidates.first?.id || !model.waitingWork.isEmpty || !proposals.isEmpty { Divider().padding(.horizontal, 10) }
                 CandidateRow(directive: d)
               }
             }

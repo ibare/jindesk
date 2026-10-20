@@ -11,6 +11,8 @@ struct SubjectsView: View {
   @State private var picked: Set<SubjectSelection> = []
   // 확인을 기다리는 페이지 다시 만들기
   @State private var rebuild: PageRebuildAsk?
+  // 확인 시트를 띄운 개념 다시 정리 (고른 개념 id)
+  @State private var recurating: RecurateAsk?
   @State private var error: String?
 
   var body: some View {
@@ -18,6 +20,7 @@ struct SubjectsView: View {
       // 목록 칸. 고른 것은 내용 칸(SelectionDetail)에 보인다.
       VStack(spacing: 0) {
         if !model.waitingWork.isEmpty { PendingBanner().card().padding(.horizontal, 10).padding(.top, 8) }
+        ForEach(model.proposals.filter { $0.subject == subject.id }) { p in ProposalRow(proposal: p).card().padding(.horizontal, 10).padding(.top, 8) }
         ScrollViewReader { proxy in
           List(selection: $picked) {
             // 줄 사이에 구분선을 긋지 않는다 (DECISIONS.md 32)
@@ -60,6 +63,7 @@ struct SubjectsView: View {
       } message: { ask in
         Text("개념 \(ask.ids.count)개의 학습 페이지를 지금 지침으로 처음부터 다시 짭니다. 문단 글은 개념 원문 그대로이고, 확인 문제, 강조 상자, 그림이 새로 나옵니다. 이전 판은 기록에 남습니다.")
       }
+      .sheet(item: $recurating) { ask in RecurateSheet(ask: ask) }
       .alert("작업을 넣지 못했습니다", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
         Button("확인", role: .cancel) {}
       } message: {
@@ -83,6 +87,7 @@ struct SubjectsView: View {
       Button(ids.count == 1 ? "페이지 다시 만들기" : "페이지 다시 만들기 (\(ids.count)개)") {
         rebuild = PageRebuildAsk(title: ids.count == 1 ? "이 개념의 페이지를 다시 만들까요?" : "개념 \(ids.count)개의 페이지를 다시 만들까요?", ids: ids)
       }
+      Button(ids.count == 1 ? "개념 다시 정리…" : "개념 다시 정리… (\(ids.count)개)") { recurating = RecurateAsk(ids: ids) }
     }
     ForEach(items.compactMap { if case .unit(let s, let k) = $0 { [s, k] } else { nil } }, id: \.self) { pair in
       let unit = model.unit(pair[0], pair[1])
@@ -101,6 +106,85 @@ struct SubjectsView: View {
       try? await Task.sleep(for: .milliseconds(60))
       withAnimation { proxy.scrollTo(id, anchor: .center) }
     }
+  }
+}
+
+// 확인 시트를 띄운 개념 다시 정리 (DECISIONS.md 47)
+struct RecurateAsk: Identifiable {
+  let ids: [String]
+  var id: String { ids.joined(separator: ",") }
+}
+
+// 개념 다시 정리 확인 시트: 무엇을 하는지 보이고 작업을 넣는다. 결과는 후보로 남고 대응표를 보고 반영한다.
+struct RecurateSheet: View {
+  @Environment(AppModel.self) private var model
+  @Environment(\.dismiss) private var dismiss
+  let ask: RecurateAsk
+  @State private var error: String?
+  @State private var busy = false
+
+  var body: some View {
+    let concepts = ask.ids.compactMap { model.concept($0) }
+    let entries = Set(concepts.flatMap { $0.occurrences.map(\.entry) }).count
+    let others = (model.concepts[concepts.first?.subject ?? ""]?.count ?? 0) - concepts.count
+    VStack(alignment: .leading, spacing: 12) {
+      Text("개념 \(concepts.count)개를 다시 정리합니다").font(.headline)
+      Text("이 개념들이 쓴 엔트리 \(entries)개를 지금 지침으로 다시 정리합니다.").font(.callout)
+      VStack(alignment: .leading, spacing: 4) {
+        Label("개념이 줄거나 늘고, 나뉘거나 합쳐질 수 있습니다.", systemImage: "arrow.triangle.branch")
+        Label("끝나면 대응표를 보여 드립니다. 보고 반영할지 고릅니다.", systemImage: "tablecells")
+        Label("고르지 않은 개념 \(max(others, 0))개는 바꾸지 않고, 내용을 받을 때만 보강합니다.", systemImage: "lock")
+      }
+      .font(.callout).foregroundStyle(.secondary)
+      ScrollView {
+        VStack(alignment: .leading, spacing: 3) {
+          ForEach(concepts) { c in Text("· \(c.title)").font(.system(size: 12)).lineLimit(1) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .frame(maxHeight: 120)
+      if let error { Text(error).font(.caption).foregroundStyle(.red) }
+      HStack {
+        Spacer()
+        Button("취소") { dismiss() }.keyboardShortcut(.cancelAction)
+        Button(busy ? "넣는 중…" : "다시 정리") {
+          busy = true
+          Task {
+            do {
+              try await model.recurate(ask.ids)
+              dismiss()
+            } catch {
+              self.error = error.localizedDescription
+            }
+            busy = false
+          }
+        }
+        .keyboardShortcut(.defaultAction)
+        .disabled(busy || concepts.isEmpty)
+      }
+    }
+    .padding(18)
+    .frame(width: 460)
+  }
+}
+
+// 검토를 기다리는 개념 다시 정리 후보: 누르면 내용 칸에 대응표를 연다 (DECISIONS.md 47)
+struct ProposalRow: View {
+  @Environment(AppModel.self) private var model
+  let proposal: Recuration.Proposal
+
+  var body: some View {
+    HStack(spacing: 10) {
+      Image(systemName: "arrow.triangle.merge").font(.system(size: 13)).foregroundStyle(Color.accentColor).frame(width: 16)
+      VStack(alignment: .leading, spacing: 1) {
+        Text("검토할 다시 정리").font(.system(size: 13, weight: .semibold))
+        Text("\(model.library.subjects.first { $0.id == proposal.subject }?.name ?? proposal.subject) · 개념 \(proposal.before)개 → \(proposal.after)개")
+          .font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
+      }
+      Spacer(minLength: 0)
+      Button("대응표 보기") { model.selection = .proposal(proposal.job) }.controlSize(.small)
+    }
+    .padding(10)
   }
 }
 

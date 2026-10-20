@@ -79,6 +79,8 @@ enum SubjectSelection: Hashable {
   case entry(String)
   // 자료 묶음 (묶음 id, DECISIONS.md 35)
   case bundle(String)
+  // 개념 다시 정리 후보 (작업 id, DECISIONS.md 47)
+  case proposal(String)
 }
 
 // 데이터 폴더에서 다시 읽은 것. 주 스레드 밖에서 읽고 주 스레드에서 반영한다.
@@ -88,6 +90,8 @@ struct LibrarySnapshot: Sendable {
   var concepts: [String: [Concept]]
   var syllabi: [String: Syllabus]
   var readSources: [String: [String]]
+  // 반영하지도 버리지도 않은 개념 다시 정리 후보
+  var proposals: [Recuration.Proposal]
   // 남은 일과 실행 기록 (사용자가 한 일 뒤 바로 읽을 때는 읽지 않는다)
   var pending: [PendingWork]?
   var history: [RunRecord]?
@@ -99,7 +103,8 @@ struct LibrarySnapshot: Sendable {
     var syllabi: [String: Syllabus] = [:]
     for s in library.subjects { if let y = Syllabus.load(data, subject: s.id) { syllabi[s.id] = y } }
     return LibrarySnapshot(
-      library: library, bundles: BundleStore.all(data, library: library), concepts: concepts, syllabi: syllabi, readSources: SourceReading.readSources(data))
+      library: library, bundles: BundleStore.all(data, library: library), concepts: concepts, syllabi: syllabi, readSources: SourceReading.readSources(data),
+      proposals: Recuration.pending(data))
   }
 }
 
@@ -152,6 +157,8 @@ final class AppModel {
   private(set) var syllabi: [String: Syllabus] = [:]
   // 자료마다 끝난 자료 읽기
   private(set) var readSources: [String: [String]] = [:]
+  // 반영하지도 버리지도 않은 개념 다시 정리 후보 (DECISIONS.md 47)
+  private(set) var proposals: [Recuration.Proposal] = []
   // 흐름이 끊겨 남은 일 (이어서 하기)
   private(set) var pendingWork: [PendingWork] = []
   // 과목 화면에서 고른 것 (개념이나 자료)
@@ -465,6 +472,7 @@ final class AppModel {
     if s.concepts != concepts { concepts = s.concepts }
     if s.syllabi != syllabi { syllabi = s.syllabi }
     if s.readSources != readSources { readSources = s.readSources }
+    if s.proposals != proposals { proposals = s.proposals }
     if let pending = s.pending, pending != pendingWork { pendingWork = pending }
     if let history = s.history { self.history = history }
     dataVersion += 1
@@ -884,6 +892,56 @@ final class AppModel {
       return { try PageBuild.prepare(subject: subject, rebuild: list, $0) }
     }
     try await jobs.submitAll(config: config, prepares)
+  }
+
+  // 고른 개념을 지금 지침으로 다시 정리한다. 후보만 만들고, 사람이 대응표를 보고 반영한다. 과목마다 작업 하나다 (DECISIONS.md 47).
+  func recurate(_ ids: [String]) async throws {
+    guard let jobs else { throw RequestError("데이터 폴더가 열려 있지 않습니다") }
+    var bySubject: [String: [String]] = [:]
+    for id in Set(ids) { if let subject = ConceptID(id)?.subject { bySubject[subject, default: []].append(id) } }
+    guard !bySubject.isEmpty else { return }
+    let config = try await agentConfig()
+    let prepares: [(PrepareContext) async throws -> PreparedJob] = bySubject.keys.sorted().map { subject in
+      let list = bySubject[subject]!.sorted()
+      return { try Recuration.prepare(subject: subject, concepts: list, $0) }
+    }
+    try await jobs.submitAll(config: config, prepares)
+  }
+
+  // 다시 정리 후보를 반영하고 그 과목의 페이지 만들기를 넣는다. 작업이 도는 동안에는 하지 않는다 (개념 파일을 함께 쓴다).
+  func applyRecuration(_ job: String) async throws {
+    guard let data, let jobs else { throw RequestError("데이터 폴더가 열려 있지 않습니다") }
+    guard !jobs.isBusy else { throw RequestError("작업이 도는 동안에는 반영할 수 없습니다. 작업이 끝난 뒤 다시 하세요") }
+    let lock = DataLock(data)
+    guard lock.tryAcquire() else { throw RequestError("다른 Jindesk 프로세스가 이 데이터 폴더를 쓰고 있습니다") }
+    let applied: Recuration.Applied
+    do {
+      defer { lock.release() }
+      applied = try Recuration.apply(data, job: job)
+    }
+    selection = applied.written.first.map { .concept($0) }
+    reloadLibrary()
+    scheduleSync("다시 정리 반영 · \(job)")
+    // 바뀌거나 새로 생긴 개념의 페이지를 만든다. 토큰이 없으면 남은 일로 남는다.
+    if let config = try? await agentConfig() {
+      let subject = applied.subject
+      _ = try? await jobs.submit(config: config) { try PageBuild.prepare(subject: subject, $0) }
+    }
+  }
+
+  // 다시 정리 후보를 버린다. 데이터는 그대로다.
+  func discardRecuration(_ job: String) throws {
+    guard let data else { throw RequestError("데이터 폴더가 열려 있지 않습니다") }
+    try Recuration.discard(data, job: job)
+    if selection == .proposal(job) { selection = nil }
+    reloadLibrary()
+    scheduleSync("다시 정리 버림 · \(job)")
+  }
+
+  // 다시 정리 후보의 기록 글 (에이전트가 쓴 report.md, 머리말을 뺀 것)
+  func proposalReport(_ job: String) -> String? {
+    guard let data, let text = FileOps.readIfExists(data.record(JobKind.conceptCuration.rawValue, job).appending(path: "report.md")) else { return nil }
+    return FrontMatter.split(text)?.body ?? text
   }
 
   // 자료의 꼬리표, 메모, 목차의 근거 표시를 고친다 (labels.yaml)

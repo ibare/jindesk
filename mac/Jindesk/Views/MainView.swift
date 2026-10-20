@@ -123,6 +123,12 @@ struct SelectionDetail: View {
       } else {
         ContentUnavailableView("묶음을 찾지 못했어요", systemImage: "questionmark.folder")
       }
+    case .proposal(let job)?:
+      if let proposal = model.proposals.first(where: { $0.job == job }) {
+        RecurationReview(proposal: proposal).id(job)
+      } else {
+        ContentUnavailableView("반영했거나 버린 다시 정리예요", systemImage: "checkmark.circle")
+      }
     case nil:
       ContentUnavailableView("개념이나 자료를 고르세요", systemImage: "doc.text.magnifyingglass")
     }

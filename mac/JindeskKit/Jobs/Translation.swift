@@ -105,11 +105,11 @@ public enum Translation {
     let folder = ConceptFolder(concept.cid, in: ctx.data)
     let layers = Layers.load(folder) ?? Layers(concept: concept.id)
     let targets = targets(page, layers: layers)
-    let glossary = Glossary.load(ctx.data)
+    let glossary = Glossary.load(ctx.data).of(subject: concept.subject)
     let dirs = AgentDirs(ctx.folders, ctx.id, sub: "c\(n)")
     try dirs.make()
     try FileOps.copy(folder.page, to: dirs.input.appending(path: "page.yaml"))
-    try AgentStep.writeGlossary(ctx.data, into: dirs.input)
+    try AgentStep.writeGlossary(ctx.data, into: dirs.input, subject: concept.subject)
     let list: JSONValue = .array(targets.map { .object(["id": .string($0.id), "kind": .string($0.isFigure ? "caption" : $0.kind.rawValue), "text": .string($0.english ?? "")]) })
     try FileOps.write(JSONText.record(list), to: dirs.input.appending(path: "targets.json"))
 
@@ -218,12 +218,10 @@ public enum Translation {
   // 괄호 밖에 영어 낱말이 여섯 개 이상 이어지면 옮기지 않은 문장으로 본다.
   // 영어 단위에 그대로 나온 다른 언어의 글(언어 습득 과목의 목표 언어 예문)은 옮기지 않고 두는 것이라 세지 않는다.
   static func leftoverEnglish(_ ko: String, en: String = "") -> String? {
-    var plain = TexText.strip(ko)
-    plain = plain.replacingOccurrences(of: #"\([^()]*\)"#, with: " ", options: .regularExpression)
-    // 모두 대문자인 낱말(계산기 단추 이름, 약어)은 옮기지 않는 이름이라 세지 않는다
-    plain = plain.replacingOccurrences(of: #"\b[A-Z][A-Z0-9-]+\b"#, with: " ", options: .regularExpression)
+    let plain = countable(ko)
     let regex = try! NSRegularExpression(pattern: #"(?:[A-Za-z][A-Za-z'’-]*[\s,]+){5,}[A-Za-z][A-Za-z'’-]*"#)
-    let source = LabelMatch.key(TexText.strip(en))
+    // 영어 단위도 같게 덜어 내야 덜어 낸 자리에서 끊긴 구절이 맞춰진다
+    let source = LabelMatch.key(countable(en))
     for m in regex.matches(in: plain, range: NSRange(plain.startIndex..., in: plain)) {
       guard let r = Range(m.range, in: plain) else { continue }
       let run = String(plain[r])
@@ -231,6 +229,14 @@ public enum Translation {
       return FileOps.prefix(run, 80)
     }
     return nil
+  }
+
+  // 남은 영어를 셀 글: 수식, 괄호 안, 모두 대문자인 낱말(계산기 단추 이름, 약어. 옮기지 않는 이름이라 세지 않는다), 굵게·기울임 표시를 덜어 낸다
+  static func countable(_ text: String) -> String {
+    var plain = TexText.strip(text)
+    plain = plain.replacingOccurrences(of: #"\([^()]*\)"#, with: " ", options: .regularExpression)
+    plain = plain.replacingOccurrences(of: #"\b[A-Z][A-Z0-9-]+\b"#, with: " ", options: .regularExpression)
+    return plain.replacingOccurrences(of: "*", with: "")
   }
 
   static func isEnglish(_ text: String) -> Bool {

@@ -255,7 +255,7 @@ public enum Regen {
     case .success(let value): v = value
     }
     let math = ctx.config.katex.flatMap(MathChecker.init(katex:))
-    let glossary = Glossary.load(ctx.data)
+    let glossary = Glossary.load(ctx.data).of(subject: base.concept.subject)
     let original = base.unit.english ?? base.source?.text ?? ""
     let side = d.op == .easy || (d.op == .detail && (d.note?.contains("곁") ?? false))
 

@@ -23,7 +23,7 @@
 ```
 input/targets.json    옮길 단위: [{ "id": "p1", "kind": "para", "text": "…" }]
 input/page.yaml       페이지 전체 (맥락용. 옮길 단위만 옮긴다)
-input/glossary.yaml   용어 어휘 (아직 없으면 terms 가 비어 있다)
+input/glossary.yaml   이 과목의 용어 어휘 (아직 없으면 terms 가 비어 있다)
 out/                  여기에만 쓴다
 ```
 

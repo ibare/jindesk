@@ -37,6 +37,11 @@ public struct Glossary: Sendable, Equatable {
     self.terms = terms
   }
 
+  // 그 과목의 용어와 과목이 적히지 않은 용어. 학습 페이지가 밑줄로 보이는 용어이고, 번역 검사도 이것만 본다.
+  public func of(subject: String) -> Glossary {
+    Glossary(terms: terms.filter { $0.subjects.isEmpty || $0.subjects.contains(subject) })
+  }
+
   // 함께 도는 번역이 어휘를 덮어쓰지 않도록, 읽고 합치고 쓰는 동안 잠근다
   static let lock = NSLock()
 

@@ -134,7 +134,7 @@ public enum PageComposer {
       sources.append(.object(["id": .string(id), "title": .string(sourceTitle(id, library: input.library)), "pages": .array(pages.map { .number(Double($0)) })]))
     }
 
-    let terms: [JSONValue] = input.glossary.terms.filter { $0.subjects.isEmpty || $0.subjects.contains(c.subject) }.map { t in
+    let terms: [JSONValue] = input.glossary.of(subject: c.subject).terms.map { t in
       .object(["en": .string(t.en), "ko": .string(t.ko), "names": .array(t.names.map(JSONValue.string))])
     }
 

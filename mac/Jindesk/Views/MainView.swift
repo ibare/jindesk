@@ -196,7 +196,8 @@ struct SearchResultsView: View {
         if !concepts.isEmpty {
           Section("개념 · \(concepts.count)") {
             ForEach(concepts) { m in
-              row(selected: model.selection == .concept(m.concept), action: { model.openSearchResult(m) }) {
+              let selected = model.selection == .concept(m.concept)
+              row(selected: selected, action: { model.openSearchResult(m) }) {
                 VStack(alignment: .leading, spacing: 2) {
                   HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(TitleParts(m.title).head).font(.system(size: 13, weight: .semibold))
@@ -205,7 +206,7 @@ struct SearchResultsView: View {
                   }
                   if let ko = m.titleKo { Text(TitleParts(ko).head).font(.system(size: 12)).foregroundStyle(.secondary) }
                   if let first = m.snippets.first {
-                    Text(Self.highlight(TexText.display(first.text))).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
+                    Text(Self.highlight(TexText.display(first.text), selected: selected)).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
                   } else {
                     Text("이름").font(.system(size: 11)).foregroundStyle(.tertiary)
                   }
@@ -299,21 +300,24 @@ struct SearchResultsView: View {
     .listRowSeparator(.hidden)
   }
 
-  // 찾은 말(SearchMark.open … close)을 굵게
-  static func highlight(_ snippet: String) -> AttributedString {
+  // 찾은 말(SearchMark.open … close)을 학습 페이지의 찾은 말과 같은 바탕으로 칠한다. 고른 줄 위에서는 옅은 흰 바탕
+  static func highlight(_ snippet: String, selected: Bool = false) -> AttributedString {
     var out = AttributedString()
-    var bold = false
+    var marked = false
     var buffer = ""
     func flush() {
       var part = AttributedString(buffer)
-      if bold { part.inlinePresentationIntent = .stronglyEmphasized }
+      if marked {
+        part.backgroundColor = selected ? Color.white.opacity(0.28) : Self.findMark
+        part.foregroundColor = selected ? Color.white : Color.primary
+      }
       out += part
       buffer = ""
     }
     for ch in snippet {
       if ch == SearchMark.open || ch == SearchMark.close {
         flush()
-        bold = ch == SearchMark.open
+        marked = ch == SearchMark.open
       } else {
         buffer.append(ch)
       }
@@ -321,6 +325,13 @@ struct SearchResultsView: View {
     flush()
     return out
   }
+
+  // 렌더러의 --find (renderer/page.css)
+  static let findMark = Color(
+    nsColor: NSColor(name: nil) { appearance in
+      appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        ? NSColor(srgbRed: 0.357, green: 0.290, blue: 0.078, alpha: 1) : NSColor(srgbRed: 0.984, green: 0.906, blue: 0.631, alpha: 1)
+    })
 }
 
 // 사이드바 아래: 백업, 업데이트, 환경 문제

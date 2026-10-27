@@ -1,4 +1,5 @@
-// 설정: 데이터 리포(주인, 이름, 가지)와 읽기 토큰, 마지막 받기 결과 (SETUP.md 의 폰 앱)
+// 설정: 데이터 리포(주인, 이름, 가지)와 읽기 토큰, 마지막 받기 결과, 앱 판 (SETUP.md 의 폰 앱)
+import JindeskKit
 import SwiftUI
 
 struct SettingsView: View {
@@ -64,6 +65,14 @@ struct SettingsView: View {
             .disabled(model.manifest == nil || isSyncing)
         }
         if let message { Text(message).font(.footnote).foregroundStyle(.red) }
+        Section {
+          LabeledContent("판", value: AppVersion.from(.main).label)
+          LabeledContent("데이터 스키마", value: "\(CurrentSchema.version)")
+        } header: {
+          Text("앱")
+        } footer: {
+          Text("맥 앱과 판이 같으면 서로 맞습니다. 맥 앱이 새 판이 되면 폰 앱도 그 판으로 다시 설치합니다.")
+        }
       }
       .navigationTitle("설정")
       .navigationBarTitleDisplayMode(.inline)

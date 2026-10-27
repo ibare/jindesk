@@ -3,6 +3,7 @@
 //   openSource { source, page }   출처 칩을 눌렀다
 //   openConcept { id }            앞뒤 개념 지도의 이웃이나 개념 카드를 눌렀다
 //   openMap { concept }           앞뒤 개념 지도의 "개념 지도에서 보기"를 눌렀다
+//   find { total, index }         페이지 안 찾기: 찾은 곳 수와 지금 몇 번째 (없으면 0)
 // page.readOnly 이면(폰 앱) 쓰는 단추(코멘트 남기기·지우기, 다시 만들기, 새 판 받아들이기)를 그리지 않는다.
 //   ready                         그릴 준비가 됐다
 (function () {
@@ -118,6 +119,189 @@
       });
       openCount();
     });
+  }
+
+  // 페이지 안 찾기 (DECISIONS.md 48). 질의는 SearchQuery(Swift)와 같게 나눈다: 따옴표로 묶은 것은 구절, 나머지는 빈칸으로 나눈 낱말.
+  // 학습 글(영어, 한국어, 제목)의 모든 낱말에 표시를 한다. 대소문자와 라틴 문자의 악센트는 가리지 않는다. 수식, 단추, 코멘트 스레드 안은 건드리지 않는다.
+  // 찾은 곳 하나는 표시(mark) 여럿일 수 있다: 굵게·용어 밑줄에 걸친 구절은 노드마다 나눠 감싼다.
+  var findQuery = "", findHits = [], findIndex = -1;
+  var FIND_SKIP = ".katex, .katex-error, button, .srcchip, .prov, .pc, .thread";
+
+  function findTerms(q) {
+    var out = [], cur = "", quoted = false;
+    function flush() {
+      var t = cur.trim().split(/\s+/).join(" ");
+      if (t && out.indexOf(t) < 0) out.push(t);
+      cur = "";
+    }
+    for (var i = 0; i < q.length; i++) {
+      var c = q[i];
+      if (c === '"' || c === "“" || c === "”") { flush(); quoted = !quoted; }
+      else if (/\s/.test(c) && !quoted) flush();
+      else cur += c;
+    }
+    flush();
+    return out;
+  }
+
+  // 글자 하나를 접는다: 라틴 문자는 악센트를 떼고, 모두 소문자로. 한글은 그대로 둔다 (자모로 풀면 다른 글자 안에서 맞는다)
+  function foldChar(c) {
+    var stripped = c.normalize("NFD").replace(/[̀-ͯ]/g, "");
+    return (stripped && /^[\u0000-ɏ]+$/.test(stripped) ? stripped : c).toLowerCase();
+  }
+
+  // 이어 붙인 노드 사이에 빈칸이 겹칠 수 있어, 이어진 빈칸은 하나로 본다 (화면에 보이는 대로)
+  function fold(text) {
+    var folded = "", map = [];
+    for (var i = 0; i < text.length;) {
+      var ch = String.fromCodePoint(text.codePointAt(i));
+      if (/\s/.test(ch)) {
+        if (folded[folded.length - 1] !== " ") { folded += " "; map.push(i); }
+      } else {
+        var f = foldChar(ch);
+        for (var k = 0; k < f.length; k++) { folded += f[k]; map.push(i); }
+      }
+      i += ch.length;
+    }
+    map.push(text.length);
+    return { text: folded, map: map };
+  }
+
+  function clearFind() {
+    Array.prototype.forEach.call(document.querySelectorAll("mark.find"), function (m) {
+      var parent = m.parentNode;
+      parent.replaceChild(document.createTextNode(m.textContent), m);
+      parent.normalize();
+    });
+    findHits = [];
+    findPin = null;
+  }
+
+  // 찾을 글 덩어리: 문단(p, li, 제목과 한국어 제목)마다 텍스트 노드를 차례로 잇는다. 수식·단추처럼 건너뛰는 것이 끼면 거기서 끊는다.
+  function findRuns(root) {
+    var runs = [], run = null, walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      var n = walker.currentNode, p = n.parentElement;
+      var block = p && !p.closest(FIND_SKIP) && p.closest(".en, .ko, article.concept h1") ? p.closest("p, li, h1, .ko-title, .en, .ko") : null;
+      if (!block) { run = null; continue; }
+      if (!run || run.block !== block) { run = { block: block, nodes: [] }; runs.push(run); }
+      run.nodes.push(n);
+    }
+    return runs;
+  }
+
+  function applyFind(q) {
+    clearFind();
+    var terms = findTerms(q).map(function (t) { return fold(t).text; }).filter(function (t) { return t; });
+    var root = document.getElementById("page");
+    if (!terms.length || !root) return;
+    findRuns(root).forEach(function (run) {
+      var text = "", starts = [];
+      run.nodes.forEach(function (n) { starts.push(text.length); text += n.nodeValue; });
+      var f = fold(text), ranges = [];
+      terms.forEach(function (t) {
+        for (var at = f.text.indexOf(t); at >= 0; at = f.text.indexOf(t, at + 1)) ranges.push([f.map[at], f.map[at + t.length]]);
+      });
+      if (!ranges.length) return;
+      ranges.sort(function (a, b) { return a[0] - b[0]; });
+      var merged = [];
+      ranges.forEach(function (r) {
+        var last = merged[merged.length - 1];
+        if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]); else merged.push([r[0], r[1]]);
+      });
+      // 찾은 곳마다 걸친 노드의 조각을 감싼다
+      var hits = merged.map(function () { return []; });
+      run.nodes.forEach(function (node, i) {
+        var value = node.nodeValue, s = starts[i], frag = null, pos = 0;
+        merged.forEach(function (r, k) {
+          var a = Math.max(r[0] - s, 0), b = Math.min(r[1] - s, value.length);
+          if (a >= b) return;
+          frag = frag || document.createDocumentFragment();
+          if (a > pos) frag.appendChild(document.createTextNode(value.slice(pos, a)));
+          var m = el("mark", "find");
+          m.textContent = value.slice(a, b);
+          frag.appendChild(m);
+          hits[k].push(m);
+          pos = b;
+        });
+        if (!frag) return;
+        if (pos < value.length) frag.appendChild(document.createTextNode(value.slice(pos)));
+        node.parentNode.replaceChild(frag, node);
+      });
+      findHits.push.apply(findHits, hits);
+    });
+  }
+
+  // 찾기로 내려간 곳. 위쪽 그림이 불러진 뒤 높이를 바꾸면 이 곳이 밀리므로, 학생이 스크롤하거나 누르기 전까지 다시 가운데로 내린다.
+  // WebKit 의 scroll anchoring 은 믿지 않는다. 우리가 내린 자리(findPinY)와 다른 곳으로 스크롤되면 학생이 옮긴 것이다.
+  var findPin = null, findPinY = 0;
+  function pinFind(m) {
+    findPin = m;
+    m.scrollIntoView({ block: "center" });
+    findPinY = window.scrollY;
+  }
+  function repinFind() {
+    if (!findPin) return;
+    if (!findPin.isConnected) { findPin = null; return; }
+    pinFind(findPin);
+  }
+  function unpinFind() { findPin = null; }
+  window.addEventListener("scroll", function () { if (findPin && Math.abs(window.scrollY - findPinY) > 1) findPin = null; }, { passive: true });
+  ["wheel", "touchstart", "mousedown", "keydown"].forEach(function (e) { document.addEventListener(e, unpinFind, { capture: true, passive: true }); });
+  // 그림 iframe 안을 누르면 바깥 문서에는 mousedown 이 오지 않고 창의 포커스가 빠진다
+  window.addEventListener("blur", unpinFind);
+
+  // 지금 곳을 진하게 하고 알린다. 접힌 한국어 안이면 그 한국어를 펼친다
+  function focusFind(i, scroll) {
+    Array.prototype.forEach.call(document.querySelectorAll("mark.find.cur"), function (m) { m.classList.remove("cur"); });
+    if (!findHits.length) {
+      findIndex = -1;
+      post({ type: "find", total: 0, index: 0 });
+      return;
+    }
+    findIndex = ((i % findHits.length) + findHits.length) % findHits.length;
+    var hit = findHits[findIndex], m = hit[0];
+    hit.forEach(function (x) { x.classList.add("cur"); });
+    var ko = m.closest(".ko");
+    if (ko && ko.hidden) {
+      var t = ko.parentElement.querySelector(".g-tr");
+      if (t) t.click(); else ko.hidden = false;
+    }
+    if (scroll) pinFind(m);
+    post({ type: "find", total: findHits.length, index: findIndex + 1 });
+  }
+
+  // { query, unit, step, keep }: step 0 은 처음(unit 이 있으면 그 단위 안의 첫 곳), 1 다음, -1 이전.
+  // keep 은 다시 그린 뒤 같은 질의를 다시 걸고 지금 곳을 지킨다 (내려가지 않는다). query 가 비면 표시를 걷는다.
+  function find(o) {
+    o = o || {};
+    var q = String(o.query || "").trim();
+    if (!q) {
+      clearFind();
+      findQuery = "";
+      findIndex = -1;
+      return;
+    }
+    if (o.keep) {
+      if (q !== findQuery) return;
+      var kept = findIndex;
+      applyFind(q);
+      focusFind(kept < 0 ? 0 : kept, false);
+      return;
+    }
+    if (q === findQuery && findHits.length && o.step) {
+      focusFind(findIndex + o.step, true);
+      return;
+    }
+    applyFind(q);
+    findQuery = q;
+    var first = 0;
+    if (o.unit) {
+      var host = document.getElementById(o.unit) || document.querySelector('[id^="' + CSS.escape(o.unit) + '-"]');
+      var at = host ? findHits.findIndex(function (h) { return host.contains(h[0]); }) : -1;
+      if (at >= 0) first = at;
+    }
+    focusFind(first, true);
   }
 
   // 코멘트 스레드: 단위 아래에 열린다. 메모, 질문(물어보기가 답한다), 이상해요.
@@ -362,7 +546,11 @@
     if (!d || d.jindesk !== "figure") return;
     var frame = Array.prototype.find.call(document.querySelectorAll("iframe.fig-frame"), function (f) { return f.contentWindow === e.source; });
     if (!frame) return;
-    if (d.type === "height" && d.h > 0) frame.style.height = Math.min(Math.max(d.h, 60), 1200) + "px";
+    if (d.type === "height" && d.h > 0) {
+      var h = Math.min(Math.max(d.h, 60), 1200) + "px";
+      // 찾기로 내려간 곳이 밀리지 않게 다시 내린다 (repinFind)
+      if (frame.style.height !== h) { frame.style.height = h; repinFind(); }
+    }
     if (d.type === "error" && !frame.parentElement.querySelector(".fig-error")) {
       frame.insertAdjacentElement("afterend", el("div", "fig-error", "그림을 그리다 오류가 났어요. " + esc(d.message || "")));
     }
@@ -654,6 +842,10 @@
     var same = current && current.concept === page.concept;
     var keepY = window.scrollY;
     if (!same) openThreads = {};
+    // 다시 그리면 찾기 표시가 사라진다. 같은 개념이면 앱이 keep 으로 다시 건다
+    findHits = [];
+    findPin = null;
+    if (!same) { findQuery = ""; findIndex = -1; }
     current = page;
     var root = document.getElementById("page");
     root.innerHTML = "";
@@ -784,7 +976,12 @@
     popover.style.top = (r.bottom + window.scrollY + 6) + "px";
   }
   document.addEventListener("click", function (e) { if (popover && !popover.contains(e.target)) closePopover(); });
-  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closePopover(); });
+  // 뜬 정의가 있으면 Esc 는 그것만 닫는다 (앱이 같은 Esc 로 찾기 막대까지 닫지 않게 막는다)
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape" || !popover) return;
+    closePopover();
+    e.preventDefault();
+  });
 
   // 자료와 나란히 (DECISIONS.md 34): 화면 가운데에 걸린 단위를 앱에 알린다. 앱이 그 단위의 근거 쪽을 옆에 보인다.
   var follow = null;
@@ -813,6 +1010,9 @@
       try { render(page); } catch (e) { post({ type: "error", message: String(e && e.stack ? e.stack : e) }); throw e; }
     },
     follow: function (on) { setFollow(!!on); },
+    find: function (o) {
+      try { find(o); } catch (e) { post({ type: "error", message: String(e && e.stack ? e.stack : e) }); }
+    },
   };
   document.addEventListener("DOMContentLoaded", function () { post({ type: "ready" }); });
 })();

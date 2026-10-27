@@ -46,8 +46,16 @@ final class MobileModel {
   var lists: [Route] = []
   // 오른쪽 칸(iPhone 은 목록 위)에 연 것. 바뀌면 개념 지도의 상태를 비운다.
   var page: PageRoute? {
-    didSet { if page != oldValue { mapSelected = nil; mapPage = nil } }
+    didSet {
+      guard page != oldValue else { return }
+      mapSelected = nil
+      mapPage = nil
+      // 다른 것을 열면 페이지 안 찾기 막대를 닫는다 (찾기 결과에서 연 개념은 그 개념의 막대를 이미 열어 두었다)
+      if let find = pageFind, page != .concept(find.concept) { pageFind = nil }
+    }
   }
+  // 학습 페이지 안 찾기 (DECISIONS.md 48). 찾기 결과에서 연 개념은 친 말로 연다
+  var pageFind: PageFind?
   // 과목 개념 지도에서 고른 개념과, 지도에서 연 학습 페이지. iPad 를 돌리면 칸을 새로 만들므로(SplitLayout) 화면이 아니라 모델에 둔다.
   var mapSelected: String?
   var mapPage: String?
@@ -140,12 +148,27 @@ final class MobileModel {
     return concepts[cid.subject]?.first { $0.id == id }
   }
 
-  // 학습 페이지의 앞뒤 개념, 찾기, 용어 시트, 단원 요약에서 개념을 연다: 목록이 그 개념의 단원까지 따라 들어가고 페이지를 연다
-  func open(_ id: String) {
+  // 학습 페이지의 앞뒤 개념, 찾기, 용어 시트, 단원 요약에서 개념을 연다: 목록이 그 개념의 단원까지 따라 들어가고 페이지를 연다.
+  // 찾기에서 열면 친 말로 페이지 안 찾기 막대를 열어 찾은 말에 표시를 한다
+  func open(_ id: String, find query: String? = nil) {
     guard let c = concept(id) else { return }
     let path: [Route] = [.subject(c.subject), .unit(c.subject, SubjectUnits.key(c, syllabus: syllabi[c.subject]))]
     if lists != path { lists = path }
+    if let query, !query.trimmingCharacters(in: .whitespaces).isEmpty { pageFind = PageFind(concept: id, query: query) }
     page = .concept(id)
+  }
+
+  // 학습 페이지 도구 막대의 찾기 단추
+  func showPageFind(_ concept: String) {
+    if pageFind?.concept != concept { pageFind = PageFind(concept: concept) }
+    pageFind?.focus += 1
+  }
+
+  // 렌더러가 알린 수 (그 개념의 막대에만 적는다)
+  func pageFindReport(concept: String, total: Int, index: Int) {
+    guard pageFind?.concept == concept else { return }
+    pageFind?.total = total
+    pageFind?.index = index
   }
 
   // MARK: - 과목 개념 지도
@@ -282,7 +305,7 @@ final class MobileModel {
   }
 
   #if DEBUG
-    // 화면 확인 (MOBILE.md 의 빌드와 시험): -mirrorFrom <데이터 폴더> -openConcept <개념 id> -walkTo <이웃 개념 id> -openMap <개념 id 또는 과목 id> -openSettings YES
+    // 화면 확인 (MOBILE.md 의 빌드와 시험): -mirrorFrom <데이터 폴더> -openConcept <개념 id> [-findText <말>] -walkTo <이웃 개념 id> -openMap <개념 id 또는 과목 id> -openSettings YES
     private func applyDebugArguments() {
       let defaults = UserDefaults.standard
       if let path = defaults.string(forKey: "mirrorFrom") {
@@ -303,7 +326,8 @@ final class MobileModel {
       if let id = defaults.string(forKey: "openConcept") {
         // 앞뒤 개념 지도에서 이 이웃을 누른다 (renderer/page.js 의 page.debug.walk)
         if let next = defaults.string(forKey: "walkTo") { pageDebug = .object(["walk": .array([.string(id), .string(next)])]) }
-        open(id)
+        // 페이지 안 찾기 막대를 이 말로 연다
+        open(id, find: defaults.string(forKey: "findText"))
       } else if let id = defaults.string(forKey: "openMap") {
         // 과목 지도를 그 개념을 고른 채 연다. 과목 id 만 주면 고르지 않고 연다.
         if ConceptID(id) != nil { openMap(focus: id) } else {

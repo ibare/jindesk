@@ -240,6 +240,21 @@
           m.searchText = UserDefaults.standard.string(forKey: "snapshotSearch") ?? "log"
           try? await Task.sleep(for: .milliseconds(800))
         },
+        // 찾기에서 연 학습 페이지와 찾기 막대 (DECISIONS.md 48): 첫 결과를 연다
+        Scenario(name: "search-open") { m in
+          m.phase = .ready
+          m.searchText = UserDefaults.standard.string(forKey: "snapshotSearch") ?? "log"
+          // 새 데이터 폴더는 색인을 처음 만드느라 결과가 늦다
+          for _ in 0..<40 where m.searchResults.concepts.isEmpty { try? await Task.sleep(for: .milliseconds(250)) }
+          if let first = m.searchResults.concepts.first { m.openSearchResult(first) }
+          try? await Task.sleep(for: .seconds(2))
+        },
+        // 찾은 것이 없을 때 비슷한 말 제안 (-snapshotSuggest <말>)
+        Scenario(name: "search-suggest") { m in
+          m.phase = .ready
+          m.searchText = UserDefaults.standard.string(forKey: "snapshotSuggest") ?? "logarithim"
+          try? await Task.sleep(for: .milliseconds(800))
+        },
         Scenario(name: "collections") { m in
           m.searchText = ""
           m.phase = .ready

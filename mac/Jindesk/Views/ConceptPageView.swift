@@ -13,7 +13,14 @@ struct ConceptPageView: View {
   var body: some View {
     @Bindable var model = model
     HStack(spacing: 0) {
-      page
+      VStack(spacing: 0) {
+        // 페이지 안 찾기 (DECISIONS.md 48)
+        if model.pageFind?.concept == concept.id {
+          PageFindBar()
+          Divider()
+        }
+        page
+      }
       if model.sideBySide {
         Divider()
         SourceSidePane(concept: concept, unit: reading).frame(width: 460)
@@ -30,8 +37,12 @@ struct ConceptPageView: View {
 
   var page: some View {
     let json = model.pageJSON(concept)
-    return PageWebView(json: json, data: model.data, follow: model.sideBySide) { message in
+    let find = model.pageFind?.concept == concept.id ? model.pageFind?.request : nil
+    return PageWebView(json: json, data: model.data, follow: model.sideBySide, find: find) { message in
       if message["type"]?.stringValue == "reading", let unit = message["unit"]?.stringValue { reading = unit }
+      if message["type"]?.stringValue == "find" {
+        model.pageFindReport(concept: concept.id, total: Int(message["total"]?.numberValue ?? 0), index: Int(message["index"]?.numberValue ?? 0))
+      }
       if message["type"]?.stringValue == "error" {
         FileHandle.standardError.write(Data("렌더러 오류: \(message["message"]?.stringValue ?? "")\n".utf8))
       }
@@ -77,6 +88,8 @@ struct PageWebView: NSViewRepresentable {
   let data: DataFolder?
   // 자료와 나란히: 읽는 단위를 알리게 한다
   var follow = false
+  // 페이지 안 찾기의 요청 (없으면 표시를 걷는다)
+  var find: FindRequest?
   let onMessage: (JSONValue) -> Void
 
   func makeCoordinator() -> Coordinator { Coordinator(onMessage: onMessage) }
@@ -99,8 +112,11 @@ struct PageWebView: NSViewRepresentable {
 
   func updateNSView(_ view: WKWebView, context: Context) {
     context.coordinator.onMessage = onMessage
+    // 찾기 요청을 먼저 받아 두어야, 다시 그린 뒤 같은 요청을 keep 으로 다시 건다
+    context.coordinator.find = find
     context.coordinator.show(json)
     context.coordinator.setFollow(follow)
+    context.coordinator.flushFind()
   }
 
   @MainActor
@@ -112,6 +128,9 @@ struct PageWebView: NSViewRepresentable {
     private var shown: String?
     private var follow = false
     private var followSent: Bool?
+    // 페이지 안 찾기: 보낼 요청과 마지막으로 보낸 요청 (nil 이면 페이지에 표시가 없다)
+    var find: FindRequest?
+    private var findSent: UUID?
 
     func setFollow(_ on: Bool) {
       follow = on
@@ -132,6 +151,21 @@ struct PageWebView: NSViewRepresentable {
       guard json != shown else { return }
       shown = json
       view?.evaluateJavaScript("window.jindesk.render(\(json))")
+      // 다시 그리면 찾기 표시가 사라진다. 이미 보낸 요청이면 지금 곳을 지킨 채 다시 건다
+      if let find, findSent == find.id { view?.evaluateJavaScript(find.script(keep: true)) }
+    }
+
+    // 새 찾기 요청을 보내거나, 요청이 없어졌으면 표시를 걷는다
+    func flushFind() {
+      guard ready, shown != nil else { return }
+      if let find {
+        guard findSent != find.id else { return }
+        findSent = find.id
+        view?.evaluateJavaScript(find.script())
+      } else if findSent != nil {
+        findSent = nil
+        view?.evaluateJavaScript(FindRequest.clear)
+      }
     }
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -143,6 +177,7 @@ struct PageWebView: NSViewRepresentable {
         if let pending { show(pending) }
         pending = nil
         setFollow(follow)
+        flushFind()
         return
       }
       onMessage(value)
@@ -418,6 +453,49 @@ struct SourcePeekSheet: View {
       zoom = 1
       guard let source, let url = await model.pageImage(source, page: peek.page) else { return }
       image = NSImage(contentsOf: url)
+    }
+  }
+}
+
+// 학습 페이지 위의 찾기 막대 (PAGES.md 의 페이지 안 찾기): 찾을 말, 지금 / 모두, 이전·다음, 닫기
+struct PageFindBar: View {
+  @Environment(AppModel.self) private var model
+  @State private var text = ""
+  @FocusState private var focused: Bool
+
+  var body: some View {
+    let find = model.pageFind
+    HStack(spacing: 8) {
+      Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+      TextField("페이지에서 찾기", text: $text)
+        .textFieldStyle(.roundedBorder)
+        .frame(maxWidth: 260)
+        .focused($focused)
+        .onSubmit { model.stepPageFind(1) }
+        .onExitCommand { model.closePageFind() }
+      Text(find?.countLabel ?? "").font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
+      ControlGroup {
+        Button { model.stepPageFind(-1) } label: { Image(systemName: "chevron.left") }.help("이전 (⇧⌘G)")
+        Button { model.stepPageFind(1) } label: { Image(systemName: "chevron.right") }.help("다음 (⌘G)")
+      }
+      .disabled((find?.total ?? 0) == 0)
+      .fixedSize()
+      Spacer()
+      // Esc: 커서가 칸 밖(찾기 결과에서 연 막대, 페이지를 누른 뒤)에 있어도 닫는다
+      Button("닫기") { model.closePageFind() }.keyboardShortcut(.cancelAction)
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 6)
+    .onAppear {
+      text = find?.query ?? ""
+      if (find?.focus ?? 0) > 0 { focused = true }
+    }
+    .onChange(of: text) { model.setPageFindQuery(text) }
+    // ⌘F 로 오를 때만 칸이 커서를 받는다 (찾기 결과에서 다시 열어 0 으로 돌아갈 때는 받지 않는다)
+    .onChange(of: model.pageFind?.focus) { old, new in if (new ?? 0) > (old ?? 0) { focused = true } }
+    // 찾기 결과에서 다른 말로 다시 열면 칸도 그 말로. 질의는 앞뒤 빈칸을 뗀 것이라 견줄 때도 떼야 치던 빈칸을 지우지 않는다
+    .onChange(of: model.pageFind?.query) {
+      if let q = model.pageFind?.query, q != text.trimmingCharacters(in: .whitespacesAndNewlines) { text = q }
     }
   }
 }

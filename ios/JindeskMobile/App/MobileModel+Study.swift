@@ -78,24 +78,28 @@ extension MobileModel {
     return order.map { ($0, by[$0]!.0, by[$0]!.1) }
   }
 
-  // 찾기: 개념(영어·한국어 이름), 용어(영어·한국어), 기호(기호와 뜻)
-  func searchConcepts(_ q: String) -> [Concept] {
+  // 찾기: 개념(영어·한국어 이름), 용어(영어·한국어), 기호(기호와 뜻). 맥과 같은 낱말 규칙이다 (SearchQuery, DECISIONS.md 48):
+  // 모든 낱말이 들어야 맞고, 대소문자와 악센트를 가리지 않는다. 본문 찾기는 다음 단계다.
+  func searchConcepts(_ text: String) -> [Concept] {
+    let q = SearchQuery(text)
     guard let data, !q.isEmpty else { return [] }
     return inLearningOrder(
       allConcepts.filter { c in
-        c.title.localizedCaseInsensitiveContains(q) || (Page.load(ConceptFolder(c.cid, in: data))?.titleKo?.localizedCaseInsensitiveContains(q) ?? false)
+        q.matches(c.title) || (Page.load(ConceptFolder(c.cid, in: data))?.titleKo.map(q.matches) ?? false)
       })
   }
 
-  func searchTerms(_ q: String) -> [GlossaryTerm] {
+  func searchTerms(_ text: String) -> [GlossaryTerm] {
+    let q = SearchQuery(text)
     guard !q.isEmpty else { return [] }
-    return glossary.terms.filter { t in (t.names + [t.ko]).contains { $0.localizedCaseInsensitiveContains(q) } }
+    return glossary.terms.filter { q.matches($0.names + [$0.ko]) }
       .sorted { $0.en.localizedCaseInsensitiveCompare($1.en) == .orderedAscending }
   }
 
-  func searchSymbols(_ q: String) -> [(symbol: String, meaning: String, concepts: [Concept])] {
+  func searchSymbols(_ text: String) -> [(symbol: String, meaning: String, concepts: [Concept])] {
+    let q = SearchQuery(text)
     guard !q.isEmpty else { return [] }
-    return symbols.filter { TexText.display($0.symbol).localizedCaseInsensitiveContains(q) || $0.meaning.localizedCaseInsensitiveContains(q) }
+    return symbols.filter { q.matches([TexText.display($0.symbol), $0.meaning]) }
   }
 
   // 그 말이 글에 나오는 개념 (용어 시트)

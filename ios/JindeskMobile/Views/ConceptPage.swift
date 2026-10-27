@@ -14,35 +14,101 @@ struct ConceptPage: View {
   // 오른쪽 칸(iPhone 은 목록 위)과 개념 지도에서 연 학습 페이지: 보기를 칸 바깥에 두고 다시 쓴다 (PageWebView)
   var kept = false
 
+  // 찾기 상태(pageFind)는 PageBody 만 읽는다. 여기서 읽으면 찾을 말을 칠 때마다, 렌더러가 수를 알릴 때마다 이 body 가 다시 돌아
+  // 페이지 조합(pageJSON: 페이지, 곁 층, 용어집, 코멘트, 목차를 읽는다)을 다시 한다
   var body: some View {
-    @Bindable var model = model
-    PageWebView(json: model.pageJSON(concept), data: model.data, kept: kept) { message in
-      switch message["type"]?.stringValue {
-      case "openConcept":
-        if let id = message["id"]?.stringValue {
-          if let onOpenConcept { onOpenConcept(id) } else { model.open(id) }
+    PageBody(concept: concept.id, json: model.pageJSON(concept), kept: kept, onMessage: handle)
+      .navigationTitle(concept.title)
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button { model.showPageFind(concept.id) } label: { Label("페이지에서 찾기", systemImage: "magnifyingglass") }
         }
-      // "개념 지도에서 보기": 과목 지도를 이 개념을 고른 채 연다
-      case "openMap":
-        if let id = message["concept"]?.stringValue {
-          if let onOpenMap { onOpenMap(id) } else { model.openMap(focus: id) }
-        }
-      case "openSource":
-        if let source = message["source"]?.stringValue, let page = message["page"]?.numberValue {
-          model.openSource(source, page: Int(page))
-        }
-      // 레퍼런스는 Safari 로 연다 (학습 페이지 안에서는 네트워크를 쓰지 않는다)
-      case "openURL":
-        if let text = message["url"]?.stringValue, let url = URL(string: text), url.scheme == "https" { openURL(url) }
-      case "error":
-        print("렌더러 오류: \(message["message"]?.stringValue ?? "")")
-      default:
-        break
       }
+  }
+
+  private func handle(_ message: JSONValue) {
+    switch message["type"]?.stringValue {
+    // 페이지 안 찾기: 찾은 곳 수와 지금 몇 번째
+    case "find":
+      model.pageFindReport(concept: concept.id, total: Int(message["total"]?.numberValue ?? 0), index: Int(message["index"]?.numberValue ?? 0))
+    case "openConcept":
+      if let id = message["id"]?.stringValue {
+        if let onOpenConcept { onOpenConcept(id) } else { model.open(id) }
+      }
+    // "개념 지도에서 보기": 과목 지도를 이 개념을 고른 채 연다
+    case "openMap":
+      if let id = message["concept"]?.stringValue {
+        if let onOpenMap { onOpenMap(id) } else { model.openMap(focus: id) }
+      }
+    case "openSource":
+      if let source = message["source"]?.stringValue, let page = message["page"]?.numberValue {
+        model.openSource(source, page: Int(page))
+      }
+    // 레퍼런스는 Safari 로 연다 (학습 페이지 안에서는 네트워크를 쓰지 않는다)
+    case "openURL":
+      if let text = message["url"]?.stringValue, let url = URL(string: text), url.scheme == "https" { openURL(url) }
+    case "error":
+      print("렌더러 오류: \(message["message"]?.stringValue ?? "")")
+    default:
+      break
     }
-    .ignoresSafeArea(edges: .bottom)
-    .navigationTitle(concept.title)
-    .navigationBarTitleDisplayMode(.inline)
+  }
+}
+
+// 학습 페이지 보기와 그 위의 찾기 막대 (DECISIONS.md 48). 페이지 JSON 은 바깥에서 만들어 받는다
+private struct PageBody: View {
+  @Environment(MobileModel.self) private var model
+  let concept: String
+  let json: String
+  let kept: Bool
+  let onMessage: (JSONValue) -> Void
+
+  var body: some View {
+    let find = model.pageFind?.concept == concept ? model.pageFind : nil
+    PageWebView(json: json, data: model.data, kept: kept, find: find?.request, onMessage: onMessage)
+      .ignoresSafeArea(edges: .bottom)
+      .safeAreaInset(edge: .top, spacing: 0) {
+        if find != nil { PageFindBar() }
+      }
+  }
+}
+
+// 학습 페이지 위의 찾기 막대: 찾을 말, 지금 / 모두, 이전·다음, 닫기 (맥의 찾기 막대와 같다)
+struct PageFindBar: View {
+  @Environment(MobileModel.self) private var model
+  @State private var text = ""
+  @FocusState private var focused: Bool
+
+  var body: some View {
+    let find = model.pageFind
+    HStack(spacing: 10) {
+      Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+      TextField("페이지에서 찾기", text: $text)
+        .focused($focused)
+        .textInputAutocapitalization(.never)
+        .autocorrectionDisabled()
+        .submitLabel(.search)
+        .onSubmit { model.pageFind?.step(1) }
+      Text(find?.countLabel ?? "").font(.footnote).monospacedDigit().foregroundStyle(.secondary)
+      Button { model.pageFind?.step(-1) } label: { Image(systemName: "chevron.up") }.disabled((find?.total ?? 0) == 0)
+      Button { model.pageFind?.step(1) } label: { Image(systemName: "chevron.down") }.disabled((find?.total ?? 0) == 0)
+      Button("닫기") { model.pageFind = nil }
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 8)
+    .background(.bar)
+    .onAppear {
+      text = find?.query ?? ""
+      if (find?.focus ?? 0) > 0 { focused = true }
+    }
+    .onChange(of: text) { model.pageFind?.setQuery(text) }
+    // 찾기 단추로 오를 때만 칸이 커서를 받는다 (찾기 결과에서 다시 열어 0 으로 돌아갈 때 키보드를 띄우지 않는다)
+    .onChange(of: model.pageFind?.focus) { old, new in if (new ?? 0) > (old ?? 0) { focused = true } }
+    // iPad 두 칸에서는 막대가 열린 채 찾기 결과를 다른 말로 열면 이 막대가 그대로 남는다. 칸도 그 말로 (맥의 막대와 같다)
+    .onChange(of: model.pageFind?.query) {
+      if let q = model.pageFind?.query, q != text.trimmingCharacters(in: .whitespacesAndNewlines) { text = q }
+    }
   }
 }
 
@@ -52,6 +118,8 @@ struct PageWebView: UIViewRepresentable {
   // 오른쪽 칸과 개념 지도에서 연 학습 페이지는 보기를 칸 바깥에 두고 다시 쓴다(둘이 함께 보이는 일은 없다). iPad 를 돌리면
   // 칸 나누기를 새로 만드는데(SplitLayout), 그때 페이지를 다시 그리지 않고 옮겨 붙여 펼친 한국어, 그림의 상태, 읽던 자리를 지킨다.
   var kept = false
+  // 페이지 안 찾기의 요청 (없으면 표시를 걷는다)
+  var find: FindRequest?
   let onMessage: (JSONValue) -> Void
 
   func makeCoordinator() -> Coordinator { kept ? Coordinator.kept(data: data) : Coordinator(data: data) }
@@ -67,6 +135,7 @@ struct PageWebView: UIViewRepresentable {
 
   func updateUIView(_ base: Base, context: Context) {
     base.json = json
+    base.find = find
     base.onMessage = onMessage
     context.coordinator.refresh(base)
   }
@@ -75,6 +144,7 @@ struct PageWebView: UIViewRepresentable {
   final class Base: UIView {
     weak var coordinator: Coordinator?
     var json = ""
+    var find: FindRequest?
     var onMessage: (JSONValue) -> Void = { _ in }
 
     override func didMoveToWindow() {
@@ -103,6 +173,9 @@ struct PageWebView: UIViewRepresentable {
     private var pending: String?
     private var ready = false
     private var shown: String?
+    // 페이지 안 찾기: 보낼 요청과 마지막으로 보낸 요청 (nil 이면 페이지에 표시가 없다)
+    private var find: FindRequest?
+    private var findSent: UUID?
     // 이 보기를 쓰는 받침들 (만든 차례). 돌려서 칸을 새로 만들 때 SwiftUI 가 화면에 붙이지 않는 받침을 더 만들기도 하므로,
     // 마지막에 만든 받침이 아니라 화면에 붙은 받침 가운데 마지막에 만든 것이 보기를 갖는다.
     private var bases: [WeakBase] = []
@@ -150,7 +223,10 @@ struct PageWebView: UIViewRepresentable {
     func refresh(_ base: Base) {
       guard view.superview === base, !base.json.isEmpty else { return }
       onMessage = base.onMessage
+      // 찾기 요청을 먼저 받아 두어야, 다시 그린 뒤 같은 요청을 keep 으로 다시 건다
+      find = base.find
       show(base.json)
+      flushFind()
     }
 
     func show(_ json: String) {
@@ -161,6 +237,21 @@ struct PageWebView: UIViewRepresentable {
       guard json != shown else { return }
       shown = json
       view.evaluateJavaScript("window.jindesk.render(\(json))")
+      // 다시 그리면 찾기 표시가 사라진다. 이미 보낸 요청이면 지금 곳을 지킨 채 다시 건다
+      if let find, findSent == find.id { view.evaluateJavaScript(find.script(keep: true)) }
+    }
+
+    // 새 찾기 요청을 보내거나, 요청이 없어졌으면 표시를 걷는다
+    func flushFind() {
+      guard ready, shown != nil else { return }
+      if let find {
+        guard findSent != find.id else { return }
+        findSent = find.id
+        view.evaluateJavaScript(find.script())
+      } else if findSent != nil {
+        findSent = nil
+        view.evaluateJavaScript(FindRequest.clear)
+      }
     }
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -171,6 +262,7 @@ struct PageWebView: UIViewRepresentable {
         ready = true
         if let pending { show(pending) }
         pending = nil
+        flushFind()
         return
       }
       onMessage(value)
@@ -187,6 +279,7 @@ struct PageWebView: UIViewRepresentable {
       ready = false
       pending = shown ?? pending
       shown = nil
+      findSent = nil
       webView.load(URLRequest(url: Self.pageURL))
     }
   }

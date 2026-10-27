@@ -32,10 +32,17 @@ public enum Regen {
     }
   }
 
-  // 다시 돌아야 하는 요구: 요청했는데 아직 결과가 없거나, 원문이 바뀌어 다시 확인해야 하거나, 곁 층이 낡은 것
+  // 다시 돌아야 하는 요구: 요청했는데 아직 결과가 없거나, 원문이 바뀌어 다시 확인해야 하거나, 곁 층이 낡은 것.
+  // 다시 정리로 옮겨 간 요구는 옮겨 간 개념의 페이지에 그 문단이 생길 때까지 기다린다 (DECISIONS.md 47).
+  // 그 밖의 요구는 기다리지 않는다. 대상 단위가 페이지에서 빠졌으면 돌아서 "단위를 찾지 못했습니다"로 끝난다.
   public static func pending(_ data: DataFolder) -> [Directive] {
     let all = DirectiveStore.load(data)
-    var out = all.filter { $0.status == .requested || $0.status == .recheck }
+    func waiting(_ d: Directive) -> Bool {
+      guard d.moved, !d.target.unit.isEmpty else { return false }
+      guard let cid = ConceptID(d.target.concept), let page = Page.load(ConceptFolder(cid, in: data)) else { return true }
+      return !page.units.contains { $0.id == d.target.unit }
+    }
+    var out = all.filter { ($0.status == .requested || $0.status == .recheck) && !waiting($0) }
     for d in all where d.status == .applied && (d.op == .easy || d.op == .detail) {
       guard let cid = ConceptID(d.target.concept) else { continue }
       let folder = ConceptFolder(cid, in: data)
@@ -142,7 +149,7 @@ public enum Regen {
     let folder = ConceptFolder(concept.cid, in: ctx.data)
     try FileOps.copy(folder.concept, to: dirs.input.appending(path: "concept.yaml"))
     try FileOps.copy(folder.page, to: dirs.input.appending(path: "page.yaml"))
-    try AgentStep.writeGlossary(ctx.data, into: dirs.input)
+    try AgentStep.writeGlossary(ctx.data, into: dirs.input, subject: concept.subject)
     // 블록(풀이, 확인 문제, 그림)의 모양과 그림 규칙은 학습 페이지 지침에 있다. 참고로 함께 둔다.
     if let reference = FileOps.readIfExists(ctx.config.instructions.file(.pageBuild)) {
       try FileOps.write(reference, to: dirs.input.appending(path: "reference/page-build.md"))
@@ -173,7 +180,11 @@ public enum Regen {
       r += ["- 이 요구가 나온 코멘트(\(comment.kind.label)): \(comment.text ?? "")"]
     }
     let level = ReaderTest.level(library.sources.first { $0.labels.labels.subjectID == concept.subject }?.labels.labels)
-    r += ["- 학생: \(level)", "", "## 대상 단위의 지금 글", ""]
+    r.append("- 학생: \(level)")
+    if let target = LanguageAcquisition.target(of: library.subjects.first { $0.id == concept.subject }?.name ?? concept.subject) {
+      r.append(LanguageAcquisition.requestLine(target))
+    }
+    r += ["", "## 대상 단위의 지금 글", ""]
     r.append(unit.english ?? (unit.block.map { YAML.stringify($0) } ?? ""))
     if let source {
       r += ["", "## 이 단위가 온 원문 단위 (\(source.id))", "", source.text, ""]
@@ -251,7 +262,7 @@ public enum Regen {
     case .success(let value): v = value
     }
     let math = ctx.config.katex.flatMap(MathChecker.init(katex:))
-    let glossary = Glossary.load(ctx.data)
+    let glossary = Glossary.load(ctx.data).of(subject: base.concept.subject)
     let original = base.unit.english ?? base.source?.text ?? ""
     let side = d.op == .easy || (d.op == .detail && (d.note?.contains("곁") ?? false))
 

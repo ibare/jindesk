@@ -4,6 +4,8 @@ import SwiftUI
 // 메인 창: 세 칸이다. 사이드바(오늘, 과목들, 모아 보기, 작업) · 목록 · 내용(학습 페이지, 자료, 작업 기록)
 struct MainView: View {
   @Environment(AppModel.self) private var model
+  // ⌘F 를 눌렀는데 학습 페이지가 열려 있지 않으면 사이드바의 찾기 칸에 커서를 둔다
+  @FocusState private var searchFocused: Bool
 
   var body: some View {
     @Bindable var model = model
@@ -61,9 +63,15 @@ struct MainView: View {
       }
     }
     .searchable(text: $model.searchText, placement: .sidebar, prompt: "찾기 (개념·용어·기호·자료)")
+    .searchFocused($searchFocused)
+    .onChange(of: model.focusSearchField) { searchFocused = true }
     // 자료와 나란히: 사이드바와 목록 칸을 접어 학습 페이지와 근거 쪽에 폭을 준다
     .onChange(of: model.sideBySide) { SplitColumns.collapseLists(model.sideBySide) }
-    .onChange(of: model.selection) { if model.sideBySide, !Self.isConcept(model.selection) { model.sideBySide = false } }
+    .onChange(of: model.selection) {
+      if model.sideBySide, !Self.isConcept(model.selection) { model.sideBySide = false }
+      // 다른 개념을 열면 페이지 안 찾기 막대를 닫는다 (찾기 결과에서 연 개념은 그 개념의 막대를 이미 열어 두었다)
+      if let find = model.pageFind, model.selection != .concept(find.concept) { model.closePageFind() }
+    }
     .sheet(isPresented: $model.showIntake) { IntakeSheet() }
     .sheet(item: $model.peek) { SourcePeekSheet(peek: $0) }
     .sheet(item: $model.regenTarget) { RegenSheet(target: $0) }
@@ -123,6 +131,12 @@ struct SelectionDetail: View {
       } else {
         ContentUnavailableView("묶음을 찾지 못했어요", systemImage: "questionmark.folder")
       }
+    case .proposal(let job)?:
+      if let proposal = model.proposals.first(where: { $0.job == job }) {
+        RecurationReview(proposal: proposal).id(job)
+      } else {
+        ContentUnavailableView("반영했거나 버린 다시 정리예요", systemImage: "checkmark.circle")
+      }
     case nil:
       ContentUnavailableView("개념이나 자료를 고르세요", systemImage: "doc.text.magnifyingglass")
     }
@@ -154,39 +168,56 @@ enum SplitColumns {
 struct SearchResultsView: View {
   @Environment(AppModel.self) private var model
 
-  // 찾기 (DECISIONS.md 34): 개념, 용어, 기호, 원래 자료의 쪽으로 묶는다
+  // 찾기 (DECISIONS.md 48): 과목 칩, 개념, 용어, 기호, 원래 자료의 쪽. 결과가 없으면 비슷한 말을 제안한다
   var body: some View {
     let q = model.searchText
-    let hits = model.searchResults
+    let results = model.searchResults
     let terms = model.searchTerms(q)
     let symbols = model.searchSymbols(q)
     let pages = model.searchPageHits
-    if hits.isEmpty && terms.isEmpty && symbols.isEmpty && pages.isEmpty {
-      ContentUnavailableView.search(text: q)
+    if results.concepts.isEmpty && terms.isEmpty && symbols.isEmpty && pages.isEmpty {
+      ContentUnavailableView {
+        Label("찾은 것이 없습니다", systemImage: "magnifyingglass")
+      } description: {
+        Text(results.suggestions.isEmpty ? "‘\(q)’" : "‘\(q)’ 대신 이 말을 찾을까요?")
+      } actions: {
+        ForEach(results.suggestions, id: \.self) { s in
+          Button(s) { model.searchText = s }
+        }
+      }
     } else {
+      let subject = model.searchSubject
+      let concepts = results.concepts.filter { subject == nil || $0.subject == subject }
+      let shownTerms = terms.filter { subject == nil || $0.subjects.isEmpty || $0.subjects.contains(subject!) }
+      let shownSymbols = symbols.filter { subject == nil || $0.subjects.contains(subject!) }
+      let shownPages = pages.filter { subject == nil || model.library.source($0.source)?.labels.labels.subjectID == subject }
       List {
-        if !hits.isEmpty {
-          // 개념마다 한 줄: 처음 찾은 곳과 찾은 곳의 수
-          let grouped = Self.byConcept(hits)
-          Section("개념 · \(grouped.count)") {
-            ForEach(grouped, id: \.first.concept) { g in
-              row(selected: model.selection == .concept(g.first.concept), action: { model.selection = .concept(g.first.concept) }) {
-                VStack(alignment: .leading, spacing: 3) {
+        chips(results.concepts)
+        if !concepts.isEmpty {
+          Section("개념 · \(concepts.count)") {
+            ForEach(concepts) { m in
+              let selected = model.selection == .concept(m.concept)
+              row(selected: selected, action: { model.openSearchResult(m) }) {
+                VStack(alignment: .leading, spacing: 2) {
                   HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(TitleParts(g.first.title).head).font(.system(size: 13, weight: .semibold))
-                    if let ko = g.first.titleKo { Text(TitleParts(ko).head).font(.system(size: 12)).foregroundStyle(.secondary) }
+                    Text(TitleParts(m.title).head).font(.system(size: 13, weight: .semibold))
                     Spacer(minLength: 4)
-                    if g.count > 1 { Text("\(g.count)곳").font(.system(size: 11)).foregroundStyle(.tertiary).monospacedDigit() }
+                    if m.count > 0 { Text("\(m.count)곳").font(.system(size: 11)).foregroundStyle(.tertiary).monospacedDigit() }
                   }
-                  Text(Self.highlight(TexText.display(g.first.snippet))).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
+                  if let ko = m.titleKo { Text(TitleParts(ko).head).font(.system(size: 12)).foregroundStyle(.secondary) }
+                  if let first = m.snippets.first {
+                    Text(Self.highlight(TexText.display(first.text), selected: selected)).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
+                  } else {
+                    Text("이름").font(.system(size: 11)).foregroundStyle(.tertiary)
+                  }
                 }
               }
             }
           }
         }
-        if !terms.isEmpty {
-          Section("용어 · \(terms.count)") {
-            ForEach(terms, id: \.en) { t in
+        if !shownTerms.isEmpty {
+          Section("용어 · \(shownTerms.count)") {
+            ForEach(shownTerms, id: \.en) { t in
               row(selected: model.selection == .entry("term:\(t.en)"), action: { model.selection = .entry("term:\(t.en)") }) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                   Text(t.en).font(.system(size: 13))
@@ -196,9 +227,9 @@ struct SearchResultsView: View {
             }
           }
         }
-        if !symbols.isEmpty {
-          Section("기호 · \(symbols.count)") {
-            ForEach(symbols, id: \.symbol) { s in
+        if !shownSymbols.isEmpty {
+          Section("기호 · \(shownSymbols.count)") {
+            ForEach(shownSymbols, id: \.symbol) { s in
               row(selected: model.selection == .entry("symbol:\(s.symbol)"), action: { model.selection = .entry("symbol:\(s.symbol)") }) {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                   Text(TexText.display(s.symbol)).font(.system(size: 14, design: .serif)).italic().frame(minWidth: 34, alignment: .leading)
@@ -208,9 +239,9 @@ struct SearchResultsView: View {
             }
           }
         }
-        if !pages.isEmpty {
-          Section("원래 자료 · \(pages.count)쪽") {
-            ForEach(Dictionary(grouping: pages, by: \.source).sorted { $0.key < $1.key }, id: \.key) { source, hits in
+        if !shownPages.isEmpty {
+          Section("원래 자료 · \(shownPages.count)쪽") {
+            ForEach(Dictionary(grouping: shownPages, by: \.source).sorted { $0.key < $1.key }, id: \.key) { source, hits in
               Text(model.library.source(source).map(SourceRow.title) ?? source).font(.system(size: 11.5)).foregroundStyle(.secondary)
               ForEach(hits) { hit in
                 row(selected: false, action: { model.peek = SourcePeek(source: hit.source, page: hit.page) }) {
@@ -228,13 +259,33 @@ struct SearchResultsView: View {
     }
   }
 
-  // 찾은 곳을 개념마다 묶는다 (처음 찾은 곳, 수). 차례는 처음 나온 차례 (FTS 순위)
-  static func byConcept(_ hits: [SearchHit]) -> [(first: SearchHit, count: Int)] {
-    var out: [(first: SearchHit, count: Int)] = []
-    for h in hits {
-      if let i = out.firstIndex(where: { $0.first.concept == h.concept }) { out[i].count += 1 } else { out.append((h, 1)) }
+  // 결과가 두 과목 이상에 걸치면 과목 칩 (전체, 과목마다 개념 수). 고르면 네 묶음을 모두 그 과목으로 거른다
+  @ViewBuilder
+  func chips(_ concepts: [ConceptMatch]) -> some View {
+    let counts = Dictionary(grouping: concepts, by: \.subject).mapValues(\.count)
+    if counts.count >= 2 {
+      let order = model.library.subjects.map(\.id).filter { counts[$0] != nil } + counts.keys.filter { id in !model.library.subjects.contains { $0.id == id } }.sorted()
+      FlowLayout(spacing: 5) {
+        chip("전체 \(concepts.count)", on: model.searchSubject == nil) { model.searchSubject = nil }
+        ForEach(order, id: \.self) { id in
+          let name = model.library.subjects.first { $0.id == id }?.name ?? id
+          chip("\(name) \(counts[id]!)", on: model.searchSubject == id) { model.searchSubject = id }
+        }
+      }
+      .listRowSeparator(.hidden)
+      .padding(.bottom, 4)
     }
-    return out
+  }
+
+  func chip(_ label: String, on: Bool, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+      Text(label).font(.system(size: 11.5)).monospacedDigit()
+        .padding(.horizontal, 9).padding(.vertical, 2)
+        .foregroundStyle(on ? Color(nsColor: .windowBackgroundColor) : .primary)
+        .background(Capsule().fill(on ? Color.primary : Color.clear))
+        .overlay(Capsule().stroke(Color.primary.opacity(on ? 0 : 0.2)))
+    }
+    .buttonStyle(.plain)
   }
 
   func row(selected: Bool, action: @escaping () -> Void, @ViewBuilder label: () -> some View) -> some View {
@@ -249,21 +300,24 @@ struct SearchResultsView: View {
     .listRowSeparator(.hidden)
   }
 
-  // 찾은 말(SearchHit.open … close)을 굵게
-  static func highlight(_ snippet: String) -> AttributedString {
+  // 찾은 말(SearchMark.open … close)을 학습 페이지의 찾은 말과 같은 바탕으로 칠한다. 고른 줄 위에서는 옅은 흰 바탕
+  static func highlight(_ snippet: String, selected: Bool = false) -> AttributedString {
     var out = AttributedString()
-    var bold = false
+    var marked = false
     var buffer = ""
     func flush() {
       var part = AttributedString(buffer)
-      if bold { part.inlinePresentationIntent = .stronglyEmphasized }
+      if marked {
+        part.backgroundColor = selected ? Color.white.opacity(0.28) : Self.findMark
+        part.foregroundColor = selected ? Color.white : Color.primary
+      }
       out += part
       buffer = ""
     }
     for ch in snippet {
-      if ch == SearchHit.open || ch == SearchHit.close {
+      if ch == SearchMark.open || ch == SearchMark.close {
         flush()
-        bold = ch == SearchHit.open
+        marked = ch == SearchMark.open
       } else {
         buffer.append(ch)
       }
@@ -271,6 +325,13 @@ struct SearchResultsView: View {
     flush()
     return out
   }
+
+  // 렌더러의 --find (renderer/page.css)
+  static let findMark = Color(
+    nsColor: NSColor(name: nil) { appearance in
+      appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        ? NSColor(srgbRed: 0.357, green: 0.290, blue: 0.078, alpha: 1) : NSColor(srgbRed: 0.984, green: 0.906, blue: 0.631, alpha: 1)
+    })
 }
 
 // 사이드바 아래: 백업, 업데이트, 환경 문제

@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jindesk/2/entry",
+  "title": "library/entries/<과목 id>/<항목>/<slug>.md 의 머리말",
+  "description": "원시 개념 엔트리. 고치지 않는다. 묶음의 여러 자료에 걸칠 수 있다 (DECISIONS.md 35)",
+  "type": "object",
+  "required": [
+    "kind",
+    "v",
+    "id",
+    "subject",
+    "item",
+    "item_proposed",
+    "title",
+    "sources",
+    "claims",
+    "symbols",
+    "examples",
+    "misconceptions",
+    "recorded",
+    "provenance"
+  ],
+  "properties": {
+    "kind": {
+      "const": "entry"
+    },
+    "v": {
+      "const": 1
+    },
+    "id": {
+      "type": "string"
+    },
+    "subject": {
+      "type": "string"
+    },
+    "item": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "item_proposed": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "description": "자료마다 이 엔트리의 내용이 나온 쪽. 첫 자료의 묶음이 이 엔트리의 묶음이다",
+      "items": {
+        "type": "object",
+        "required": [
+          "source",
+          "pages"
+        ],
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "text",
+          "src"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "src": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "symbols": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "symbol",
+          "meaning"
+        ],
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "meaning": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "examples": {
+      "type": "array",
+      "description": "자료에 풀이까지 나온 예제와 그 출처 (DECISIONS.md 38)",
+      "items": {
+        "type": "object",
+        "required": [
+          "text",
+          "src"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "src": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "misconceptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "recorded": {
+      "type": "string"
+    },
+    "provenance": {
+      "type": "object"
+    },
+    "held": {
+      "type": "string",
+      "description": "자료 읽기에서 학생 독자 시험에 고쳐 써도 떨어져 보류로 넣은 까닭 (DECISIONS.md 35)"
+    }
+  },
+  "additionalProperties": false
+}

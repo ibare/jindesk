@@ -85,6 +85,17 @@ extension URL {
     #expect(r.conflicts.count == 1)
     #expect(g.term("LOGARITHM")?.ko == "로그")
   }
+
+  @Test func 다른_과목에만_달린_용어는_한국어가_다르면_이_과목에_묶지_않는다() {
+    var g = Glossary(terms: [GlossaryTerm(en: "reflection", ko: "대칭이동", subjects: ["extended-mathematics"])])
+    let r = g.merge([("reflection", "성찰")], subject: "spanish")
+    #expect(r.conflicts.count == 1)
+    #expect(g.term("reflection")?.subjects == ["extended-mathematics"])
+    #expect(g.of(subject: "spanish").terms.isEmpty)
+    // 한국어가 같으면 이 과목에도 쓴다
+    _ = g.merge([("reflection", "대칭이동")], subject: "physics")
+    #expect(g.term("reflection")?.subjects == ["extended-mathematics", "physics"])
+  }
 }
 
 @Suite struct ReadingCheckTests {
@@ -287,6 +298,90 @@ extension URL {
     #expect(c.problems.contains { $0.contains("e02") })
     #expect(c.problems.contains { $0.contains("#p7") })
     #expect(c.problems.contains { $0.contains("u2") })
+  }
+
+  @Test func 다시_정리에서는_옛_단위마다_남기거나_옮기거나_까닭과_함께_뺀다() throws {
+    var input = input()
+    input.recurate = ["k01"]
+    // u1 은 남기고, u2 는 새 개념으로 옮긴다 (removed_units 에 다시 적지 않아도 된다)
+    let moved = try plan([
+      "concepts": [
+        ["concept": "k01", "entries": ["e01"], "units": [["id": "u1", "text": "Old one", "claims": [["text": "x", "src": ["20261010-11112222#p3"]]]]]],
+        [
+          "concept": NSNull(), "slug": "split-off", "title": "Split off", "entries": ["e02"],
+          "units": [["id": NSNull(), "text": "Old two, moved", "from": ["k01.u2"], "claims": [["text": "z", "src": ["20261017-aaaabbbb#p2"]]]]],
+        ],
+      ],
+      "held": [],
+    ])
+    #expect(ConceptCuration.check(out: moved, input: input, math: nil).problems.isEmpty)
+    // 행방이 없거나 옛 단위가 아닌 것을 가리키면 틀린다
+    let lost = try plan([
+      "concepts": [
+        ["concept": "k01", "entries": ["e01", "e02"], "units": [["id": "u1", "text": "Old one", "from": ["k01.u9"], "claims": [["text": "x", "src": ["20261010-11112222#p3"]]]]]]
+      ],
+      "held": [],
+    ])
+    let problems = ConceptCuration.check(out: lost, input: input, math: nil).problems
+    #expect(problems.contains { $0.contains("u2") })
+    #expect(problems.contains { $0.contains("k01.u9") })
+  }
+
+  @Test func 다시_정리에서_고르지_않은_개념은_새_단위만_받고_대응표에_받음으로_나온다() throws {
+    // 고른 개념은 k02 하나다. k01 은 고르지 않았고 k02 의 u1 을 받는다
+    let chosen = Concept(
+      cid: ConceptID(subject: "math", item: "unplaced", slug: "zero-exponent"), title: "Zero exponent", itemProposed: "Exponents", occurrences: [], symbols: [], nextID: 2,
+      units: [ConceptUnit(id: "u1", text: "Zero one", conditions: [], claims: [UnitClaim(id: "c1", text: "z", src: ["20261017-aaaabbbb#p2"])])], provenance: YAMLMap([]))
+    let base = input()
+    var input = ConceptCuration.Input(subject: "math", entries: base.entries, concepts: base.concepts + [("k02", chosen)], conceptHashes: [:])
+    input.recurate = ["k02"]
+    let one: [String: Any] = ["id": "u1", "text": "Old one", "claims": [["text": "x", "src": ["20261010-11112222#p3"]]]]
+    let two: [String: Any] = ["id": "u2", "text": "Old two"]
+    let received: [String: Any] = ["id": NSNull(), "text": "Zero one, moved", "from": ["k02.u1"], "claims": [["text": "z", "src": ["20261017-aaaabbbb#p2"]]]]
+    func check(title: String = "Laws of indices", _ units: [[String: Any]]) throws -> ConceptCuration.Checked {
+      ConceptCuration.check(
+        out: try plan([
+          "concepts": [["concept": "k01", "title": title, "entries": ["e01", "e02"], "units": units]],
+          "retired": [["concept": "k02", "into": "k01", "reason": "k01 에 합쳤다"]], "held": [],
+        ]), input: input, math: nil)
+    }
+    let ok = try check([one, received, two])
+    #expect(ok.problems.isEmpty, "\(ok.problems)")
+    let rows = Recuration.rows(try #require(ok.plan), input: input)
+    #expect(rows.map(\.action) == ["합침", "받음"])
+    #expect(rows[1].concept == "math/unplaced/laws-of-indices" && rows[1].targets == ["Laws of indices · 새 단위 1개"])
+    // 받은 개념은 다시 정리한 뒤의 개념 수에 세지 않는다
+    #expect(Recuration.afterCount(try #require(ok.plan), input: input) == 0)
+
+    // 제목, 기존 단위의 글과 주장, 차례를 바꾸면 틀린다
+    #expect(try check(title: "Indices", [one, received, two]).problems.contains { $0.contains("제목") })
+    var edited = one
+    edited["text"] = "Old one, revised"
+    #expect(try check([edited, received, two]).problems.contains { $0.contains("u1") })
+    var unsourced = one
+    unsourced["claims"] = []
+    #expect(try check([unsourced, received, two]).problems.contains { $0.contains("u1") })
+    #expect(try check([two, received, one]).problems.contains { $0.contains("차례") })
+  }
+
+  @Test func 새_개념은_옮기거나_없앤_개념의_옛_id_를_다시_쓰지_않는다() throws {
+    let t = TempPlace()
+    try t.data.initialize(app: testApp)
+    // math/unplaced/zero-exponent 는 앞선 다시 정리로 없앤 개념이다. 그 id 를 다시 쓰면 줄이 새 개념의 코멘트를 끌고 간다
+    try Moves.append(t.data, kind: "concept", from: "math/unplaced/zero-exponent", to: "math/unplaced/laws-of-indices", why: "다시 정리로 없앰")
+    let out = try plan([
+      "concepts": [
+        [
+          "concept": NSNull(), "slug": "zero-exponent", "title": "Zero exponent", "entries": ["e01", "e02"],
+          "units": [["id": NSNull(), "text": "Any base to the zero is one.", "claims": [["text": "z", "src": ["20261017-aaaabbbb#p2"]]]]],
+        ]
+      ],
+      "held": [],
+    ])
+    let input = input()
+    let c = ConceptCuration.check(out: out, input: input, math: nil)
+    let written = try ConceptCuration.apply(try #require(c.plan), input: input, data: t.data, provenance: ["job": "j"])
+    #expect(written.map(\.id) == ["math/unplaced/zero-exponent-2"])
   }
 
   @Test func 맞는_계획을_반영하면_기존_id_를_지키고_새_단위에_id_를_붙인다() throws {
@@ -493,8 +588,12 @@ extension CurationCheckTests {
     #expect(second.page.units.map(\.rev) == [1, 2])
     #expect(second.page.nextID == 5)
     #expect(second.history.count == 3)
-    #expect(PageBuild.needsPage(changed, page: first.page, version: nil))
-    #expect(!PageBuild.needsPage(changed, page: second.page, version: nil))
+    #expect(PageBuild.needsPage(changed, page: first.page))
+    #expect(!PageBuild.needsPage(changed, page: second.page))
+    // 옛 지침 판으로 만든 페이지도 원문이 그대로면 낡지 않는다 (DECISIONS.md 45)
+    let old = PageBuild.assemble(draft, concept: changed, old: first.page, provenance: ["job": "j0", "instructions": ["kind": "page-build", "version": "0.1"]])
+    #expect(old.page.instructionsVersion == "0.1")
+    #expect(!PageBuild.needsPage(changed, page: old.page))
   }
 
   @Test func 다시_만들어도_요구로_더한_단위는_제자리에_남고_새_판_풀이는_단계와_함께_옮긴다() {
@@ -545,6 +644,54 @@ extension CurationCheckTests {
   }
 }
 
+@Suite struct LanguageAcquisitionTests {
+  @Test func 과목_이름으로_언어_습득_과목과_목표_언어를_알아본다() {
+    #expect(LanguageAcquisition.target(of: "Spanish") == "Spanish")
+    #expect(LanguageAcquisition.target(of: "spanish") == "Spanish")
+    #expect(LanguageAcquisition.target(of: "Español") == "Spanish")
+    #expect(LanguageAcquisition.target(of: "French ab initio") == "French")
+    #expect(LanguageAcquisition.target(of: "Language Acquisition: Spanish") == "Spanish")
+    #expect(LanguageAcquisition.target(of: "English B") == "English")
+    #expect(LanguageAcquisition.target(of: "Language B") == LanguageAcquisition.unnamed)
+    #expect(LanguageAcquisition.target(of: "language-acquisition") == LanguageAcquisition.unnamed)
+    // 영어와 문학 과목, 내용 과목은 언어 습득 과목이 아니다
+    // 한자·가나·한글로 쓰는 언어는 아직 다루지 않는다
+    for name in [
+      "English", "Language and Literature", "Language A: Literature", "Spanish A: Literature", "Spanish A", "French A", "Physics", "Extended Mathematics",
+      "Individuals and Societies", "Mandarin B", "Japanese ab initio", "Chinese", "Korean B",
+    ] {
+      #expect(LanguageAcquisition.target(of: name) == nil, "\(name)")
+    }
+  }
+
+  @Test func 언어_습득_과목이면_요청과_판정자에게_알린다() {
+    let t = TempPlace()
+    func lead(_ subject: String) -> SourceSummary {
+      let meta = SourceMeta(
+        id: "20261020-aaaa0000", original: .init(name: "x.pdf", bytes: 1, sha256: "s"), received: "r", converted: nil, pages: 1,
+        textLayer: .init(by: "pdfkit", pagesWithText: 1, ocrPages: []), buildUps: [])
+      let labels = SourceLabels(grade: "MYP 5", subject: subject, level: nil)
+      return SourceSummary(folder: SourceFolder(id: meta.id, in: t.data), meta: meta, labels: SourceLabelsFile(source: meta.id, labels: labels, memo: nil, syllabusBasis: false))
+    }
+    let bundle = SourceBundle(id: "20261020-bbbb0000", created: "r", sources: ["20261020-aaaa0000"])
+    let spanish = SourceReading.requestMarkdown(bundle, targets: [lead("Spanish")], earlier: [], earlierEntries: [])
+    #expect(spanish.contains("- 과목 갈래: 언어 습득 (목표 언어: Spanish)"))
+    #expect(!SourceReading.requestMarkdown(bundle, targets: [lead("Physics")], earlier: [], earlierEntries: []).contains("과목 갈래"))
+
+    let item = [ReaderTest.Item(key: "u1", text: "*Ayer comí paella.* (Yesterday I ate paella.)")]
+    #expect(ReaderTest.prompt(item, level: "an IB student in MYP 5", subject: "Spanish").contains("Spanish 를 배우는 중"))
+    #expect(!ReaderTest.prompt(item, level: "an IB student in MYP 5", subject: "Physics").contains("언어 습득"))
+
+    let goals = [OutcomeTest.Goal(key: "o1", text: "Explain why recycling matters.")]
+    let verdicts = [OutcomeTest.Verdict(key: "o1", applies: true, met: false, practiced: false, missing: "x")]
+    #expect(OutcomeTest.prompt(text: "x", goals: goals, level: "an IB student in MYP 5", subject: "Spanish").contains("Spanish 로 해낼 수 있으면"))
+    #expect(OutcomeTest.prompt(text: "x", goals: goals, level: "an IB student in MYP 5", subject: "Physics").contains("왜 그런지"))
+    #expect(OutcomeTest.unmet(verdicts, goals: goals, subject: "Spanish").first?.contains("주제 내용의 까닭") == true)
+    #expect(OutcomeTest.unpracticed(verdicts, goals: goals, subject: "Spanish").first?.contains("활용, 문장 만들기") == true)
+    #expect(OutcomeTest.unpracticed(verdicts, goals: goals).first?.contains("계산만 시키지 않는다") == true)
+  }
+}
+
 @Suite struct TranslationCheckTests {
   @Test func 수식_숫자_남은_영어_어휘를_본다() {
     let g = Glossary(terms: [GlossaryTerm(en: "exponent", ko: "지수")])
@@ -556,6 +703,28 @@ extension CurationCheckTests {
     #expect(Translation.leftoverEnglish("지수는 (exponent of the base here now) 이다") == nil)
     #expect(Translation.leftoverEnglish("그래서 add the exponents when you multiply them 이다") != nil)
     #expect(Translation.leftoverEnglish("화면 아래에 SELECT, DELETE, TYPE, TOOL, MODIFY, DRAW 명령이 있다") == nil)
+  }
+
+  @Test func 영어_단위에_그대로_나온_외국어_예문은_남은_영어로_세지_않는다() {
+    let g = Glossary()
+    let en = "Use *ir a* + infinitive for plans: *Mañana voy a reciclar el papel y el cartón.* Another example: *Me gusta mucho la comida de mi abuela.* (I really like my grandmother's food.)"
+    let ko = "계획은 *ir a* + 동사원형으로 말한다: *Mañana voy a reciclar el papel y el cartón.* 다른 예: *Me gusta mucho la comida de mi abuela.* (나는 할머니의 음식을 정말 좋아한다.)"
+    #expect(Translation.unitProblems(en: en, ko: ko, glossary: g).isEmpty)
+    // 가운데에 약어와 괄호가 있는 외국어 문장, 영어 단위와 모양이 다른 낱말 나열도 세지 않는다
+    #expect(Translation.leftoverEnglish("질문 예: *¿Puedes comparar las habilidades del estudiante IB con las de tu familia (ATL skills)?*") == nil)
+    #expect(Translation.leftoverEnglish("일터의 사람: el doctor, la veterinaria, la enfermera, el piloto, el cocinero 가 있다") == nil)
+    // 옮기지 않은 영어 설명과 영어 낱말 나열은 그대로 잡는다
+    #expect(Translation.leftoverEnglish("계획은 use ir a plus the infinitive to talk about plans 로 말한다: *Mañana voy a reciclar el papel y el cartón.*") != nil)
+    #expect(Translation.leftoverEnglish("기술: teamwork, leadership, creativity, communication, empathy, resilience 이다") != nil)
+  }
+
+  @Test func 다른_과목의_용어로는_막지_않는다() {
+    let g = Glossary(terms: [GlossaryTerm(en: "reflection", ko: "대칭이동", subjects: ["extended-mathematics"]), GlossaryTerm(en: "skill", ko: "기술")])
+    let en = "*La reflexión* means reflection: a skill you practise in class."
+    let ko = "*La reflexión* 은 성찰을 뜻한다. 수업에서 연습하는 기술이다."
+    #expect(Translation.unitProblems(en: en, ko: ko, glossary: g).contains { $0.contains("reflection") })
+    #expect(Translation.unitProblems(en: en, ko: ko, glossary: g.of(subject: "spanish")).isEmpty)
+    #expect(g.of(subject: "extended-mathematics").terms.count == 2)
   }
 
   @Test func 고쳐_쓴_뒤에는_어휘와_다른_뜻으로_쓴_낱말로_막지_않는다() throws {
@@ -623,6 +792,16 @@ extension CurationCheckTests {
             "body": "When you multiply powers with the same base, add the exponents: \\(a^m a^n = a^{m+n}\\).",
             "claims": [{"text": "\\(a^m a^n = a^{m+n}\\)", "source": ids[0], "pages": [1]}], "pages": {ids[0]: [1, 2]}}))
         out("report.md", "# Laws of indices\n\n## 무엇인가\n지수 법칙 수업 자료다.\n")
+    elif "# 개념 정리 요청" in req and "## 다시 정리할 개념" in req:
+        # 다시 정리: 고른 k02 를 k01 에 합친다. k02.u1 은 k01 의 새 단위로 옮기고, k02.u2 는 뺀다
+        keys = re.findall(r"^\| (e\d+) \|", req, re.M)
+        def src(k): return re.findall(r"\"(\d{8}-[0-9a-f]{8}#p\d+)\"", read("concepts/" + k + ".yaml"))
+        out("plan.json", json.dumps({"concepts": [{"concept": "k01", "entries": keys, "units": [
+            {"id": "u1", "text": "Rewritten one.", "claims": [{"text": "a", "src": src("k01")[:1]}]},
+            {"id": "u2", "text": "Rewritten two.", "claims": []},
+            {"id": None, "text": "Moved from the other concept.", "from": ["k02.u1"], "claims": [{"text": "b", "src": src("k02")[:1]}]}]}],
+            "retired": [{"concept": "k02", "into": "k01", "reason": "k01 에 합쳤다", "units": [{"id": "u2", "reason": "주제 설명"}]}], "held": []}))
+        out("report.md", "k02 를 k01 에 합쳤다.\n")
     elif "# 개념 정리 요청" in req:
         keys = re.findall(r"^\| (e\d+) \|", req, re.M)
         src = []
@@ -731,7 +910,19 @@ extension CurationCheckTests {
     #expect(Set(layers.ko.keys) == ["p1", "n2", "b3"])
     #expect(Translation.targets(page, layers: layers).isEmpty)
     #expect(Glossary.load(t.data).term("exponent")?.ko == "지수")
-    #expect(Pipeline.pending(t.data, instructions: repoInstructions).isEmpty)
+    #expect(Pipeline.pending(t.data).isEmpty)
+    // 페이지 다시 만들기: 낡지 않았어도 고른 개념의 페이지를 지금 지침으로 다시 짠다. 이전 페이지는 에이전트에게 주지 않고, 단위 id 는 이어 쓴다 (DECISIONS.md 46)
+    let rebuildID = try await m.submit(config: config) { try PageBuild.prepare(subject: "extended-math", rebuild: [concept.id], $0) }
+    let rebuildEnd = await m.waitForEnd(rebuildID)
+    #expect(rebuildEnd.phase == "done", "\(rebuildEnd.error ?? "")")
+    await m.waitUntilIdle()
+    let rebuiltDirs = AgentDirs(t.folders, rebuildID, sub: "c1")
+    #expect(!FileOps.exists(rebuiltDirs.input.appending(path: "page.yaml")))
+    #expect(FileOps.readIfExists(rebuiltDirs.input.appending(path: "request.md"))?.contains("이전 페이지: 주지 않는다") == true)
+    let again = try #require(Page.load(folder))
+    #expect(again.provenance["job"]?.string == rebuildID)
+    #expect(again.units.map(\.id) == page.units.map(\.id))
+    #expect(Pipeline.pending(t.data).isEmpty)
     // 관점은 어휘에 맞춰 붙고, 열어 보지 않은 레퍼런스는 버려 빈 목록으로 남는다
     #expect(ConceptFacets.load(ConceptFolder(concept.cid, in: t.data))?.keyConcepts == ["Form"])
     #expect(References.load(t.data).concepts[concept.id]?.items.isEmpty == true)
@@ -755,7 +946,7 @@ extension CurationCheckTests {
       id: Comment.makeID(), at: Clock.isoLocal(), by: "learner", kind: .ask, anchor: CommentAnchor(concept: concept.id, unit: unit.id, rev: unit.rev, quote: "Multiply"),
       text: "Why do the exponents add?")
     try CommentStore.append(t.data, question)
-    #expect(Pipeline.pending(t.data, instructions: repoInstructions).map(\.kind) == [.ask])
+    #expect(Pipeline.pending(t.data).map(\.kind) == [.ask])
     let askID = try await m.submit(config: config) { try Ask.prepare(commentID: question.id, $0) }
     let asked = await m.waitForEnd(askID)
     #expect(asked.phase == "done", "\(asked.error ?? "")")
@@ -803,6 +994,152 @@ extension CurationCheckTests {
     #expect(issues.isEmpty, "\(issues)")
   }
 
+  @Test func 고른_개념을_다시_정리하면_후보를_보고_반영한다() async throws {
+    let t = TempPlace()
+    try t.data.initialize(app: testApp)
+    let fake = t.root.appending(path: "bin/claude")
+    try FileManager.default.createDirectory(at: fake.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Self.fakeClaude.write(to: fake, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fake.path)
+    var config = RunnerConfig(
+      claudeToken: "x", timeout: .seconds(60), tools: ToolPaths(claude: fake.path), guardHelper: "/x", instructions: repoInstructions, katex: repoKatex,
+      baseEnvironment: [:])
+    config.model = "test"
+
+    // 개념 둘(a, b)과 그 엔트리, 페이지. b 의 첫 문단에 코멘트와 받아들인 요구가 있다
+    func make(_ slug: String, page n: Int) throws -> Concept {
+      let entry = Entry(
+        id: "math/unplaced/\(slug)", subject: "math", item: nil, itemProposed: "Exponents", title: slug, sources: [EntrySource(source: "20261017-aaaabbbb", pages: [n])],
+        claims: [EntryClaim(text: "c", src: ["20261017-aaaabbbb#p\(n)"])], symbols: [], examples: [], misconceptions: [], body: "b", recorded: "", provenance: YAMLMap([]))
+      try FileOps.writeNew(entry.markdown, to: t.data.entryFile(entry.id))
+      let units = [
+        ConceptUnit(id: "u1", text: "\(slug) one", conditions: [], claims: [UnitClaim(id: "c1", text: "x", src: ["20261017-aaaabbbb#p\(n)"])]),
+        ConceptUnit(id: "u2", text: "\(slug) two", conditions: [], claims: []),
+      ]
+      let c = Concept(
+        cid: ConceptID(subject: "math", item: "unplaced", slug: slug), title: slug.uppercased(), itemProposed: "Exponents",
+        occurrences: [Occurrence(entry: entry.id, source: "20261017-aaaabbbb", pages: [n])], symbols: [], nextID: 3, units: units, provenance: YAMLMap([]))
+      try c.write(t.data)
+      try Page(
+        concept: c.id, titleKo: slug, nextID: 3, units: units.enumerated().map { PageUnit(id: "p\($0.offset + 1)", rev: 1, kind: .para, from: "\($0.element.id)@\($0.element.hash)", prov: "source") },
+        provenance: YAMLMap([])
+      ).write(ConceptFolder(c.cid, in: t.data))
+      return c
+    }
+    let a = try make("a", page: 1)
+    let b = try make("b", page: 2)
+    let note = Comment(id: "cm-1", at: "t", by: "learner", kind: .memo, anchor: CommentAnchor(concept: b.id, unit: "p1", rev: 1, quote: "b one"), text: "옮겨 갈 문단")
+    let gone = Comment(id: "cm-2", at: "t", by: "learner", kind: .memo, anchor: CommentAnchor(concept: b.id, unit: "p2", rev: 1, quote: "b two"), text: "뺄 문단")
+    try CommentStore.append(t.data, note)
+    try CommentStore.append(t.data, gone)
+    let directive = try DirectiveStore.request(t.data, op: .easy, target: DirectiveTarget(concept: b.id, unit: "p1", rev: 1), note: nil, fromComment: nil)
+    try DirectiveStore.update(t.data, id: directive.id, status: .accepted)
+    // 뺄 문단에 요청한 요구, 지난 판에서 빠진 b 의 p3 에 단 코멘트 (a 의 페이지에 옮겨 올 문단도 p3 이 된다)
+    let doomed = try DirectiveStore.request(t.data, op: .detail, target: DirectiveTarget(concept: b.id, unit: "p2", rev: 1), note: nil, fromComment: nil)
+    try FileOps.appendLine(
+      JSONText.line(.object(["v": .number(1), "at": .string("t"), "reason": .string("removed"), "unit": .object(["id": .string("p3"), "rev": .number(1)])])),
+      to: ConceptFolder(b.cid, in: t.data).history)
+    let earlier = Comment(id: "cm-3", at: "t", by: "learner", kind: .memo, anchor: CommentAnchor(concept: b.id, unit: "p3", rev: 1, quote: "b old"), text: "지난 판의 문단")
+    try CommentStore.append(t.data, earlier)
+
+    // 다시 정리는 후보만 남기고 데이터를 바꾸지 않는다
+    let m = JobManager(data: t.data, folders: t.folders)
+    let job = try await m.submit(config: config) { try Recuration.prepare(subject: "math", concepts: [a.id, b.id], $0) }
+    let ended = await m.waitForEnd(job)
+    #expect(ended.phase == "done", "\(ended.error ?? "")")
+    let proposal = try #require(Recuration.pending(t.data).first)
+    #expect(proposal.job == job && proposal.before == 2 && proposal.after == 1)
+    #expect(proposal.rows.map(\.action) == ["다시 씀", "없앰"])
+    #expect(proposal.rows[1].targets == ["A"])
+    #expect(ConceptStore.all(t.data, subject: "math").count == 2)
+
+    // 작업이 돌거나 다른 프로세스가 데이터 폴더를 쥐고 있으면 반영하지 않는다
+    let other = DataLock(t.data)
+    #expect(other.tryAcquire())
+    #expect(throws: RequestError.self) { try Recuration.apply(t.data, job: job) }
+    other.release()
+    #expect(Recuration.pending(t.data).count == 1)
+
+    // 반영하면 b 가 없어지고, b.u1 은 a 의 새 단위가 되며, 코멘트와 요구가 따라간다
+    let applied = try Recuration.apply(t.data, job: job)
+    #expect(applied.retired == [b.id] && applied.written == [a.id])
+    #expect(Recuration.pending(t.data).isEmpty)
+    #expect(!FileOps.exists(ConceptFolder(b.cid, in: t.data).url))
+    let merged = try #require(ConceptStore.all(t.data, subject: "math").first)
+    #expect(merged.units.map(\.id) == ["u1", "u2", "u3"])
+    #expect(Set(merged.occurrences.map(\.entry)) == ["math/unplaced/a", "math/unplaced/b"])
+    #expect(Moves.resolve(b.id, moves: Moves.all(t.data)) == a.id)
+    #expect(FileOps.exists(Recuration.folder(t.data, job: job).appending(path: "plan.json")))
+    #expect(throws: RequestError.self) { try Recuration.apply(t.data, job: job) }
+    #expect(DirectiveStore.load(t.data).first?.status == .recheck)
+    // 뺀 문단의 요구는 실패로 끝나고, 옮겨 간 요구는 a 의 페이지에 그 문단이 생길 때까지 기다린다
+    #expect(DirectiveStore.load(t.data).first { $0.id == doomed.id }?.status == .failed)
+    #expect(Regen.pending(t.data).isEmpty)
+
+    // a 의 페이지를 다시 만들면 옮겨 온 단위의 문단에 코멘트가 "이전 판"으로 붙고, 뺀 문단의 코멘트는 어디에도 붙지 않는다
+    #expect(Pipeline.pending(t.data).map(\.kind).contains(.pageBuild))
+    let pages = try await m.submit(config: config) { try PageBuild.prepare(subject: "math", $0) }
+    #expect(await m.waitForEnd(pages).phase == "done")
+    let page = try #require(Page.load(ConceptFolder(merged.cid, in: t.data)))
+    let moved = try #require(page.units.first { $0.kind == .para && $0.fromUnit == "u3" })
+    let comments = CommentStore.load(t.data)
+    #expect(comments[0].anchor == CommentAnchor(concept: a.id, unit: moved.id, rev: 0, quote: "b one"))
+    #expect(comments[1].anchor?.concept == a.id && comments[1].anchor?.unit == "")
+    // 지난 판에서 빠진 단위의 코멘트도 a 의 같은 id 문단(p3)에 붙지 않는다
+    #expect(moved.id == "p3")
+    #expect(comments[2].anchor?.concept == a.id && comments[2].anchor?.unit == "")
+    #expect(DirectiveStore.load(t.data).first?.target.unit == moved.id)
+    #expect(Regen.pending(t.data).map(\.id) == [directive.id])
+  }
+
+  @Test func 다시_정리한_사이_개념이_바뀌면_반영하지_않고_버릴_수_있다() async throws {
+    let t = TempPlace()
+    try t.data.initialize(app: testApp)
+    let fake = t.root.appending(path: "bin/claude")
+    try FileManager.default.createDirectory(at: fake.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Self.fakeClaude.write(to: fake, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fake.path)
+    var config = RunnerConfig(
+      claudeToken: "x", timeout: .seconds(60), tools: ToolPaths(claude: fake.path), guardHelper: "/x", instructions: repoInstructions, katex: repoKatex,
+      baseEnvironment: [:])
+    config.model = "test"
+    var made: [Concept] = []
+    for (slug, n) in [("a", 1), ("b", 2)] {
+      let entry = Entry(
+        id: "math/unplaced/\(slug)", subject: "math", item: nil, itemProposed: "Exponents", title: slug, sources: [EntrySource(source: "20261017-aaaabbbb", pages: [n])],
+        claims: [EntryClaim(text: "c", src: ["20261017-aaaabbbb#p\(n)"])], symbols: [], examples: [], misconceptions: [], body: "b", recorded: "", provenance: YAMLMap([]))
+      try FileOps.writeNew(entry.markdown, to: t.data.entryFile(entry.id))
+      let c = Concept(
+        cid: ConceptID(subject: "math", item: "unplaced", slug: slug), title: slug, itemProposed: "Exponents",
+        occurrences: [Occurrence(entry: entry.id, source: "20261017-aaaabbbb", pages: [n])], symbols: [], nextID: 3,
+        units: [
+          ConceptUnit(id: "u1", text: "one", conditions: [], claims: [UnitClaim(id: "c1", text: "x", src: ["20261017-aaaabbbb#p\(n)"])]),
+          ConceptUnit(id: "u2", text: "two", conditions: [], claims: []),
+        ], provenance: YAMLMap([]))
+      try c.write(t.data)
+      made.append(c)
+    }
+    let m = JobManager(data: t.data, folders: t.folders)
+    let job = try await m.submit(config: config) { try Recuration.prepare(subject: "math", concepts: made.map(\.id), $0) }
+    #expect(await m.waitForEnd(job).phase == "done")
+    // 그 사이 이 과목에 개념이 생겼다 (계획이 모르는 개념이라 새 개념이 덮어쓸 수 있다)
+    let added = Concept(
+      cid: ConceptID(subject: "math", item: "unplaced", slug: "c"), title: "c", itemProposed: "Exponents", occurrences: [], symbols: [], nextID: 2,
+      units: [ConceptUnit(id: "u1", text: "three", conditions: [], claims: [])], provenance: YAMLMap([]))
+    try added.write(t.data)
+    let refused = #expect(throws: RequestError.self) { try Recuration.apply(t.data, job: job) }
+    #expect(refused?.message.contains("math/unplaced/c") == true)
+    FileOps.remove(ConceptFolder(added.cid, in: t.data).url)
+    // 그 사이 a 가 바뀌었다
+    var changed = made[0]
+    changed.title = "A, changed"
+    try changed.write(t.data)
+    #expect(throws: RequestError.self) { try Recuration.apply(t.data, job: job) }
+    #expect(ConceptStore.all(t.data, subject: "math").count == 2)
+    try Recuration.discard(t.data, job: job)
+    #expect(Recuration.pending(t.data).isEmpty)
+  }
+
   @Test func 토큰_없이_넣은_자료는_남은_일로_보인다() async throws {
     let t = TempPlace()
     try t.data.initialize(app: testApp)
@@ -815,7 +1152,7 @@ extension CurationCheckTests {
     _ = try await m.submit(config: config) { try SourceIntake.prepare(request, $0) }
     await m.waitUntilIdle()
     // 한 쪽짜리 자료는 나눌 수 없어 나누기를 보지 않고 바로 읽는다
-    let pending = Pipeline.pending(t.data, instructions: repoInstructions)
+    let pending = Pipeline.pending(t.data)
     #expect(pending.map(\.kind) == [.sourceReading])
   }
 
@@ -877,7 +1214,7 @@ extension CurationCheckTests {
     #expect(m.queue.filter { $0.kind == .sourceReading }.map(\.target) == pieces.map(\.id))
     // 나누기를 본 자료와 쪼갠 자료는 다시 나누기를 보지 않는다
     #expect(SourceSplit.checkedSources(t.data) == [parent.id])
-    #expect(Pipeline.pending(t.data, instructions: repoInstructions).map(\.kind) == [.sourceReading, .sourceReading, .sourceReading])
+    #expect(Pipeline.pending(t.data).map(\.kind) == [.sourceReading, .sourceReading, .sourceReading])
     let issues = DataValidation.validate(t.data, schemas: SchemaSet(repoRoot.appending(path: "schemas/\(CurrentSchema.version)")))
     #expect(issues.isEmpty, "\(issues)")
     m.shutdown()

@@ -97,7 +97,7 @@ import Testing
     #expect(bundles.count == 2)
 
     // 남은 일: 묶음마다 자료 읽기 하나
-    let pending = Pipeline.pending(t.data, instructions: repoInstructions)
+    let pending = Pipeline.pending(t.data)
     #expect(pending.filter { $0.kind == .sourceReading }.map(\.target).sorted() == bundles.map(\.id).sorted())
   }
 
@@ -143,7 +143,7 @@ import Testing
       id: "extended-math/unplaced/alpha", subject: "extended-math", item: nil, itemProposed: "Stats", title: "Alpha", sources: [EntrySource(source: source, pages: [1])],
       claims: [EntryClaim(text: "x", src: ["\(source)#p1"])], symbols: [], examples: [], misconceptions: [], body: "b", recorded: "", provenance: YAMLMap([]))
     try FileOps.writeNew(entry.markdown, to: t.data.entryFile(entry.id))
-    let pending = Pipeline.pending(t.data, instructions: repoInstructions)
+    let pending = Pipeline.pending(t.data)
     #expect(pending.contains { $0.kind == .conceptCuration && $0.target == done.id })
     #expect(pending.contains { $0.kind == .sourceReading && $0.target != done.id })
     #expect(ConceptCuration.pending(t.data, bundle: done).map(\.id) == [entry.id])

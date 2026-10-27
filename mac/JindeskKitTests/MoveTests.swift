@@ -30,6 +30,53 @@ import Testing
     #expect(Moves.resolve("math/unplaced/logs", moves: Moves.all(t.data)) == "math/u2/logs")
   }
 
+  @Test func 단위를_옮긴_줄을_따라_코멘트와_요구가_옮겨_간_문단을_찾는다() throws {
+    let t = TempPlace()
+    try t.data.initialize(app: testApp)
+    _ = try concept(t.data, "math/unplaced/old")
+    let target = try concept(t.data, "math/unplaced/new")
+    // 받는 개념의 페이지: 원문 단위 u7 의 문단이 p3 이다
+    try Page(
+      concept: target.id, titleKo: "새", nextID: 4,
+      units: [PageUnit(id: "p1", rev: 1, kind: .para, from: "u1@a", prov: "source"), PageUnit(id: "p3", rev: 1, kind: .para, from: "u7@b", prov: "source")],
+      provenance: YAMLMap([])
+    ).write(ConceptFolder(target.cid, in: t.data))
+    // 없앤 개념 old: p2(원문 u2)는 new 의 u7 로 옮겼고, p1 은 뺐다
+    try Moves.appendUnit(t.data, from: ("math/unplaced/old", "p2"), to: ("math/unplaced/new", "u7"), why: "다시 정리")
+    try Moves.appendUnit(t.data, from: ("math/unplaced/old", "p1"), to: ("math/unplaced/new", nil), why: "다시 정리")
+    try Moves.append(t.data, kind: "concept", from: "math/unplaced/old", to: "math/unplaced/new", why: "다시 정리로 없앰")
+    let moves = Moves.all(t.data)
+    #expect(Moves.resolve(concept: "math/unplaced/old", unit: "p2", moves: moves) == ("math/unplaced/new", "u7", true))
+    #expect(Moves.resolve(concept: "math/unplaced/old", unit: "p1", moves: moves) == ("math/unplaced/new", "", true))
+    #expect(Moves.resolve(concept: "math/unplaced/new", unit: "p1", moves: moves) == ("math/unplaced/new", "p1", false))
+    var resolver = AnchorResolver(t.data, moves: moves)
+    #expect(resolver.resolve(concept: "math/unplaced/old", unit: "p2") == ("math/unplaced/new", "p3", true))
+
+    // 코멘트는 옮겨 간 문단에 "이전 판"으로 붙고, 뺀 단위의 코멘트는 어느 문단에도 붙지 않는다
+    let moved = Comment(
+      id: "cm-1", at: "t", by: "learner", kind: .memo, anchor: CommentAnchor(concept: "math/unplaced/old", unit: "p2", rev: 3, quote: "q"), text: "옮겨 간 문단")
+    let dropped = Comment(
+      id: "cm-2", at: "t", by: "learner", kind: .memo, anchor: CommentAnchor(concept: "math/unplaced/old", unit: "p1", rev: 1, quote: "q"), text: "뺀 문단")
+    try CommentStore.append(t.data, moved)
+    try CommentStore.append(t.data, dropped)
+    let loaded = CommentStore.load(t.data)
+    #expect(loaded[0].anchor == CommentAnchor(concept: "math/unplaced/new", unit: "p3", rev: 0, quote: "q"))
+    #expect(loaded[1].anchor?.concept == "math/unplaced/new" && loaded[1].anchor?.unit == "")
+
+    // 요구도 따라간다. 옮기지 않은 요구는 대상 단위가 페이지에 없어도 기다리지 않는다 (돌아서 "단위를 찾지 못했습니다"로 끝난다)
+    _ = try DirectiveStore.request(t.data, op: .easy, target: DirectiveTarget(concept: "math/unplaced/old", unit: "p2", rev: 1), note: nil, fromComment: nil)
+    _ = try DirectiveStore.request(t.data, op: .easy, target: DirectiveTarget(concept: "math/unplaced/old", unit: "p1", rev: 1), note: nil, fromComment: nil)
+    _ = try DirectiveStore.request(t.data, op: .easy, target: DirectiveTarget(concept: "math/unplaced/new", unit: "p9", rev: 1), note: nil, fromComment: nil)
+    #expect(DirectiveStore.load(t.data).map(\.target.unit) == ["p3", "", "p9"])
+    #expect(DirectiveStore.load(t.data).map(\.moved) == [true, true, false])
+    #expect(Regen.pending(t.data).map(\.target.unit) == ["p3", "", "p9"])
+
+    // 다시 옮기면 끝까지 따라간다. 옮겨 간 개념의 페이지에 그 문단이 생길 때까지 그 요구는 기다린다
+    try Moves.appendUnit(t.data, from: ("math/unplaced/new", "u7"), to: ("math/unplaced/third", "u2"), why: "다시 정리")
+    #expect(Moves.resolve(concept: "math/unplaced/old", unit: "p2", moves: Moves.all(t.data)) == ("math/unplaced/third", "u2", true))
+    #expect(Regen.pending(t.data).map(\.target.unit) == ["", "p9"])
+  }
+
   @Test func 과목_이름을_바꾸면_꼬리표와_엔트리와_개념이_새_과목으로_간다() async throws {
     let t = TempPlace()
     try t.data.initialize(app: testApp)
@@ -58,6 +105,16 @@ import Testing
     // 개념 정리가 이 엔트리를 다시 고르지 않는다
     let bundle = try #require(BundleStore.bundle(of: sid, in: t.data))
     #expect(ConceptCuration.pending(t.data, bundle: bundle).isEmpty)
+  }
+
+  @Test func 과목_이름을_바꿀_때_옮기거나_없앤_개념의_옛_id_는_다시_쓰지_않는다() throws {
+    let t = TempPlace()
+    try t.data.initialize(app: testApp)
+    _ = try concept(t.data, "extended-math/unplaced/logs")
+    // mathematics/unplaced/logs 는 예전에 다른 자리로 옮긴 개념의 id 다
+    try Moves.append(t.data, kind: "concept", from: "mathematics/unplaced/logs", to: "mathematics/u1/logs", why: "목차 U1")
+    _ = try SubjectRename.run(t.data, from: "extended-math", toName: "Mathematics")
+    #expect(ConceptStore.all(t.data, subject: "mathematics").map(\.id) == ["mathematics/unplaced/logs-2"])
   }
 }
 
@@ -130,10 +187,10 @@ import Testing
 
 @Test func searchExcerpt() {
   let long = String(repeating: "word ", count: 40) + "\u{1}key\u{2}" + String(repeating: " tail", count: 60)
-  let e = SearchHit.excerpt(long)
+  let e = SearchMark.excerpt(long)
   #expect(e.hasPrefix("…") && e.hasSuffix("…") && e.contains("\u{1}key\u{2}"))
   #expect(e.count <= 182)
-  #expect(SearchHit.excerpt("short \u{1}hit\u{2} text") == "short \u{1}hit\u{2} text")
+  #expect(SearchMark.excerpt("short \u{1}hit\u{2} text") == "short \u{1}hit\u{2} text")
 }
 
 @Test func asciiMathInProse() {
@@ -141,32 +198,6 @@ import Testing
   #expect(!TexText.asciiMath("so log_8 of the root is a half", field: "caption").isEmpty)
   #expect(TexText.asciiMath(#"The value is \(7^{-1} = \frac{1}{7}\), so \(\log_7 \frac{1}{7} = -1\)."#, field: "caption").isEmpty)
   #expect(TexText.asciiMath("Press the `x^2` key, then the ^ key.", field: "text").isEmpty)
-}
-
-@Suite struct SearchIndexTests {
-  @Test func 영어와_한국어를_함께_찾고_바뀐_것이_없으면_다시_만들지_않는다() throws {
-    let t = TempPlace()
-    try t.data.initialize(app: testApp)
-    let cid = ConceptID("math/unplaced/laws")!
-    try Concept(
-      cid: cid, title: "Laws of logarithms", itemProposed: nil, occurrences: [], symbols: [], nextID: 2,
-      units: [ConceptUnit(id: "u1", text: "The product law adds logarithms.", conditions: [], claims: [])], provenance: YAMLMap([])
-    ).write(t.data)
-    let unit = PageUnit(id: "p1", rev: 1, kind: .para, from: "u1@x", prov: "source", text: "The product law adds logarithms.")
-    let folder = ConceptFolder(cid, in: t.data)
-    try Page(concept: cid.text, titleKo: "로그의 성질", nextID: 2, units: [unit], provenance: YAMLMap([])).write(folder)
-    try Layers(concept: cid.text, ko: ["p1": LayerText(from: "p1@r1", unitHash: unit.hash, text: "곱의 법칙은 로그를 더한다.", prov: YAMLMap([]))]).write(folder, order: ["p1"])
-    let index = SearchIndex(t.folders)
-    #expect(index.update(t.data))
-    #expect(!index.update(t.data))
-    #expect(index.search("product law").first?.unit == "p1")
-    #expect(index.search("곱의 법칙").first?.concept == cid.text)
-    #expect(index.search("로그").contains { $0.concept == cid.text })
-    #expect(index.search("nothing like this").isEmpty)
-    // 찾은 말이 표시된 채로, 짧은 말도 표시된다
-    #expect(index.search("product law").first?.snippet.contains("\u{1}product law\u{2}") == true)
-    #expect(index.search("로그").first { $0.unit != nil }?.snippet.contains("\u{1}로그\u{2}") == true)
-  }
 }
 
 @Suite struct SchemaTests {

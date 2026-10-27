@@ -35,7 +35,7 @@ Jindesk.app (학생 맥)
   Jobs/       에이전트 작업(자료 읽기와 개념 정리는 묶음 하나, 학습 페이지 만들기, 번역): 작업 공간 준비, 실행, 러너 검사와 고쳐 쓰기, 반영, 남은 일 계산
   Pages/      화면에 넘길 페이지 조합 (페이지 + 곁 층 + 코멘트 + 용어 + 관점), 그림 블록 틀, 바깥 라이브러리 사본
   Checks/     글 검사(주장 장부, 출처 대조, 수식 파싱, 풀이 단계 계산), 그림 블록 실행 확인과 라이브러리 받아 두기
-  Index/      SQLite 색인과 검색 (캐시의 index.sqlite, 영어·한국어 trigram FTS5)
+  Index/      SQLite 색인과 검색 (캐시의 index.sqlite, 영어·한국어 trigram FTS5, 악센트 무시, 비슷한 말 제안의 낱말 목록)
   Learner/    학생의 코멘트(comments.jsonl)와 요구(directives.jsonl)
   Backup/     백업 만들기와 되살리기
   Sync/       데이터 리포: 앱 설정의 리포 연결(클론, init), 커밋과 올리기, 받기(fast-forward), 뺄 파일 적기. 자료 버킷: 원본 자료와 쪽 이미지를 GCS 에 올리고 받기

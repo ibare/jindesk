@@ -9,10 +9,12 @@ struct ConceptMapScreen: View {
   let subject: String
   @AppStorage("mapArrangement") private var arrangement = ConceptMap.Arrangement.learning.rawValue
   @AppStorage("mapShowOthers") private var showOthers = true
-  @State private var selected: String?
-  @State private var openPage: String?
+
+  // 고른 개념과 지도에서 연 학습 페이지는 모델에 있다 (돌려서 칸을 새로 만들어도 남는다)
+  private var selected: String? { model.mapSelected }
 
   var body: some View {
+    @Bindable var model = model
     let map = model.conceptMap(subject, showOthers: showOthers)
     let bands = Self.bands(map, arrangement: ConceptMap.Arrangement(rawValue: arrangement) ?? .learning, syllabus: model.syllabi[subject], model: model)
     let chain = selected.map { (anc: map.ancestors(of: $0), desc: map.descendants(of: $0)) }
@@ -30,7 +32,7 @@ struct ConceptMapScreen: View {
                       MapNodeView(node: node, info: model.nodeInfo(node), state: state(id, chain))
                         .id(id)
                         .anchorPreference(key: NodeFrames.self, value: .bounds) { [id: $0] }
-                        .onTapGesture { if node.kind != .missing { selected = id } }
+                        .onTapGesture { if node.kind != .missing { model.mapSelected = id } }
                     }
                   }
                 }
@@ -45,38 +47,42 @@ struct ConceptMapScreen: View {
             }
           }
           .contentShape(Rectangle())
-          .onTapGesture { selected = nil }
+          .onTapGesture { model.mapSelected = nil }
         }
         .background(DotGrid())
-        .onChange(of: selected) {
+        .onChange(of: model.mapSelected) {
           guard let selected else { return }
           withAnimation { proxy.scrollTo(selected, anchor: UnitPoint(x: 0.5, y: 0.2)) }
         }
+        // "개념 지도에서 보기"로 열었거나 칸을 새로 만들었으면 고른 개념으로 스크롤한다
         .onAppear {
-          guard let focus = model.mapFocus else { return }
-          model.mapFocus = nil
-          selected = focus
-          DispatchQueue.main.async { proxy.scrollTo(focus, anchor: UnitPoint(x: 0.5, y: 0.2)) }
+          guard let selected else { return }
+          DispatchQueue.main.async { proxy.scrollTo(selected, anchor: UnitPoint(x: 0.5, y: 0.2)) }
         }
       }
       .overlay(alignment: .bottom) {
         if let id = selected, let node = map.node(id) {
-          MapSheet(map: map, node: node, info: model.nodeInfo(node), select: { selected = $0 }, open: { openPage = $0 })
+          MapSheet(map: map, node: node, info: model.nodeInfo(node), select: { model.mapSelected = $0 }, open: { model.mapPage = $0 })
             .transition(.move(edge: .bottom))
         }
       }
     }
     .navigationTitle("\(model.subjectName(subject)) 개념 지도")
     .navigationBarTitleDisplayMode(.inline)
-    .navigationDestination(item: $openPage) { id in
+    // 지도에서 연 학습 페이지도 오른쪽 칸의 페이지와 같은 보기를 다시 쓴다 (둘이 함께 보이는 일은 없다)
+    .navigationDestination(item: $model.mapPage) { id in
       if let c = model.concept(id) {
-        ConceptPage(concept: c, onOpenConcept: { openPage = $0 }, onOpenMap: { focus in
-          openPage = nil
-          selected = focus
-        })
+        ConceptPage(
+          concept: c,
+          onOpenConcept: { model.mapPage = $0 },
+          onOpenMap: { focus in
+            model.mapPage = nil
+            model.mapSelected = focus
+          },
+          kept: true)
       }
     }
-    .animation(.easeOut(duration: 0.2), value: selected)
+    .animation(.easeOut(duration: 0.2), value: model.mapSelected)
   }
 
   private func header(_ map: ConceptMap) -> some View {

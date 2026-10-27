@@ -15,27 +15,29 @@ enum Lookup: Identifiable, Equatable {
   }
 }
 
-// 개념 목록 위에 올리는 화면 (DECISIONS.md 39)
+// 스택의 단계 (DECISIONS.md 39, 43). iPad 왼쪽 칸의 스택에는 목록 단계(과목, 단원, 사전)만 쌓이고,
+// iPhone 의 한 스택에는 그 위에 고른 것이 올라간다.
+enum Route: Hashable {
+  // 과목의 단원 목록
+  case subject(String)
+  // 단원의 개념 목록 (과목 id, 단원 키). 단원 키는 "item:<목차 코드>" 또는 "proposed:<단원 제안>"
+  case unit(String, String)
+  // 사전: 용어 또는 기호
+  case dictionary(symbols: Bool)
+  // 고른 것 (iPhone 의 스택에서만)
+  case page(PageRoute)
+}
+
+// 오른쪽 칸(iPhone 은 목록 위)에 여는 것
 enum PageRoute: Hashable {
   case concept(String)
   // 단원 요약 (과목 id, 단원 키)
   case summary(String, String)
+  // 과목 개념 지도 (과목 id)
+  case map(String)
 }
 
 extension MobileModel {
-  // 사전 줄의 선택 값 (과목 목록의 선택)
-  static let termsSelection = "dict:terms"
-  static let symbolsSelection = "dict:symbols"
-
-  // 단원 요약의 선택 값 ("unit:<과목 id>|<단원 키>", 단원 키는 "item:<목차 코드>" 또는 "proposed:<단원 제안>")
-  static func unitSelection(_ subject: String, _ key: String) -> String { "unit:\(subject)|\(key)" }
-
-  static func unitKey(_ selection: String?) -> (subject: String, key: String)? {
-    guard let selection, selection.hasPrefix("unit:") else { return nil }
-    let parts = selection.dropFirst(5).split(separator: "|", maxSplits: 1).map(String.init)
-    return parts.count == 2 ? (parts[0], parts[1]) : nil
-  }
-
   // 배우는 순서 (과목이 섞이면 과목끼리)
   func inLearningOrder(_ list: [Concept]) -> [Concept] {
     var ranks: [String: [String: Int]] = [:]
@@ -76,24 +78,28 @@ extension MobileModel {
     return order.map { ($0, by[$0]!.0, by[$0]!.1) }
   }
 
-  // 찾기: 개념(영어·한국어 이름), 용어(영어·한국어), 기호(기호와 뜻)
-  func searchConcepts(_ q: String) -> [Concept] {
+  // 찾기: 개념(영어·한국어 이름), 용어(영어·한국어), 기호(기호와 뜻). 맥과 같은 낱말 규칙이다 (SearchQuery, DECISIONS.md 48):
+  // 모든 낱말이 들어야 맞고, 대소문자와 악센트를 가리지 않는다. 본문 찾기는 다음 단계다.
+  func searchConcepts(_ text: String) -> [Concept] {
+    let q = SearchQuery(text)
     guard let data, !q.isEmpty else { return [] }
     return inLearningOrder(
       allConcepts.filter { c in
-        c.title.localizedCaseInsensitiveContains(q) || (Page.load(ConceptFolder(c.cid, in: data))?.titleKo?.localizedCaseInsensitiveContains(q) ?? false)
+        q.matches(c.title) || (Page.load(ConceptFolder(c.cid, in: data))?.titleKo.map(q.matches) ?? false)
       })
   }
 
-  func searchTerms(_ q: String) -> [GlossaryTerm] {
+  func searchTerms(_ text: String) -> [GlossaryTerm] {
+    let q = SearchQuery(text)
     guard !q.isEmpty else { return [] }
-    return glossary.terms.filter { t in (t.names + [t.ko]).contains { $0.localizedCaseInsensitiveContains(q) } }
+    return glossary.terms.filter { q.matches($0.names + [$0.ko]) }
       .sorted { $0.en.localizedCaseInsensitiveCompare($1.en) == .orderedAscending }
   }
 
-  func searchSymbols(_ q: String) -> [(symbol: String, meaning: String, concepts: [Concept])] {
+  func searchSymbols(_ text: String) -> [(symbol: String, meaning: String, concepts: [Concept])] {
+    let q = SearchQuery(text)
     guard !q.isEmpty else { return [] }
-    return symbols.filter { TexText.display($0.symbol).localizedCaseInsensitiveContains(q) || $0.meaning.localizedCaseInsensitiveContains(q) }
+    return symbols.filter { q.matches([TexText.display($0.symbol), $0.meaning]) }
   }
 
   // 그 말이 글에 나오는 개념 (용어 시트)

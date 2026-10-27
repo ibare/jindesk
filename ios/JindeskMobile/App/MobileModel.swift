@@ -41,24 +41,30 @@ final class MobileModel {
   private(set) var syllabi: [String: Syllabus] = [:]
   @ObservationIgnored private var lastAttempt: Date?
 
-  // 과목 → 단원 → 개념 → 학습 페이지 (DECISIONS.md 39). 과목이 바뀌면 단원을, 단원이 바뀌면 올린 페이지를 비운다.
-  var subject: String? {
-    didSet { if subject != oldValue { unit = nil } }
+  // 과목 → 단원 → 개념 → 학습 페이지 (DECISIONS.md 39, 43).
+  // 왼쪽 칸(iPhone 은 한 스택)에서 들어간 목록 단계. 비어 있으면 첫 화면(과목 목록)이다. 고른 것(.page)은 넣지 않는다.
+  var lists: [Route] = []
+  // 오른쪽 칸(iPhone 은 목록 위)에 연 것. 바뀌면 개념 지도의 상태를 비운다.
+  var page: PageRoute? {
+    didSet {
+      guard page != oldValue else { return }
+      mapSelected = nil
+      mapPage = nil
+      // 다른 것을 열면 페이지 안 찾기 막대를 닫는다 (찾기 결과에서 연 개념은 그 개념의 막대를 이미 열어 두었다)
+      if let find = pageFind, page != .concept(find.concept) { pageFind = nil }
+    }
   }
-  // 단원 목록에서 고른 것: 단원("unit:<과목 id>|<단원 키>") 또는 개념 지도("map:<과목 id>")
-  var unit: String? {
-    didSet { if unit != oldValue { pages = [] } }
-  }
-  // 개념 목록 위에 올린 학습 페이지와 단원 요약
-  var pages: [PageRoute] = []
+  // 학습 페이지 안 찾기 (DECISIONS.md 48). 찾기 결과에서 연 개념은 친 말로 연다
+  var pageFind: PageFind?
+  // 과목 개념 지도에서 고른 개념과, 지도에서 연 학습 페이지. iPad 를 돌리면 칸을 새로 만들므로(SplitLayout) 화면이 아니라 모델에 둔다.
+  var mapSelected: String?
+  var mapPage: String?
   var sourcePeek: SourcePeek?
   private(set) var bucketName = UserDefaults.standard.string(forKey: bucketKey) ?? ""
   private(set) var hasBucketKey = bucketKeys.exists
   @ObservationIgnored private var pagesFrom: URL?
   // 스키마 버전이 달라 받지 못했을 때 띄울 업데이트 안내 (MOBILE.md 의 안내)
   var updateNotice: String?
-  // 과목 개념 지도를 열 때 골라 둘 개념 (학습 페이지의 "개념 지도에서 보기")
-  var mapFocus: String?
   var showSettings = false
   // 찾기와 사전에서 고른 용어나 기호 (시트로 보인다, DECISIONS.md 34)
   var lookup: Lookup?
@@ -94,11 +100,27 @@ final class MobileModel {
     library = SourceLibrary.load(data)
     concepts = Dictionary(uniqueKeysWithValues: ConceptStore.subjects(data).map { ($0, ConceptStore.all(data, subject: $0)) })
     syllabi = Dictionary(uniqueKeysWithValues: concepts.keys.compactMap { s in Syllabus.load(data, subject: s).map { (s, $0) } })
-    if let subject, concepts[subject] == nil, !subject.hasPrefix("dict:") { self.subject = nil }
-    if let unit, (Self.mapSubject(unit) ?? Self.unitKey(unit)?.subject).flatMap({ concepts[$0] }) == nil { self.unit = nil }
-    pages.removeAll { route in
-      if case .concept(let id) = route { return concept(id) == nil }
-      return false
+    // 새 판에서 사라진 과목, 단원, 개념은 닫는다
+    if let end = lists.firstIndex(where: { !exists($0) }) { lists.removeSubrange(end...) }
+    if let page, !exists(page) { self.page = nil }
+    if let mapSelected, concept(mapSelected) == nil { self.mapSelected = nil }
+    if let mapPage, concept(mapPage) == nil { self.mapPage = nil }
+  }
+
+  private func exists(_ route: Route) -> Bool {
+    switch route {
+    case .subject(let s): concepts[s] != nil
+    case .unit(let s, let key): units(s).contains { $0.key == key }
+    case .dictionary: true
+    case .page(let page): exists(page)
+    }
+  }
+
+  private func exists(_ route: PageRoute) -> Bool {
+    switch route {
+    case .concept(let id): concept(id) != nil
+    case .summary(let s, let key): units(s).contains { $0.key == key }
+    case .map(let s): concepts[s] != nil
     }
   }
 
@@ -126,30 +148,38 @@ final class MobileModel {
     return concepts[cid.subject]?.first { $0.id == id }
   }
 
-  // 학습 페이지의 앞뒤 개념, 찾기, 용어 시트에서 개념을 연다: 그 개념의 단원을 고르고 페이지를 올린다
-  func open(_ id: String) {
+  // 학습 페이지의 앞뒤 개념, 찾기, 용어 시트, 단원 요약에서 개념을 연다: 목록이 그 개념의 단원까지 따라 들어가고 페이지를 연다.
+  // 찾기에서 열면 친 말로 페이지 안 찾기 막대를 열어 찾은 말에 표시를 한다
+  func open(_ id: String, find query: String? = nil) {
     guard let c = concept(id) else { return }
-    subject = c.subject
-    unit = Self.unitSelection(c.subject, SubjectUnits.key(c, syllabus: syllabi[c.subject]))
-    pages = [.concept(id)]
+    let path: [Route] = [.subject(c.subject), .unit(c.subject, SubjectUnits.key(c, syllabus: syllabi[c.subject]))]
+    if lists != path { lists = path }
+    if let query, !query.trimmingCharacters(in: .whitespaces).isEmpty { pageFind = PageFind(concept: id, query: query) }
+    page = .concept(id)
+  }
+
+  // 학습 페이지 도구 막대의 찾기 단추
+  func showPageFind(_ concept: String) {
+    if pageFind?.concept != concept { pageFind = PageFind(concept: concept) }
+    pageFind?.focus += 1
+  }
+
+  // 렌더러가 알린 수 (그 개념의 막대에만 적는다)
+  func pageFindReport(concept: String, total: Int, index: Int) {
+    guard pageFind?.concept == concept else { return }
+    pageFind?.total = total
+    pageFind?.index = index
   }
 
   // MARK: - 과목 개념 지도
 
-  // 목록에서 개념 지도 줄의 선택 값
-  static func mapSelection(_ subject: String) -> String { "map:" + subject }
-
-  static func mapSubject(_ selection: String?) -> String? {
-    guard let selection, selection.hasPrefix("map:") else { return nil }
-    return String(selection.dropFirst(4))
-  }
-
-  // 학습 페이지의 "개념 지도에서 보기": 과목 지도를 그 개념을 고른 채 연다
+  // 학습 페이지의 "개념 지도에서 보기": 목록을 그 과목의 단원 목록(개념 지도 줄이 있는 곳)으로 옮기고, 지도를 그 개념을 고른 채 연다
   func openMap(focus id: String) {
     guard let cid = ConceptID(id) else { return }
-    subject = cid.subject
-    mapFocus = id
-    unit = Self.mapSelection(cid.subject)
+    if lists != [.subject(cid.subject)] { lists = [.subject(cid.subject)] }
+    page = .map(cid.subject)
+    mapPage = nil
+    mapSelected = id
   }
 
   // 저장하지 않고 지금 받아 둔 개념에서 계산한다 (맥과 같은 엔진, PAGES.md 의 개념 지도)
@@ -275,7 +305,7 @@ final class MobileModel {
   }
 
   #if DEBUG
-    // 화면 확인 (MOBILE.md 의 빌드와 시험): -mirrorFrom <데이터 폴더> -openConcept <개념 id> -walkTo <이웃 개념 id> -openMap <개념 id 또는 과목 id> -openSettings YES
+    // 화면 확인 (MOBILE.md 의 빌드와 시험): -mirrorFrom <데이터 폴더> -openConcept <개념 id> [-findText <말>] -walkTo <이웃 개념 id> -openMap <개념 id 또는 과목 id> -openSettings YES
     private func applyDebugArguments() {
       let defaults = UserDefaults.standard
       if let path = defaults.string(forKey: "mirrorFrom") {
@@ -296,22 +326,25 @@ final class MobileModel {
       if let id = defaults.string(forKey: "openConcept") {
         // 앞뒤 개념 지도에서 이 이웃을 누른다 (renderer/page.js 의 page.debug.walk)
         if let next = defaults.string(forKey: "walkTo") { pageDebug = .object(["walk": .array([.string(id), .string(next)])]) }
-        open(id)
+        // 페이지 안 찾기 막대를 이 말로 연다
+        open(id, find: defaults.string(forKey: "findText"))
       } else if let id = defaults.string(forKey: "openMap") {
         // 과목 지도를 그 개념을 고른 채 연다. 과목 id 만 주면 고르지 않고 연다.
         if ConceptID(id) != nil { openMap(focus: id) } else {
-          subject = id
-          unit = Self.mapSelection(id)
+          lists = [.subject(id)]
+          page = .map(id)
         }
       } else if let s = defaults.string(forKey: "openSubject") {
-        subject = s
+        lists = [.subject(s)]
       }
-      // 단원의 개념 목록을 연다 (-openUnit "unit:<과목 id>|<단원 키>", -openUnitSummary YES 면 단원 요약까지 올린다).
-      // 용어 시트를 띄운다 (-lookupTerm <영어 용어>)
-      if let u = defaults.string(forKey: "openUnit"), let key = Self.unitKey(u) {
-        subject = key.subject
-        unit = u
-        if defaults.bool(forKey: "openUnitSummary") { pages = [.summary(key.subject, key.key)] }
+      // 단원의 개념 목록을 연다 (-openUnit "unit:<과목 id>|<단원 키>", -openUnitSummary YES 면 단원 요약까지 연다).
+      // 단원 키는 "item:<목차 코드>" 또는 "proposed:<단원 제안>"이다. 용어 시트를 띄운다 (-lookupTerm <영어 용어>)
+      if let u = defaults.string(forKey: "openUnit"), u.hasPrefix("unit:") {
+        let parts = u.dropFirst(5).split(separator: "|", maxSplits: 1).map(String.init)
+        if parts.count == 2 {
+          lists = [.subject(parts[0]), .unit(parts[0], parts[1])]
+          if defaults.bool(forKey: "openUnitSummary") { page = .summary(parts[0], parts[1]) }
+        }
       }
       if let t = defaults.string(forKey: "lookupTerm") { lookup = .term(t) }
       // 원래 자료의 그 쪽을 연다 (-openSource <자료 id>#<쪽>)

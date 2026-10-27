@@ -86,6 +86,40 @@ public enum SubjectID {
   }
 }
 
+// 언어 습득 과목 (DECISIONS.md 44). 과목 꼬리표의 이름으로 알아본다. 작업들은 요청에 적힌 이 판단을 함께 쓴다.
+// 영어는 목록에 없다(언어와 문학으로 본다). "English B" 처럼 언어 습득 표시가 있으면 언어 습득 과목이다.
+public enum LanguageAcquisition {
+  static let names = [
+    "spanish": "Spanish", "español": "Spanish", "espanol": "Spanish", "french": "French", "français": "French", "francais": "French",
+    "german": "German", "deutsch": "German", "italian": "Italian", "portuguese": "Portuguese", "arabic": "Arabic", "russian": "Russian",
+    "hindi": "Hindi", "dutch": "Dutch",
+  ]
+  // 한자, 가나, 한글로 쓰는 언어. 목표 언어를 철자 그대로 쓰면 영어 칸과 한국어 칸의 한글·한자·가나 검사에 걸리므로 아직 다루지 않는다
+  static let unsupported: Set = ["mandarin", "chinese", "cantonese", "japanese", "korean"]
+  // 과목 이름에 언어가 없을 때(Language Acquisition, Language B)의 목표 언어
+  public static let unnamed = "the target language"
+
+  // 목표 언어 (예: Spanish). 언어 습득 과목이 아니면 nil. 과목 꼬리표 값과 과목 id 를 모두 받는다.
+  public static func target(of subject: String) -> String? {
+    let words = LabelMatch.key(subject).split { !$0.isLetter }.map(String.init)
+    let pairs = zip(words, words.dropFirst())
+    // 문학 과목: Language A 와 "Spanish A" 처럼 줄여 적은 것
+    if words.contains("literature") || pairs.contains(where: { $1 == "a" && ($0 == "language" || names[$0] != nil) }) { return nil }
+    if words.contains(where: unsupported.contains) { return nil }
+    if let named = words.lazy.compactMap({ names[$0] }).first { return named }
+    let marked = pairs.contains { ($0 == "language" && $1 == "acquisition") || ($0 == "ab" && $1 == "initio") }
+    guard marked || words.last == "b" else { return nil }
+    if let first = words.first, first != "language" { return first.capitalized }
+    return unnamed
+  }
+
+  // 작업 요청(request.md)에 넣는 줄. 지침의 "언어 습득 과목" 절이 이 줄을 보고 적용된다.
+  public static func requestLine(_ target: String) -> String {
+    let language = target == unnamed ? "과목 이름에 없다. 자료로 알아본다" : target
+    return "- 과목 갈래: 언어 습득 (목표 언어: \(language)). 지침의 \"언어 습득 과목\" 절을 따른다"
+  }
+}
+
 // 적은 값을 이미 있는 값에 맞춘다. 대소문자와 띄어쓰기만 다르면 같은 값으로 본다.
 public enum LabelMatch {
   public static func key(_ value: String) -> String {

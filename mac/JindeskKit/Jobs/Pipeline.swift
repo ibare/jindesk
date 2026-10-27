@@ -28,7 +28,7 @@ public struct PendingWork: Sendable, Equatable, Identifiable {
 
 public enum Pipeline {
   // 남은 일. 나누기가 남은 묶음은 읽기를, 읽기가 남은 묶음은 정리를 넣지 않고, 앞 단계가 남은 과목은 페이지 이후 단계를 넣지 않는다 (앞 단계가 끝나면 뒤따라 넣는다).
-  public static func pending(_ data: DataFolder, instructions: InstructionSource) -> [PendingWork] {
+  public static func pending(_ data: DataFolder) -> [PendingWork] {
     var out: [PendingWork] = []
     let library = SourceLibrary.load(data)
     let read = SourceReading.readSources(data)
@@ -58,7 +58,6 @@ public enum Pipeline {
         busySubjects.insert(subject)
       }
     }
-    let pageVersion = (try? Instructions.read(instructions, kind: .pageBuild))?.version
     let subjects = Set(EntryStore.subjects(data) + ConceptStore.subjects(data)).sorted()
     for d in Regen.pending(data) {
       out.append(PendingWork(kind: .regen, target: d.id, label: "\(d.op.label) · \(d.target.unit)"))
@@ -71,7 +70,7 @@ public enum Pipeline {
     }
     out += curation
     for subject in subjects where !busySubjects.contains(subject) {
-      if !PageBuild.pending(data, subject: subject, version: pageVersion).isEmpty {
+      if !PageBuild.pending(data, subject: subject).isEmpty {
         out.append(PendingWork(kind: .pageBuild, target: subject, label: subject))
       } else if !Translation.pending(data, subject: subject).isEmpty {
         out.append(PendingWork(kind: .translation, target: subject, label: subject))

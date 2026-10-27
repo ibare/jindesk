@@ -99,9 +99,16 @@ public enum SyllabusBuild {
     try syllabus.write(ctx.data)
     // 보강: 목차 밖 개념을 항목으로 옮긴다
     var moved = 0
+    let former = Moves.formerConcepts(ctx.data)
     for (conceptID, code) in draft.placements {
       guard let cid = ConceptID(conceptID), let item = syllabus.item(code) else { continue }
-      let to = ConceptID(subject: subject, item: ItemPath.dir(item.code), slug: cid.slug)
+      // 옮기거나 없앤 개념의 옛 id 면 뒤에 수를 붙인다
+      var to = ConceptID(subject: subject, item: ItemPath.dir(item.code), slug: cid.slug)
+      var n = 2
+      while former.contains(to.text) {
+        to = ConceptID(subject: subject, item: ItemPath.dir(item.code), slug: "\(cid.slug)-\(n)")
+        n += 1
+      }
       do {
         try ConceptMove.move(ctx.data, from: cid, to: to, why: "목차 \(item.code)")
         moved += 1

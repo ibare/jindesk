@@ -75,6 +75,12 @@
           let subject = m.concepts.keys.sorted().first
           m.selection = subject.flatMap { m.conceptMap($0, showOthers: false).learningOrder().dropFirst().first }.map { .concept($0) }
         },
+        // 개념 다시 정리 후보의 대응표: 검토를 기다리는 첫 후보 (DECISIONS.md 47)
+        Scenario(name: "recuration-review") { m in
+          m.phase = .ready
+          m.section = .today
+          m.selection = m.proposals.first.map { .proposal($0.job) }
+        },
         // 단원 개요: 첫 과목의 첫 단원 (-snapshotUnitSection 으로 아래 절까지 내려 찍는다)
         Scenario(name: "unit-overview", dark: true) { m in
           m.phase = .ready
@@ -232,6 +238,21 @@
         Scenario(name: "search") { m in
           m.phase = .ready
           m.searchText = UserDefaults.standard.string(forKey: "snapshotSearch") ?? "log"
+          try? await Task.sleep(for: .milliseconds(800))
+        },
+        // 찾기에서 연 학습 페이지와 찾기 막대 (DECISIONS.md 48): 첫 결과를 연다
+        Scenario(name: "search-open") { m in
+          m.phase = .ready
+          m.searchText = UserDefaults.standard.string(forKey: "snapshotSearch") ?? "log"
+          // 새 데이터 폴더는 색인을 처음 만드느라 결과가 늦다
+          for _ in 0..<40 where m.searchResults.concepts.isEmpty { try? await Task.sleep(for: .milliseconds(250)) }
+          if let first = m.searchResults.concepts.first { m.openSearchResult(first) }
+          try? await Task.sleep(for: .seconds(2))
+        },
+        // 찾은 것이 없을 때 비슷한 말 제안 (-snapshotSuggest <말>)
+        Scenario(name: "search-suggest") { m in
+          m.phase = .ready
+          m.searchText = UserDefaults.standard.string(forKey: "snapshotSuggest") ?? "logarithim"
           try? await Task.sleep(for: .milliseconds(800))
         },
         Scenario(name: "collections") { m in

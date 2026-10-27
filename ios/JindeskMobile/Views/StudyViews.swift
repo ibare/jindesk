@@ -18,7 +18,7 @@ struct SearchResults: View {
       Section("개념") {
         ForEach(concepts) { c in
           Button {
-            model.open(c.id)
+            model.open(c.id, find: query)
           } label: {
             Text(TitleParts(c.title).head).foregroundStyle(.primary)
           }

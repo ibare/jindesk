@@ -14,7 +14,7 @@
 #      키를 잃으면 이미 설치된 앱에 업데이트를 보낼 수 없으므로 generate_keys -x 로 내보내 따로 보관한다.
 #
 # 릴리즈 노트에 적을 것: 바뀐 것, 스키마 버전(바뀌었으면 마이그레이션 종류), 바뀐 작업 지침과 그 버전,
-# 필요한 claude 최소 버전, 바뀐 지침 때문에 낡은 것이 되는 단위.
+# 필요한 claude 최소 버전. 바뀐 지침은 이미 있는 단위를 낡게 하지 않는다 (DECISIONS.md 45).
 set -euo pipefail
 
 here=${0:A:h}
@@ -58,8 +58,12 @@ fi
 [[ -d $repo/schemas/$schema ]] || fail "schemas/$schema/ 가 없습니다"
 if (( ! dry )); then
   [[ -z $(git -C $repo status --porcelain) ]] || fail "커밋하지 않은 변경이 있습니다. 지침과 코드를 모두 커밋한 뒤 릴리즈합니다"
+  # 릴리즈는 main 에서, 원격 main 과 같은 커밋에서 낸다 (CLAUDE.md 의 브랜치와 PR)
+  branch=$(git -C $repo branch --show-current)
+  [[ $branch == main ]] || fail "릴리즈는 main 에서 냅니다 (지금 $branch). develop → main PR 을 머지한 뒤 main 으로 옮겨 냅니다"
+  git -C $repo fetch -q origin main
   head=$(git -C $repo rev-parse HEAD)
-  [[ -n $(git -C $repo branch -r --contains $head 2>/dev/null) ]] || fail "지금 커밋($head)을 GitHub 에 올린 뒤 릴리즈합니다"
+  [[ $head == $(git -C $repo rev-parse origin/main) ]] || fail "로컬 main($head)이 원격 main 과 다릅니다. 받거나 PR 로 넣은 뒤 릴리즈합니다"
 fi
 if gh release view $tag -R $slug >/dev/null 2>&1; then fail "$tag 릴리즈가 이미 있습니다. MARKETING_VERSION 을 올리세요"; fi
 last_tag=$(gh release view -R $slug --json tagName -q .tagName 2>/dev/null || true)

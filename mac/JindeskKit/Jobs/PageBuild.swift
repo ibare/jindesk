@@ -1,6 +1,7 @@
 // 학습 페이지 만들기 (page-build, JOBS.md). 개념 원문(concept.yaml)에서 학습 페이지(page.yaml)를 만든다. 개념마다 에이전트 하나, 셋씩 함께 돈다.
 // 문단은 원문 단위의 글을 그대로 쓴다. 에이전트는 문단의 차례와 수식 블록, 강조 상자, 한국어 제목을 정하고, 러너가 원문 글을 넣는다.
-// 시작할 때 페이지가 없거나 낡은 개념을 고른다. 낡은 것은 원문 단위의 해시가 바뀌었거나 지침 판이 바뀐 것이다.
+// 시작할 때 페이지가 없거나 낡은 개념을 고른다. 낡은 것은 원문 단위가 바뀐 것이다. 지침 판이 바뀐 것만으로는 낡지 않는다 (DECISIONS.md 45).
+// 사람이 고른 개념은 낡지 않았어도 지금 지침으로 다시 만든다 (페이지 다시 만들기, DECISIONS.md 46).
 // 블록은 수식(math)과 그림(figure)이 있다. 그림은 에이전트가 HTML 조각으로 짜고, 러너는 화면 밖 웹 보기에서 돌아가는지만 본다.
 // 풀이(derivation) 블록은 다음에 붙인다.
 import Foundation
@@ -17,23 +18,42 @@ public enum PageBuild {
     }
   }
 
-  // 페이지가 없거나 낡았는가
-  public static func needsPage(_ concept: Concept, page: Page?, version: String?) -> Bool {
+  // 고른 개념의 페이지를 지금 지침으로 다시 만든다. 낡지 않았어도 만들고, 이전 페이지는 에이전트에게 주지 않는다.
+  public static func prepare(subject: String, rebuild concepts: [String], _ ctx: PrepareContext) throws -> PreparedJob {
+    let ids = Array(Set(concepts)).sorted()
+    guard !ids.isEmpty else { throw RequestError("다시 만들 개념이 없습니다") }
+    let id = try JobID.make(date: ctx.now, slugSource: "page rebuild \(subject)", exists: ctx.taken)
+    return PreparedJob(
+      id: id, kind: .pageBuild, title: "\(subject) · 다시 만들기 \(ids.count)개", target: subject,
+      coalesceKey: "page-rebuild:\(subject):\(ids.joined(separator: ","))", recipe: .pageRebuild(subject: subject, concepts: ids)
+    ) { c in
+      try await run(subject: subject, rebuild: ids, c)
+    }
+  }
+
+  // 페이지가 없거나 낡았는가. 원문 단위(id 와 해시)가 페이지의 문단과 다를 때만 낡았다. 지침 판은 보지 않는다.
+  public static func needsPage(_ concept: Concept, page: Page?) -> Bool {
     guard let page else { return true }
-    if let version, page.instructionsVersion != version { return true }
     let current = Set(concept.units.map { "\($0.id)@\($0.hash)" })
     let paras = page.units.filter { $0.kind == .para }.map(\.from)
     return Set(paras) != current || paras.count != current.count || page.units.contains { !current.contains($0.from) }
   }
 
-  public static func pending(_ data: DataFolder, subject: String, version: String?) -> [Concept] {
-    ConceptStore.all(data, subject: subject).filter { needsPage($0, page: Page.load(ConceptFolder($0.cid, in: data)), version: version) }
+  public static func pending(_ data: DataFolder, subject: String) -> [Concept] {
+    ConceptStore.all(data, subject: subject).filter { needsPage($0, page: Page.load(ConceptFolder($0.cid, in: data))) }
   }
 
-  static func run(subject: String, _ ctx: JobContext) async throws {
+  // rebuild: 낡지 않았어도 다시 만들 개념 id (페이지 다시 만들기). nil 이면 페이지가 없거나 낡은 개념이다.
+  static func run(subject: String, rebuild: [String]? = nil, _ ctx: JobContext) async throws {
     await ctx.setPhase("preparing")
-    let instructions = try Instructions.read(ctx.config.instructions, kind: .pageBuild)
-    let todo = pending(ctx.data, subject: subject, version: instructions.version)
+    let todo: [Concept]
+    if let rebuild {
+      let all = ConceptStore.all(ctx.data, subject: subject)
+      todo = rebuild.compactMap { id in all.first { $0.id == id } }
+      for id in rebuild where !todo.contains(where: { $0.id == id }) { await ctx.log(.warn, "개념을 찾지 못해 건너뜁니다: \(id)") }
+    } else {
+      todo = pending(ctx.data, subject: subject)
+    }
     if todo.isEmpty {
       await ctx.log(.info, "만들 페이지가 없습니다")
       await ctx.report(counts: [JobCount(key: "pages", label: "페이지", count: 0)])
@@ -58,7 +78,7 @@ public enum PageBuild {
         group.addTask {
           do {
             return try await buildOne(
-              concept, n: n, ctx: ctx, instructions: fixed, instructionsFile: instructionsFile, math: math, labels: labels)
+              concept, n: n, ctx: ctx, instructions: fixed, instructionsFile: instructionsFile, math: math, labels: labels, fresh: rebuild != nil)
           } catch is CancellationError {
             throw CancellationError()
           } catch {
@@ -103,8 +123,10 @@ public enum PageBuild {
     case changed(String)
   }
 
+  // fresh: 이전 페이지를 에이전트에게 주지 않고 지금 지침으로 처음부터 짠다 (페이지 다시 만들기). 단위 id 는 러너가 이어 쓴다.
   static func buildOne(
-    _ concept: Concept, n: Int, ctx: JobContext, instructions: Instructions, instructionsFile: URL, math: MathChecker?, labels: SubjectSummary?
+    _ concept: Concept, n: Int, ctx: JobContext, instructions: Instructions, instructionsFile: URL, math: MathChecker?, labels: SubjectSummary?,
+    fresh: Bool = false
   ) async throws -> Outcome {
     let folder = ConceptFolder(concept.cid, in: ctx.data)
     let conceptHash = ConceptStore.fileHash(ctx.data, id: concept.cid)
@@ -118,16 +140,21 @@ public enum PageBuild {
     if var shown = old {
       added = shown.units.filter { !Set($0.directives).isDisjoint(with: inserting) }.map(\.id)
       shown.units.removeAll { !Set($0.directives).isDisjoint(with: inserting) }
-      try FileOps.write(YAML.stringify(shown.yaml), to: dirs.input.appending(path: "page.yaml"))
+      if !fresh { try FileOps.write(YAML.stringify(shown.yaml), to: dirs.input.appending(path: "page.yaml")) }
     }
     try AgentStep.writeGlossary(ctx.data, into: dirs.input)
     var request = ["# 학습 페이지 요청", "", "- 개념: \(concept.id)", "- 제목: \(concept.title)"]
     if let labels {
       request.append("- 과목: \(labels.name)")
       if !(labels.grades + labels.levels).isEmpty { request.append("- 학년·수준: \((labels.grades + labels.levels).joined(separator: ", "))") }
+      if let target = LanguageAcquisition.target(of: labels.name) { request.append(LanguageAcquisition.requestLine(target)) }
     }
     request.append("- 원문 단위: \(concept.units.map(\.id).joined(separator: ", "))")
-    request.append("- 이전 페이지: \(old == nil ? "없다. 처음 만든다" : "input/page.yaml")")
+    switch (old, fresh) {
+    case (nil, _): request.append("- 이전 페이지: 없다. 처음 만든다")
+    case (_, true): request.append("- 이전 페이지: 주지 않는다. 사람이 고른 다시 만들기라 지금 지침으로 처음부터 짠다")
+    default: request.append("- 이전 페이지: input/page.yaml")
+    }
     if !added.isEmpty {
       request.append("- 학생 요구로 더한 단위 \(added.joined(separator: ", ")): 러너가 그대로 다시 넣는다. input/page.yaml 에서 뺐다. 그 예제나 그림을 다시 만들지 않는다")
     }
@@ -147,26 +174,27 @@ public enum PageBuild {
     var figures = await checkFigures(checked.draft, ctx: ctx, tag: tag)
     // 학습 목표 시험: 해당하는 목표마다 그것을 연습하는 확인 문제가 있는가. 첫 검사의 문제와 함께 한 번 고쳐 쓰게 한다.
     let level = ReaderTest.level(SourceLibrary.load(ctx.data).sources.first { $0.labels.labels.subjectID == concept.subject }?.labels.labels)
+    let subjectName = labels?.name ?? concept.subject
     func outcomeGaps(_ draft: Draft?, _ round: Int) async -> [OutcomeTest.Verdict] {
       guard let draft, !goals.isEmpty else { return [] }
       let others = ConceptStore.all(ctx.data, subject: concept.subject).filter { $0.id != concept.id }.map(\.title)
       let (verdicts, error) = await OutcomeTest.check(
-        text: studyText(draft, concept: concept), goals: goals, level: level, subject: labels?.name ?? concept.subject, others: others,
+        text: studyText(draft, concept: concept), goals: goals, level: level, subject: subjectName, others: others,
         config: ctx.config, scratch: dirs.run.appending(path: "outcome-\(round)"))
       if let error { await ctx.log(.warn, "[\(tag)] 학습 목표 시험을 하지 못했습니다: \(error)") }
       return verdicts
     }
     var outcome = await outcomeGaps(checked.draft, 1)
-    let first = checked.problems + figures.problems + OutcomeTest.unpracticed(outcome, goals: goals)
+    let first = checked.problems + figures.problems + OutcomeTest.unpracticed(outcome, goals: goals, subject: subjectName)
     if !first.isEmpty {
       await ctx.log(.warn, "[\(tag)] 검사에서 \(first.count)건이 나와 고쳐 쓰게 합니다: \(first.prefix(3).joined(separator: " · "))")
       try await AgentStep.fix(options, session: result.sessionID, problems: first, ctx: ctx, label: "\(tag) 페이지", events: "page-fix")
       checked = check(out: dirs.out, concept: concept, math: math)
       figures = await checkFigures(checked.draft, ctx: ctx, tag: tag)
-      if !OutcomeTest.unpracticed(outcome, goals: goals).isEmpty { outcome = await outcomeGaps(checked.draft, 2) }
+      if !OutcomeTest.unpracticed(outcome, goals: goals, subject: subjectName).isEmpty { outcome = await outcomeGaps(checked.draft, 2) }
     }
     // 고쳐 써도 남은 것은 기록에만 남긴다. 페이지만으로 해낼 수 없는 목표도 기록에 남긴다 (문단은 개념 원문이라 여기서 고치지 못한다).
-    for line in OutcomeTest.unpracticed(outcome, goals: goals) + OutcomeTest.unmet(outcome, goals: goals) {
+    for line in OutcomeTest.unpracticed(outcome, goals: goals, subject: subjectName) + OutcomeTest.unmet(outcome, goals: goals, subject: subjectName) {
       await ctx.log(.warn, "[\(tag)] 학습 목표 시험: \(line)")
     }
     guard checked.problems.isEmpty, var draft = checked.draft else {

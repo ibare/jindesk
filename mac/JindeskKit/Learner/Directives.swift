@@ -57,7 +57,7 @@ public enum DirectiveStatus: String, Sendable {
 
 public struct DirectiveTarget: Sendable, Equatable {
   public var concept: String
-  public let unit: String
+  public var unit: String
   public let rev: Int
 
   public init(concept: String, unit: String, rev: Int) {
@@ -86,14 +86,16 @@ public struct Directive: Sendable, Equatable, Identifiable {
   // 반영·받아들인 결과가 놓인 단위 (예시 더, 그림으로 는 새 단위)
   public var result: String?
   public var updatedAt: String
+  // 대상이 단위를 옮긴 줄을 따라 왔다 (다시 정리, DECISIONS.md 47). 파일에 쓰지 않고 불러올 때 정한다
+  public var moved = false
 }
 
 public enum DirectiveStore {
   public static func file(_ data: DataFolder) -> URL { data.learner.appending(path: "directives.jsonl") }
 
-  // 줄을 접어 요구마다 마지막 상태로
+  // 줄을 접어 요구마다 마지막 상태로. 대상은 옮겨진 개념과 단위를 따라 지금 자리로 바꾼다 (DECISIONS.md 47).
   public static func load(_ data: DataFolder) -> [Directive] {
-    let moves = Moves.all(data)
+    var resolver = AnchorResolver(data, moves: Moves.all(data))
     var out: [String: Directive] = [:]
     var order: [String] = []
     for v in (try? JSONLines.read(file(data)))?.values ?? [] {
@@ -105,12 +107,14 @@ public enum DirectiveStore {
         d.updatedAt = v["at"]?.stringValue ?? d.updatedAt
         out[id] = d
       } else if let op = v["op"]?.stringValue.flatMap(DirectiveOp.init(rawValue:)), var target = DirectiveTarget(json: v["target"]) {
-        target.concept = Moves.resolve(target.concept, moves: moves)
+        let r = resolver.resolve(concept: target.concept, unit: target.unit)
+        target.concept = r.concept
+        target.unit = r.unit
         let at = v["at"]?.stringValue ?? ""
         out[id] = Directive(
           id: id, at: at, op: op, target: target, note: v["note"]?.stringValue, fromComment: v["from_comment"]?.stringValue,
           status: v["status"]?.stringValue.flatMap(DirectiveStatus.init(rawValue:)) ?? .requested, job: v["job"]?.stringValue, result: v["result"]?.stringValue,
-          updatedAt: at)
+          updatedAt: at, moved: r.moved)
         order.append(id)
       }
     }

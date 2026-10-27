@@ -19,8 +19,8 @@ public enum CommentKind: String, Sendable, CaseIterable {
 
 public struct CommentAnchor: Sendable, Equatable {
   public var concept: String
-  public let unit: String
-  public let rev: Int
+  public var unit: String
+  public var rev: Int
   public let quote: String
 
   public init(concept: String, unit: String, rev: Int, quote: String) {
@@ -115,14 +115,20 @@ public enum CommentStore {
     try FileOps.appendLine(JSONText.line(comment.json), to: file(data))
   }
 
-  // 지운 것을 빼고, 옮겨진 개념의 id 를 지금 id 로 바꾼 코멘트 (적은 차례)
+  // 지운 것을 빼고, 옮겨진 개념과 단위를 지금 자리로 바꾼 코멘트 (적은 차례).
+  // 단위가 옮겨 갔으면 판을 0 으로 두어 "이전 판에 단 코멘트"로 보이게 한다 (DECISIONS.md 47).
   public static func load(_ data: DataFolder) -> [Comment] {
     let all = ((try? JSONLines.read(file(data)))?.values ?? []).compactMap(Comment.init(json:))
     let deleted = Set(all.filter { $0.kind == .delete }.compactMap(\.target))
-    let moves = Moves.all(data)
+    var resolver = AnchorResolver(data, moves: Moves.all(data))
     return all.filter { $0.kind != .delete && !deleted.contains($0.id) && !deleted.contains($0.replyTo ?? "") }.map { c in
       var c = c
-      if let a = c.anchor { c.anchor?.concept = Moves.resolve(a.concept, moves: moves) }
+      if let a = c.anchor {
+        let r = resolver.resolve(concept: a.concept, unit: a.unit)
+        c.anchor?.concept = r.concept
+        c.anchor?.unit = r.unit
+        if r.moved { c.anchor?.rev = 0 }
+      }
       return c
     }
   }

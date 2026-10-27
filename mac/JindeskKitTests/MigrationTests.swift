@@ -54,6 +54,19 @@ struct BrokenStep: MigrationStep {
     #expect(Migrator(data: DataFolder(t.root.appending(path: "없음")), folders: t.folders, app: testApp).state() == .uninitialized)
   }
 
+  @Test func 앱이_담은_단계로_스키마_1_데이터를_지금_판으로_올린다() async throws {
+    let t = try sample()
+    let m = Migrator(data: t.data, folders: t.folders, app: AppVersion(app: "0.2.0", build: "2"))
+    #expect(m.state() == .older(1))
+    let report = try await m.migrate()
+    #expect(report.from == 1 && report.to == CurrentSchema.version)
+    let schema = try SchemaFile.read(t.data)
+    #expect(schema.schema == CurrentSchema.version)
+    #expect(schema.history.map(\.to) == Array(2...CurrentSchema.version))
+    // 학생 글과 기록은 그대로다
+    #expect(try String(contentsOf: t.data.learner.appending(path: "comments.jsonl"), encoding: .utf8).contains("중력이 계속 당기는데 왜?"))
+  }
+
   @Test func 사본에서_마이그레이션하고_검증한_뒤_바꿔_끼운다() async throws {
     let t = try sample()
     let m = migrator(t, [RenameTermsStep()])

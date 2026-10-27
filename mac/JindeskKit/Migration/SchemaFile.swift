@@ -1,11 +1,13 @@
 import Foundation
 
-// 앱이 쓰는 데이터 폴더의 스키마 버전. 데이터 모양을 바꾸면 올리고, Migration/ 에 단계를 더한다 (MIGRATION.md).
+// 앱이 쓰는 데이터 폴더의 스키마 버전. 데이터 스펙(파일과 필드의 추가, 삭제, 모양)을 바꾸면 무조건 올리고, Migration/ 에 단계를 더한다.
+// 스펙은 그대로 두고 로직만 바꾸면 올리지 않는다 (MIGRATION.md, DECISIONS.md 42).
 public enum CurrentSchema {
-  public static let version = 1
+  public static let version = 2
 }
 
-// meta/schema.yaml: 스키마 버전, 마이그레이션 이력, 이 폴더를 마지막으로 연 앱 판
+// meta/schema.yaml: 스키마 버전, 마이그레이션 이력, 연 앱 판(last_opened_by).
+// 연 앱 판은 폴더를 만들 때 적는다. 0.1.1 은 열 때마다 고쳐 적었는데, 판이 다른 맥이 열기만 해도 커밋이 생겨 이제 고치지 않는다.
 public struct SchemaFile: Sendable, Equatable {
   public struct Entry: Sendable, Equatable {
     public let from: Int
@@ -72,13 +74,5 @@ public struct SchemaFile: Sendable, Equatable {
 
   public func write(to folder: DataFolder) throws {
     try FileOps.writeAtomic(YAML.stringify(yaml), to: folder.schemaFile)
-  }
-
-  // 이 폴더를 연 앱 판을 적는다. 바뀌었을 때만 쓴다.
-  public static func noteOpened(_ folder: DataFolder, by app: AppVersion) throws {
-    var file = try read(folder)
-    guard file.lastOpenedBy != app else { return }
-    file.lastOpenedBy = app
-    try file.write(to: folder)
   }
 }

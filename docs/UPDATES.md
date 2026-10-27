@@ -13,6 +13,7 @@
   - Assayer 는 Apple Development 서명이라 그 맥에서만 쓴다. Jindesk 는 처음부터 Developer ID 로 간다.
 - **번들 id 와 팀 id 를 바꾸지 않는다.** `com.mintae.Jindesk`, `5NK357FRB5`. 키체인 항목의 접근 허용은 서명의 지정 요구사항에 묶인다. 같은 Developer ID 로 서명한 새 판은 승인 창 없이 토큰을 읽는다.
 - **판 번호.** `MARKETING_VERSION`은 사람이 읽는 판(0.4.0)이다. `CURRENT_PROJECT_VERSION`은 릴리즈마다 1씩 오르는 빌드 번호다. Sparkle 은 빌드 번호(`CFBundleVersion`)로 새것을 가린다.
+- **폰 앱은 맥 앱과 함께 낸다.** 폰 앱(`ios/project.yml`)의 판과 빌드 번호는 맥 앱(`mac/project.yml`)과 같다. 폰 앱은 스키마와 렌더러를 맥 앱과 함께 쓰므로, 판이 같으면 서로 맞는 짝이다. 폰 앱에는 자동 업데이트가 없다. 그래서 관리자가 릴리즈마다 그 `main` 커밋으로 학생 폰에 다시 설치한다. 폰 앱에서 바뀐 것이 없는 릴리즈도 같다. 깔린 판은 폰 앱 설정의 "앱"에서 본다.
 
 `Info.plist` 값:
 
@@ -44,10 +45,11 @@
 
 브랜치는 `CLAUDE.md`의 브랜치와 PR 을 따른다.
 
-1. 판 번호(`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`)를 올리는 PR 을 `develop`에 넣는다.
-2. `develop`에서 `release.sh --dry-run`(스키마가 바뀌었으면 `--check-backup`도)을 돌린다. 지난 릴리즈, 빌드 번호, 스키마와 마이그레이션, 시험, 빌드와 서명 확인이 모두 여기서 돈다(git 확인만 건너뛴다). 그래서 실패를 `main`에 넣기 전에 잡는다. 실패한 채 `main`에 넣으면 `main`에 릴리즈되지 않은 커밋이 남는다.
+1. 판 번호(`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`)를 올리는 PR 을 `develop`에 넣는다. 맥 앱(`mac/project.yml`)과 폰 앱(`ios/project.yml`)을 같은 값으로 함께 올린다.
+2. `develop`에서 `release.sh --dry-run`(스키마가 바뀌었으면 `--check-backup`도)을 돌린다. 지난 릴리즈, 맥과 폰의 판 번호, 스키마와 마이그레이션, 맥과 폰의 시험, 빌드와 서명 확인이 모두 여기서 돈다(git 확인만 건너뛴다). 그래서 실패를 `main`에 넣기 전에 잡는다. 실패한 채 `main`에 넣으면 `main`에 릴리즈되지 않은 커밋이 남는다.
 3. `develop` → `main` PR 을 머지 커밋으로 머지한다.
 4. `main`을 받아 그 커밋에서 스크립트를 돌린다.
+5. 그 `main` 커밋으로 폰 앱을 빌드해 학생 폰에 다시 설치한다(`SETUP.md` 8). 폰 앱 설정의 "앱"에서 판이 맥 앱과 같은지 본다.
 
 ```sh
 mac/scripts/release.sh --notes <릴리즈 노트.md> [--check-backup <학생 백업 폴더나 zip>]
@@ -60,8 +62,9 @@ mac/scripts/release.sh --dry-run    # 빌드와 서명 확인까지만
 
 1. **확인.**
    - 작업 지침과 코드가 모두 커밋됐다(`jobs/build.json`의 `dirty`가 없다).
-   - 시험이 통과한다.
+   - 맥 앱 시험과 폰 앱 시험(시뮬레이터, `IOS_DESTINATION`으로 바꿀 수 있다)이 통과한다.
    - `MARKETING_VERSION`을 올렸고, 빌드 번호는 지난 릴리즈보다 크다.
+   - 폰 앱의 판과 빌드 번호가 맥 앱과 같다.
    - 스키마를 바꿨으면 `schemas/<새 버전>/`과 마이그레이션이 있다.
    - 학생 백업 사본으로 `jindesk migrate --check`가 통과했다(`MIGRATION.md`). 지난 릴리즈보다 스키마가 바뀌었으면 `--check-backup` 없이는 멈춘다.
    - `main`에서 낸다. 로컬 `main`이 원격 `main`과 같은 커밋이다. 릴리즈 태그가 그 커밋을 가리킨다.
@@ -75,7 +78,7 @@ mac/scripts/release.sh --dry-run    # 빌드와 서명 확인까지만
    - 내려받기 주소: 그 릴리즈의 zip 첨부 주소 `https://github.com/ibare/jindesk/releases/download/v<판>/Jindesk-<판>.zip`
    - `sparkle:edSignature`, `length`
    - 릴리즈 노트
-6. **릴리즈.** `gh release create v<판> Jindesk-<판>.zip appcast.xml --target <main 커밋> --notes-file <노트>`. 이 단계에서만 관리자 계정의 `gh`를 쓴다.
+6. **릴리즈.** `gh release create v<판> Jindesk-<판>.zip appcast.xml --target <main 커밋> --notes-file <노트>`. 이 단계에서만 관리자 계정의 `gh`를 쓴다. 끝나면 폰 앱을 다시 설치하라는 안내를 띄운다.
 
 **릴리즈 노트에 적는 것.** 바뀐 것, 스키마 버전(바뀌었으면 마이그레이션 종류), 바뀐 작업 지침과 그 버전, 필요한 claude 최소 버전. 바뀐 지침은 새로 만들거나 원문이 바뀐 단위부터 적용되고, 이미 있는 단위를 낡은 것으로 만들지 않는다(`DECISIONS.md` 45).
 

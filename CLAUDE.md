@@ -72,7 +72,7 @@ xcodebuild -project JindeskMobile.xcodeproj -scheme JindeskMobile -destination '
 - 열린 PR 을 고칠 때(리뷰를 반영할 때)는 새 브랜치나 새 PR 을 만들지 않고, 그 PR 의 브랜치를 받아(`gh pr checkout <번호>`) 이어서 커밋하고 올린다.
 - 커밋을 올리고 `develop`으로 PR 을 연다(`gh pr create --base develop`). PR 설명은 한국어로, 무엇을 왜 바꿨는지와 시험 결과를 적는다.
 - 리뷰는 관리자가 한다. 관리자가 머지하라고 하기 전에는 머지하지 않는다. 머지한 기능 브랜치는 지운다.
-- 릴리즈는 먼저 `develop`에서 `mac/scripts/release.sh --dry-run`을 돌려 통과를 본다. 그다음 `develop` → `main` PR 을 머지 커밋으로 머지하고(스쿼시하지 않는다. 그래야 다음 릴리즈 PR 이 갈라지지 않는다), `main`에서 `mac/scripts/release.sh`로 낸다. 태그 `v<판>`은 그 `main` 커밋에 달린다(`docs/UPDATES.md`의 릴리즈 절차). 판 번호를 올리는 커밋도 기능 브랜치에서 PR 로 `develop`에 넣는다.
+- 릴리즈는 먼저 `develop`에서 `mac/scripts/release.sh --dry-run`을 돌려 통과를 본다. 그다음 `develop` → `main` PR 을 머지 커밋으로 머지하고(스쿼시하지 않는다. 그래야 다음 릴리즈 PR 이 갈라지지 않는다), `main`에서 `mac/scripts/release.sh`로 낸다. 태그 `v<판>`은 그 `main` 커밋에 달린다(`docs/UPDATES.md`의 릴리즈 절차). 판 번호를 올리는 커밋도 기능 브랜치에서 PR 로 `develop`에 넣는다. 맥 앱(`mac/project.yml`)과 폰 앱(`ios/project.yml`)의 판과 빌드 번호를 같은 값으로 함께 올린다(다르면 `release.sh`가 멈춘다). 릴리즈한 뒤에는 폰 앱을 그 `main` 커밋으로 다시 설치하라고 관리자에게 알린다.
 
 ## 지킬 것
 

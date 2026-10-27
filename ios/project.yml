@@ -67,8 +67,9 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        MARKETING_VERSION: 0.1.0
-        CURRENT_PROJECT_VERSION: 1
+        # 맥 앱(mac/project.yml)과 같은 판과 빌드 번호다. 릴리즈할 때 함께 올린다. 다르면 release.sh 가 멈춘다 (UPDATES.md)
+        MARKETING_VERSION: 0.2.0
+        CURRENT_PROJECT_VERSION: 3
         # 아래 "렌더러 넣기"가 리포의 renderer/ 를 읽는다
         ENABLE_USER_SCRIPT_SANDBOXING: NO
     # 학습 페이지 렌더러는 맥 앱과 같은 리포의 renderer/ 다. 앱 번들에 넣는다.

@@ -1,6 +1,7 @@
 #!/bin/zsh
 # Jindesk 릴리즈 (UPDATES.md 의 릴리즈 절차). 관리자 맥에서 돈다.
-#   확인 → 시험 → 빌드(Developer ID) → 공증과 스테이플 → Sparkle 서명 → appcast → GitHub 릴리즈
+#   확인 → 시험(맥과 폰) → 빌드(Developer ID) → 공증과 스테이플 → Sparkle 서명 → appcast → GitHub 릴리즈
+#   폰 앱은 자동 업데이트가 없다. 릴리즈한 뒤 관리자가 그 main 커밋으로 학생 폰에 다시 설치한다 (SETUP.md 8).
 #
 # 사용: mac/scripts/release.sh --notes <릴리즈 노트.md> [--check-backup <학생 백업 폴더나 zip>] [--dry-run]
 #   --dry-run       빌드와 서명 확인까지만 한다. 공증, Sparkle 서명, 릴리즈 올리기는 하지 않는다.
@@ -24,6 +25,7 @@ slug=ibare/jindesk
 profile=${NOTARY_PROFILE:-jindesk-notary}
 account=${SPARKLE_ACCOUNT:-com.mintae.Jindesk}
 team=5NK357FRB5
+ios_destination=${IOS_DESTINATION:-platform=iOS Simulator,name=iPhone 17}
 
 notes=""
 backup=""
@@ -44,6 +46,8 @@ cd $mac
 version=$(awk -F': *' '/^ *MARKETING_VERSION:/{print $2; exit}' project.yml)
 build=$(awk -F': *' '/^ *CURRENT_PROJECT_VERSION:/{print $2; exit}' project.yml)
 pubkey=$(awk -F': *' '/^ *SPARKLE_PUBLIC_KEY:/{gsub(/"/, "", $2); print $2; exit}' project.yml)
+ios_version=$(awk -F': *' '/^ *MARKETING_VERSION:/{print $2; exit}' $repo/ios/project.yml)
+ios_build=$(awk -F': *' '/^ *CURRENT_PROJECT_VERSION:/{print $2; exit}' $repo/ios/project.yml)
 schema_of() { grep -E 'static let version = [0-9]+' | grep -oE '[0-9]+' | head -1 }
 schema=$(schema_of < JindeskKit/Migration/SchemaFile.swift)
 tag=v$version
@@ -56,6 +60,9 @@ if [[ -z $pubkey ]]; then
   (( dry )) && print "  ! SPARKLE_PUBLIC_KEY 가 비어 있습니다 (dry-run 이라 넘어갑니다)" || fail "project.yml 의 SPARKLE_PUBLIC_KEY 가 비어 있습니다 (이 파일 위의 '미리 해 둘 것' 2)"
 fi
 [[ -d $repo/schemas/$schema ]] || fail "schemas/$schema/ 가 없습니다"
+# 폰 앱은 맥 앱과 같은 판과 빌드 번호로 함께 낸다 (UPDATES.md 의 판 번호)
+[[ $ios_version == $version && $ios_build == $build ]] \
+  || fail "폰 앱 판($ios_version, 빌드 $ios_build)이 맥 앱($version, 빌드 $build)과 다릅니다. ios/project.yml 의 MARKETING_VERSION 과 CURRENT_PROJECT_VERSION 을 같은 값으로 올립니다"
 if (( ! dry )); then
   [[ -z $(git -C $repo status --porcelain) ]] || fail "커밋하지 않은 변경이 있습니다. 지침과 코드를 모두 커밋한 뒤 릴리즈합니다"
   # 릴리즈는 main 에서, 원격 main 과 같은 커밋에서 낸다 (CLAUDE.md 의 브랜치와 PR)
@@ -86,6 +93,12 @@ step "시험"
 xcodegen generate --quiet
 xcodebuild -project Jindesk.xcodeproj -scheme Jindesk -configuration Debug -derivedDataPath build/dd test -quiet >$mac/build/release-test.log 2>&1 \
   || { tail -30 $mac/build/release-test.log; fail "시험이 실패했습니다 (build/release-test.log)"; }
+# 폰 앱도 이 커밋으로 설치하므로 함께 빌드하고 시험한다 (엔진 파일을 함께 쓴다)
+step "시험: 폰 앱 ($ios_destination)"
+(cd $repo/ios && xcodegen generate --quiet \
+  && xcodebuild -project JindeskMobile.xcodeproj -scheme JindeskMobile -destination "$ios_destination" -derivedDataPath build/dd test -quiet) \
+  >$mac/build/release-ios-test.log 2>&1 \
+  || { tail -30 $mac/build/release-ios-test.log; fail "폰 앱 시험이 실패했습니다 (build/release-ios-test.log)"; }
 
 # 3. 빌드
 step "빌드: Release archive, Developer ID 로 내보내기"
@@ -175,3 +188,4 @@ EOF
 step "GitHub 릴리즈 $tag"
 gh release create $tag $zip $out/appcast.xml -R $slug --target $head --title "Jindesk $version" --notes-file $notes
 print "✓ 릴리즈했습니다: https://github.com/$slug/releases/tag/$tag"
+print "  남은 일: 폰 앱 $version (빌드 $build)을 이 main 커밋($head)으로 빌드해 학생 폰에 다시 설치합니다 (SETUP.md 8)"

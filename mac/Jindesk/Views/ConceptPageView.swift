@@ -481,7 +481,8 @@ struct PageFindBar: View {
       .disabled((find?.total ?? 0) == 0)
       .fixedSize()
       Spacer()
-      Button("닫기") { model.closePageFind() }
+      // Esc: 커서가 칸 밖(찾기 결과에서 연 막대, 페이지를 누른 뒤)에 있어도 닫는다
+      Button("닫기") { model.closePageFind() }.keyboardShortcut(.cancelAction)
     }
     .padding(.horizontal, 12)
     .padding(.vertical, 6)
@@ -490,8 +491,11 @@ struct PageFindBar: View {
       if (find?.focus ?? 0) > 0 { focused = true }
     }
     .onChange(of: text) { model.setPageFindQuery(text) }
-    .onChange(of: model.pageFind?.focus) { focused = true }
-    // 찾기 결과에서 다른 말로 다시 열면 칸도 그 말로
-    .onChange(of: model.pageFind?.query) { if let q = model.pageFind?.query, q != text { text = q } }
+    // ⌘F 로 오를 때만 칸이 커서를 받는다 (찾기 결과에서 다시 열어 0 으로 돌아갈 때는 받지 않는다)
+    .onChange(of: model.pageFind?.focus) { old, new in if (new ?? 0) > (old ?? 0) { focused = true } }
+    // 찾기 결과에서 다른 말로 다시 열면 칸도 그 말로. 질의는 앞뒤 빈칸을 뗀 것이라 견줄 때도 떼야 치던 빈칸을 지우지 않는다
+    .onChange(of: model.pageFind?.query) {
+      if let q = model.pageFind?.query, q != text.trimmingCharacters(in: .whitespacesAndNewlines) { text = q }
+    }
   }
 }

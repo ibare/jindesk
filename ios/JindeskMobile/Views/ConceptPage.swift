@@ -14,48 +14,63 @@ struct ConceptPage: View {
   // 오른쪽 칸(iPhone 은 목록 위)과 개념 지도에서 연 학습 페이지: 보기를 칸 바깥에 두고 다시 쓴다 (PageWebView)
   var kept = false
 
+  // 찾기 상태(pageFind)는 PageBody 만 읽는다. 여기서 읽으면 찾을 말을 칠 때마다, 렌더러가 수를 알릴 때마다 이 body 가 다시 돌아
+  // 페이지 조합(pageJSON: 페이지, 곁 층, 용어집, 코멘트, 목차를 읽는다)을 다시 한다
   var body: some View {
-    @Bindable var model = model
-    let find = model.pageFind?.concept == concept.id ? model.pageFind?.request : nil
-    PageWebView(json: model.pageJSON(concept), data: model.data, kept: kept, find: find) { message in
-      switch message["type"]?.stringValue {
-      // 페이지 안 찾기: 찾은 곳 수와 지금 몇 번째
-      case "find":
-        model.pageFindReport(concept: concept.id, total: Int(message["total"]?.numberValue ?? 0), index: Int(message["index"]?.numberValue ?? 0))
-      case "openConcept":
-        if let id = message["id"]?.stringValue {
-          if let onOpenConcept { onOpenConcept(id) } else { model.open(id) }
+    PageBody(concept: concept.id, json: model.pageJSON(concept), kept: kept, onMessage: handle)
+      .navigationTitle(concept.title)
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button { model.showPageFind(concept.id) } label: { Label("페이지에서 찾기", systemImage: "magnifyingglass") }
         }
-      // "개념 지도에서 보기": 과목 지도를 이 개념을 고른 채 연다
-      case "openMap":
-        if let id = message["concept"]?.stringValue {
-          if let onOpenMap { onOpenMap(id) } else { model.openMap(focus: id) }
-        }
-      case "openSource":
-        if let source = message["source"]?.stringValue, let page = message["page"]?.numberValue {
-          model.openSource(source, page: Int(page))
-        }
-      // 레퍼런스는 Safari 로 연다 (학습 페이지 안에서는 네트워크를 쓰지 않는다)
-      case "openURL":
-        if let text = message["url"]?.stringValue, let url = URL(string: text), url.scheme == "https" { openURL(url) }
-      case "error":
-        print("렌더러 오류: \(message["message"]?.stringValue ?? "")")
-      default:
-        break
       }
-    }
-    .ignoresSafeArea(edges: .bottom)
-    // 페이지 안 찾기 막대 (DECISIONS.md 48)
-    .safeAreaInset(edge: .top, spacing: 0) {
-      if model.pageFind?.concept == concept.id { PageFindBar() }
-    }
-    .navigationTitle(concept.title)
-    .navigationBarTitleDisplayMode(.inline)
-    .toolbar {
-      ToolbarItem(placement: .topBarTrailing) {
-        Button { model.showPageFind(concept.id) } label: { Label("페이지에서 찾기", systemImage: "magnifyingglass") }
+  }
+
+  private func handle(_ message: JSONValue) {
+    switch message["type"]?.stringValue {
+    // 페이지 안 찾기: 찾은 곳 수와 지금 몇 번째
+    case "find":
+      model.pageFindReport(concept: concept.id, total: Int(message["total"]?.numberValue ?? 0), index: Int(message["index"]?.numberValue ?? 0))
+    case "openConcept":
+      if let id = message["id"]?.stringValue {
+        if let onOpenConcept { onOpenConcept(id) } else { model.open(id) }
       }
+    // "개념 지도에서 보기": 과목 지도를 이 개념을 고른 채 연다
+    case "openMap":
+      if let id = message["concept"]?.stringValue {
+        if let onOpenMap { onOpenMap(id) } else { model.openMap(focus: id) }
+      }
+    case "openSource":
+      if let source = message["source"]?.stringValue, let page = message["page"]?.numberValue {
+        model.openSource(source, page: Int(page))
+      }
+    // 레퍼런스는 Safari 로 연다 (학습 페이지 안에서는 네트워크를 쓰지 않는다)
+    case "openURL":
+      if let text = message["url"]?.stringValue, let url = URL(string: text), url.scheme == "https" { openURL(url) }
+    case "error":
+      print("렌더러 오류: \(message["message"]?.stringValue ?? "")")
+    default:
+      break
     }
+  }
+}
+
+// 학습 페이지 보기와 그 위의 찾기 막대 (DECISIONS.md 48). 페이지 JSON 은 바깥에서 만들어 받는다
+private struct PageBody: View {
+  @Environment(MobileModel.self) private var model
+  let concept: String
+  let json: String
+  let kept: Bool
+  let onMessage: (JSONValue) -> Void
+
+  var body: some View {
+    let find = model.pageFind?.concept == concept ? model.pageFind : nil
+    PageWebView(json: json, data: model.data, kept: kept, find: find?.request, onMessage: onMessage)
+      .ignoresSafeArea(edges: .bottom)
+      .safeAreaInset(edge: .top, spacing: 0) {
+        if find != nil { PageFindBar() }
+      }
   }
 }
 
@@ -88,7 +103,12 @@ struct PageFindBar: View {
       if (find?.focus ?? 0) > 0 { focused = true }
     }
     .onChange(of: text) { model.pageFind?.setQuery(text) }
-    .onChange(of: model.pageFind?.focus) { focused = true }
+    // 찾기 단추로 오를 때만 칸이 커서를 받는다 (찾기 결과에서 다시 열어 0 으로 돌아갈 때 키보드를 띄우지 않는다)
+    .onChange(of: model.pageFind?.focus) { old, new in if (new ?? 0) > (old ?? 0) { focused = true } }
+    // iPad 두 칸에서는 막대가 열린 채 찾기 결과를 다른 말로 열면 이 막대가 그대로 남는다. 칸도 그 말로 (맥의 막대와 같다)
+    .onChange(of: model.pageFind?.query) {
+      if let q = model.pageFind?.query, q != text.trimmingCharacters(in: .whitespacesAndNewlines) { text = q }
+    }
   }
 }
 

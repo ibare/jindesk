@@ -87,8 +87,8 @@ targets:
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.education
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
         # 사람이 읽는 판과 릴리즈마다 1씩 오르는 빌드 번호. Sparkle 은 빌드 번호(CFBundleVersion)로 새것을 가린다.
-        MARKETING_VERSION: 0.1.1
-        CURRENT_PROJECT_VERSION: 2
+        MARKETING_VERSION: 0.2.0
+        CURRENT_PROJECT_VERSION: 3
         # Sparkle EdDSA 공개 키 (mac/scripts/release.sh 의 안내대로 generate_keys 로 만든다)
         SPARKLE_PUBLIC_KEY: "JCg7L9ZpgEV/mzqeLFfHN3hoy3VqMqmFXPwQRJjxR7g="
         # 아래 "작업 지침 넣기"가 리포의 jobs/ 와 git 이력을 읽는다

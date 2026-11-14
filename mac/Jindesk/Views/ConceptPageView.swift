@@ -67,6 +67,11 @@ struct ConceptPageView: View {
         Task { try? await model.addComment(concept: concept, unit: unit, rev: rev, quote: quote, kind: kind, text: text) }
       }
       if message["type"]?.stringValue == "deleteComment", let id = message["id"]?.stringValue { try? model.deleteComment(id) }
+      // 마크다운 복사 (PAGES.md): 렌더러가 만든 단위의 영어 원문을 일반 글로 넣는다
+      if message["type"]?.stringValue == "copy", let text = message["text"]?.stringValue {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+      }
       if message["type"]?.stringValue == "openRegen", let unit = message["unit"]?.stringValue {
         let ops = (message["ops"]?.arrayValue ?? []).compactMap { $0.stringValue.flatMap(DirectiveOp.init(rawValue:)) }
         model.regenTarget = RegenTarget(

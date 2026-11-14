@@ -48,6 +48,9 @@ struct ConceptPage: View {
     // 레퍼런스는 Safari 로 연다 (학습 페이지 안에서는 네트워크를 쓰지 않는다)
     case "openURL":
       if let text = message["url"]?.stringValue, let url = URL(string: text), url.scheme == "https" { openURL(url) }
+    // 마크다운 복사 (PAGES.md): 렌더러가 만든 단위의 영어 원문을 일반 글로 넣는다
+    case "copy":
+      if let text = message["text"]?.stringValue { UIPasteboard.general.string = text }
     case "error":
       print("렌더러 오류: \(message["message"]?.stringValue ?? "")")
     default:

@@ -206,6 +206,11 @@ button.nm { transition: border-color .15s ease, box-shadow .15s ease; }
 .cm-send { align-self: flex-end; border: 1px solid var(--accent); background: var(--accent); color: var(--paper); border-radius: 6px; padding: 2px 12px; font-size: 12px; }
 .pc .g-cm.has { color: var(--ink-2); border-color: var(--ink-3); }
 
+/* 마크다운 복사: 클립보드 아이콘, 누른 뒤 잠깐 ✓ */
+.pc .g-cp { display: inline-flex; align-items: center; justify-content: center; }
+.pc .g-cp svg { display: block; }
+.pc .g-cp.done { color: var(--accent); border-color: var(--accent); }
+
 /* 다시 만들기 */
 .pc .g-rg, .pc .g-side { font-size: 11px; }
 .blk-regen { margin-left: 8px; border: 1px solid var(--line); background: var(--paper); border-radius: 4px; font-size: 11px; color: var(--ink-3); padding: 1px 8px; }

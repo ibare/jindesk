@@ -234,6 +234,14 @@
           m.snapshotDebug = .object(["scrollTo": .string("#" + (UserDefaults.standard.string(forKey: "snapshotUnit") ?? "p1"))])
           m.selection = snapshotConcept(m).map { .concept($0) }
         },
+        // 마크다운 복사 (PAGES.md): 한 단위까지 내려 그 단위의 복사 단추를 누른다 (-snapshotUnit <단위 id>). 클립보드에 그 단위의 마크다운이 남는다
+        Scenario(name: "copy") { m in
+          m.phase = .ready
+          m.section = .subjects
+          let unit = "#" + (UserDefaults.standard.string(forKey: "snapshotUnit") ?? "p1")
+          m.snapshotDebug = .object(["scrollTo": .string(unit), "copy": .string(unit)])
+          m.selection = snapshotConcept(m).map { .concept($0) }
+        },
         // 찾기 결과 (-snapshotSearch <말>, 없으면 log)
         Scenario(name: "search") { m in
           m.phase = .ready

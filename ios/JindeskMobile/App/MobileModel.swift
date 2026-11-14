@@ -326,6 +326,8 @@ final class MobileModel {
       if let id = defaults.string(forKey: "openConcept") {
         // 앞뒤 개념 지도에서 이 이웃을 누른다 (renderer/page.js 의 page.debug.walk)
         if let next = defaults.string(forKey: "walkTo") { pageDebug = .object(["walk": .array([.string(id), .string(next)])]) }
+        // 이 단위까지 내려 복사 단추를 누른다 (renderer/page.js 의 page.debug.copy, PAGES.md 의 마크다운 복사)
+        if let unit = defaults.string(forKey: "copyUnit") { pageDebug = .object(["scrollTo": .string("#" + unit), "copy": .string("#" + unit)]) }
         // 페이지 안 찾기 막대를 이 말로 연다
         open(id, find: defaults.string(forKey: "findText"))
       } else if let id = defaults.string(forKey: "openMap") {

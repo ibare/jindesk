@@ -4,6 +4,7 @@
 //   openConcept { id }            앞뒤 개념 지도의 이웃이나 개념 카드를 눌렀다
 //   openMap { concept }           앞뒤 개념 지도의 "개념 지도에서 보기"를 눌렀다
 //   find { total, index }         페이지 안 찾기: 찾은 곳 수와 지금 몇 번째 (없으면 0)
+//   copy { text }                 마크다운 복사: 단위 하나의 영어 원문 (앱이 클립보드에 넣는다)
 // page.readOnly 이면(폰 앱) 쓰는 단추(코멘트 남기기·지우기, 다시 만들기, 새 판 받아들이기)를 그리지 않는다.
 //   ready                         그릴 준비가 됐다
 (function () {
@@ -95,6 +96,52 @@
       }
     });
     return html.replace(/\u0000(\d+)\u0000/g, function (_, i) { return holders[+i]; });
+  }
+
+  // 마크다운 복사 (PAGES.md 의 마크다운 복사): 단위의 영어 원문만 넣는다. 한국어, 곁 설명, 출처는 넣지 않는다.
+  // 수식은 $…$, $$…$$ 로 바꾸고 수식 밖의 $ 는 \$ 로 쓴다. 굵게, 기울임, "- " 나열은 원문 표기 그대로다.
+  function mdText(text) {
+    var out = "";
+    split(String(text || "").replace(/\r\n/g, "\n").replace(/^([ \t]*)•(?=\s)/gm, "$1-")).forEach(function (p) {
+      if (p.tex != null) out += p.display ? "$$" + p.tex.trim() + "$$" : "$" + p.tex.trim() + "$";
+      else out += p.text.replace(/\$/g, "\\$");
+    });
+    return out.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
+
+  // 단위 하나의 마크다운. o.answer 이면 확인 문제의 답과 풀이도 넣는다 (답을 펼쳐 두었을 때)
+  function unitMarkdown(unit, o) {
+    o = o || {};
+    var parts = [];
+    if (unit.kind === "note") parts.push("**" + (NOTE_LABEL[unit.note] || "Note") + "**");
+    if (unit.kind === "check") parts.push("**Check**");
+    if (unit.figure) parts.push("**Figure: " + mdText(unit.figure.title) + "**");
+    if (unit.kind === "step" && unit.tex) parts.push("$$" + unit.tex.trim() + "$$");
+    parts.push(mdText(unit.figure ? unit.caption : unit.text));
+    if (unit.kind === "check" && o.answer) {
+      if (unit.answer) parts.push("**Answer:** " + mdText(unit.answer));
+      if (unit.solution) parts.push(mdText(unit.solution));
+    }
+    return parts.filter(function (p) { return p; }).join("\n\n");
+  }
+
+  var CLIP_ICON = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">' +
+    '<path d="M5.5 2.75H4.25a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-10a1 1 0 0 0-1-1H10.5"/><rect x="5.5" y="1.25" width="5" height="3" rx=".8"/></svg>';
+
+  // 단위 끝의 클립보드 아이콘: 누르면 make() 가 만든 마크다운을 앱에 보내고 잠깐 ✓ 로 바뀐다
+  function copyButton(make) {
+    var b = el("button", "g-cp", CLIP_ICON), timer = null;
+    b.type = "button";
+    b.title = "마크다운으로 복사";
+    b.setAttribute("aria-label", "마크다운으로 복사");
+    b.addEventListener("click", function () {
+      post({ type: "copy", text: make() });
+      b.textContent = "✓";
+      b.classList.add("done");
+      clearTimeout(timer);
+      timer = setTimeout(function () { b.innerHTML = CLIP_ICON; b.classList.remove("done"); }, 1500);
+    });
+    return b;
   }
 
   function lastBlock(container) {
@@ -470,8 +517,8 @@
     return b;
   }
 
-  // 영어 글 + 출처 칩 + 한 단추 + 코멘트 단추 + 한국어
-  function paraBlock(unit) {
+  // 영어 글 + 출처 칩 + 한 단추 + 코멘트 단추 + 복사 단추 + 한국어. copy 는 그 단위의 마크다운을 만드는 함수다 (없으면 복사 단추가 없다)
+  function paraBlock(unit, copy) {
     var wrap = el("div", "para");
     wrap.id = unit.id;
     var en = el("div", "en", prose(unit.text, true));
@@ -509,6 +556,7 @@
     if (unit.detail) pc.appendChild(sideButton(unit, "detail", "자세히", wrap));
     var cb = unit.noComments ? null : commentButton(unit, wrap);
     if (cb) pc.appendChild(cb);
+    if (copy) pc.appendChild(copyButton(copy));
     if (canWrite() && unit.regen && unit.regen.length) pc.appendChild(regenButton(unit));
     host.appendChild(pc);
     wrap.appendChild(en);
@@ -533,7 +581,8 @@
     frame.src = unit.figure.src;
     f.appendChild(frame);
     if (unit.caption) {
-      var cap = paraBlock({ id: unit.id + "-caption", commentUnit: unit.id, rev: unit.rev, text: unit.caption, ko: unit.ko, koStale: unit.koStale, src: [], easy: unit.easy, directives: unit.directives });
+      var cap = paraBlock({ id: unit.id + "-caption", commentUnit: unit.id, rev: unit.rev, text: unit.caption, ko: unit.ko, koStale: unit.koStale, src: [], easy: unit.easy, directives: unit.directives },
+        function () { return unitMarkdown(unit); });
       cap.classList.add("caption");
       f.appendChild(cap);
     }
@@ -576,7 +625,8 @@
       li.id = s.id;
       li.appendChild(el("div", "step-math", math(s.tex || "", true)));
       if (s.text) {
-        var why = paraBlock({ id: s.id + "-why", commentUnit: s.id, rev: s.rev, text: s.text, ko: s.ko, koStale: s.koStale, src: [], regen: s.regen, directives: s.directives, easy: s.easy });
+        var why = paraBlock({ id: s.id + "-why", commentUnit: s.id, rev: s.rev, text: s.text, ko: s.ko, koStale: s.koStale, src: [], regen: s.regen, directives: s.directives, easy: s.easy },
+          function () { return unitMarkdown(s); });
         why.classList.add("why");
         li.appendChild(why);
       }
@@ -609,7 +659,9 @@
     var summary = el("summary");
     summary.appendChild(el("span", "blk-kind", "Check"));
     d.appendChild(summary);
-    var q = paraBlock({ id: unit.id + "-q", commentUnit: unit.id, rev: unit.rev, text: unit.text, ko: unit.ko, koStale: unit.koStale, prov: unit.prov, src: [], regen: unit.regen, directives: unit.directives, easy: unit.easy });
+    // 답은 펼쳐 두었을 때만 함께 복사한다
+    var q = paraBlock({ id: unit.id + "-q", commentUnit: unit.id, rev: unit.rev, text: unit.text, ko: unit.ko, koStale: unit.koStale, prov: unit.prov, src: [], regen: unit.regen, directives: unit.directives, easy: unit.easy },
+      function () { return unitMarkdown(unit, { answer: d.open }); });
     q.classList.add("question");
     summary.appendChild(q);
     var ans = el("div", "ans");
@@ -631,10 +683,10 @@
     if (unit.kind === "note") {
       var n = el("div", "note " + (unit.note || ""));
       n.appendChild(el("span", "ic", esc(NOTE_LABEL[unit.note] || "Note")));
-      n.appendChild(paraBlock(unit));
+      n.appendChild(paraBlock(unit, function () { return unitMarkdown(unit); }));
       return n;
     }
-    return paraBlock(unit);
+    return paraBlock(unit, function () { return unitMarkdown(unit); });
   }
 
   // 개념 카드: 누르면 그 개념의 페이지로 간다. 아직 없는 개념은 이름만 보인다.
@@ -946,6 +998,8 @@
       if (page.debug.openCompare) Array.prototype.forEach.call(document.querySelectorAll(".dir-open"), function (b) { b.click(); });
       if (page.debug.openEasy) Array.prototype.forEach.call(document.querySelectorAll(".g-side"), function (b) { b.click(); });
       if (page.debug.scrollTo) setTimeout(function () { var t = document.querySelector(page.debug.scrollTo); if (t) t.scrollIntoView({ block: "start" }); }, 400);
+      // 그 단위의 복사 단추를 누른다 (마크다운 복사)
+      if (page.debug.copy) setTimeout(function () { var b = document.querySelector(page.debug.copy + " .g-cp"); if (b) b.click(); }, 500);
     }
     // 그림 블록까지 내려 연다 (화면 찍기)
     if (page.scrollToFigure) {
@@ -1010,6 +1064,8 @@
       try { render(page); } catch (e) { post({ type: "error", message: String(e && e.stack ? e.stack : e) }); throw e; }
     },
     follow: function (on) { setFollow(!!on); },
+    // 단위 하나의 마크다운 (복사 단추가 보내는 것과 같다). 시험이 DOM 없이 부른다
+    markdown: function (unit, o) { return unitMarkdown(unit, o); },
     find: function (o) {
       try { find(o); } catch (e) { post({ type: "error", message: String(e && e.stack ? e.stack : e) }); }
     },

@@ -141,15 +141,22 @@
     }
   }
 
-  // 페이지 전체의 마크다운: 영어 제목을 # 머리로 두고, 단위 끝에 복사 단추가 있는 단위를 페이지 차례대로 잇는다.
-  // 수식만 있는 블록, 설명이 없는 그림, 풀이 블록 머리, 이유가 없는 단계에는 단추가 없어 넣지 않는다. open 은 답을 펼쳐 둔 확인 문제의 id 다
+  // 페이지 전체의 마크다운: 영어 제목을 # 머리로 두고, 단위 끝에 복사 단추가 있는 단위에 수식 블록(핵심 공식)과
+  // 풀이 블록의 제목(푸는 문제), 이유가 없는 단계의 수식을 더해 페이지 차례대로 잇는다. 설명이 없는 그림은 넣지 않는다.
+  // open 은 답을 펼쳐 둔 확인 문제의 id 다
   function pageMarkdown(page, open) {
     open = open || [];
     var parts = [];
     if (page.title) parts.push("# " + mdText(page.title));
     eachUnit(page.units || [], function (u, steps) {
-      if (steps) steps.forEach(function (s) { if (s.text) parts.push(unitMarkdown(s)); });
-      else if (u.kind !== "block" || (u.figure && u.caption)) parts.push(unitMarkdown(u, { answer: open.indexOf(u.id) >= 0 }));
+      if (steps) {
+        if (u.derivation && u.derivation.title) parts.push("**Worked solution: " + mdText(u.derivation.title) + "**");
+        steps.forEach(function (s) { parts.push(unitMarkdown(s)); });
+      } else if (u.kind === "block" && !u.figure) {
+        if (u.tex) parts.push("$$" + u.tex.trim() + "$$");
+      } else if (u.kind !== "block" || u.caption) {
+        parts.push(unitMarkdown(u, { answer: open.indexOf(u.id) >= 0 }));
+      }
     });
     return parts.filter(function (p) { return p; }).join("\n\n");
   }

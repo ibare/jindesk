@@ -77,15 +77,15 @@ import Testing
     #expect(try Self.markdown(unit, answer: true) == "**Check**\n\nFind $t$ when $h = 0$.\n\n**Answer:** $t = 2$ s\n\nSet $h = 0$ and solve.")
   }
 
-  // 페이지 전체 (DECISIONS.md 51): 영어 제목과, 단위 끝에 복사 단추가 있는 단위를 페이지 차례대로
-  @Test func 페이지_전체는_제목과_단추가_있는_단위를_차례대로_잇는다() throws {
+  // 페이지 전체 (DECISIONS.md 51): 영어 제목과, 단위 끝에 복사 단추가 있는 단위에 수식 블록, 풀이 블록 제목, 이유가 없는 단계의 수식을 더해 페이지 차례대로
+  @Test func 페이지_전체는_제목과_단위와_수식_블록과_풀이_제목을_차례대로_잇는다() throws {
     let page: [String: Any] = [
       "concept": "physics/a.1/projectile-motion", "title": "Projectile motion", "titleKo": "투사체 운동",
       "units": [
         ["id": "p1", "kind": "para", "text": "Gravity gives \\(g\\).", "ko": "중력은 g 를 준다."],
-        // 수식만 있는 블록과 풀이 블록 머리에는 단추가 없다
-        ["id": "b2", "kind": "block", "tex": "v = u + at"],
-        ["id": "b3", "kind": "block", "derivation": ["title": "Find the range"]],
+        // 수식 블록과 풀이 블록 제목에는 단위 단추가 없지만 페이지 복사에는 넣는다
+        ["id": "b2", "kind": "block", "tex": " v = u + at "],
+        ["id": "b3", "kind": "block", "derivation": ["title": "Find the range for \\(\\theta = 45^\\circ\\)"]],
         ["id": "s4", "kind": "step", "parent": "b3", "tex": "x = u t", "text": "Constant velocity."],
         ["id": "s5", "kind": "step", "parent": "b3", "tex": "R = 20"],
         ["id": "n6", "kind": "note", "note": "key-idea", "text": "Solve each direction separately."],
@@ -103,7 +103,11 @@ import Testing
       md == [
         "# Projectile motion",
         "Gravity gives $g$.",
+        "$$v = u + at$$",
+        "**Worked solution: Find the range for $\\theta = 45^\\circ$**",
         "$$x = u t$$\n\nConstant velocity.",
+        // 이유가 없는 단계도 수식은 넣는다
+        "$$R = 20$$",
         "**Key idea**\n\nSolve each direction separately.",
         "**Figure: Paths**\n\nCompare the paths.",
         "**Check**\n\nFind $t$.",

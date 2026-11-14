@@ -4,7 +4,7 @@
 //   openConcept { id }            앞뒤 개념 지도의 이웃이나 개념 카드를 눌렀다
 //   openMap { concept }           앞뒤 개념 지도의 "개념 지도에서 보기"를 눌렀다
 //   find { total, index }         페이지 안 찾기: 찾은 곳 수와 지금 몇 번째 (없으면 0)
-//   copy { text }                 마크다운 복사: 단위 하나의 영어 원문 (앱이 클립보드에 넣는다)
+//   copy { text }                 마크다운 복사: 단위 하나나 페이지 전체의 영어 원문 (앱이 클립보드에 넣는다)
 // page.readOnly 이면(폰 앱) 쓰는 단추(코멘트 남기기·지우기, 다시 만들기, 새 판 받아들이기)를 그리지 않는다.
 //   ready                         그릴 준비가 됐다
 (function () {
@@ -125,15 +125,48 @@
     return parts.filter(function (p) { return p; }).join("\n\n");
   }
 
+  // 페이지의 단위를 그리는 차례로 돈다. 풀이 블록은 뒤따르는 제 단계와 함께 fn(블록, 단계들)로, 나머지는 fn(단위, null)로 부른다.
+  // 풀이 블록 밖에 떨어진 단계는 그리지 않는다.
+  function eachUnit(list, fn) {
+    for (var i = 0; i < list.length; i++) {
+      var u = list[i];
+      if (u.kind === "block" && u.derivation) {
+        var steps = [];
+        while (i + 1 < list.length && list[i + 1].kind === "step" && list[i + 1].parent === u.id) steps.push(list[++i]);
+        fn(u, steps);
+      } else if (u.kind !== "step") {
+        fn(u, null);
+      }
+    }
+  }
+
+  // 페이지 전체의 마크다운: 영어 제목을 # 머리로 두고, 단위 끝에 복사 단추가 있는 단위를 페이지 차례대로 잇는다.
+  // 수식만 있는 블록, 설명이 없는 그림, 풀이 블록 머리, 이유가 없는 단계에는 단추가 없어 넣지 않는다. open 은 답을 펼쳐 둔 확인 문제의 id 다
+  function pageMarkdown(page, open) {
+    open = open || [];
+    var parts = [];
+    if (page.title) parts.push("# " + mdText(page.title));
+    eachUnit(page.units || [], function (u, steps) {
+      if (steps) steps.forEach(function (s) { if (s.text) parts.push(unitMarkdown(s)); });
+      else if (u.kind !== "block" || (u.figure && u.caption)) parts.push(unitMarkdown(u, { answer: open.indexOf(u.id) >= 0 }));
+    });
+    return parts.filter(function (p) { return p; }).join("\n\n");
+  }
+
+  // 답을 펼쳐 둔 확인 문제의 id
+  function openChecks() {
+    return Array.prototype.map.call(document.querySelectorAll("details.check[open]"), function (d) { return d.id; });
+  }
+
   var CLIP_ICON = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">' +
     '<path d="M5.5 2.75H4.25a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-10a1 1 0 0 0-1-1H10.5"/><rect x="5.5" y="1.25" width="5" height="3" rx=".8"/></svg>';
 
   // 단위 끝의 클립보드 아이콘: 누르면 make() 가 만든 마크다운을 앱에 보내고 잠깐 ✓ 로 바뀐다
-  function copyButton(make) {
+  function copyButton(make, label) {
     var b = el("button", "g-cp", CLIP_ICON), timer = null;
     b.type = "button";
-    b.title = "마크다운으로 복사";
-    b.setAttribute("aria-label", "마크다운으로 복사");
+    b.title = label || "마크다운으로 복사";
+    b.setAttribute("aria-label", b.title);
     b.addEventListener("click", function () {
       post({ type: "copy", text: make() });
       b.textContent = "✓";
@@ -905,7 +938,14 @@
     var art = el("article", "concept");
     if (page.crumb) art.appendChild(el("div", "crumb", esc(page.crumb)));
     var h = el("h1", null, esc(page.title));
-    if (page.titleKo) h.appendChild(el("span", "ko-title", esc(page.titleKo)));
+    var koTitle = page.titleKo ? el("span", "ko-title", esc(page.titleKo)) : null;
+    if (koTitle) h.appendChild(koTitle);
+    // 페이지 전체 복사 (PAGES.md 의 마크다운 복사): 한국어 제목 끝에 둔다. 답은 그때 펼쳐 둔 확인 문제의 것만 넣는다
+    if (page.units && page.units.length) {
+      var whole = el("span", "pc page-cp");
+      whole.appendChild(copyButton(function () { return pageMarkdown(page, openChecks()); }, "문서 전체를 마크다운으로 복사"));
+      (koTitle || h).appendChild(whole);
+    }
     art.appendChild(h);
     var meta = el("div", "meta");
     (page.chips || []).forEach(function (c) { meta.appendChild(el("span", "chip", esc(c))); });
@@ -928,17 +968,7 @@
     if (around) art.appendChild(around);
     var units = el("div", "units");
     if (!page.units || !page.units.length) units.appendChild(el("div", "empty", "아직 페이지가 없어요. 개념 정리가 끝나면 만들어집니다."));
-    var list = page.units || [];
-    for (var i = 0; i < list.length; i++) {
-      var u = list[i];
-      if (u.kind === "block" && u.derivation) {
-        var steps = [];
-        while (i + 1 < list.length && list[i + 1].kind === "step" && list[i + 1].parent === u.id) steps.push(list[++i]);
-        units.appendChild(derivationNode(u, steps));
-      } else if (u.kind !== "step") {
-        units.appendChild(unitNode(u));
-      }
-    }
+    eachUnit(page.units || [], function (u, steps) { units.appendChild(steps ? derivationNode(u, steps) : unitNode(u)); });
     art.appendChild(units);
     // 먼저 알아야 할 것은 머리의 앞뒤 개념 지도에 있다. 다 읽고 이어 갈 곳만 아래에 다시 둔다.
     linkSection(art, "이어서 배울 것", page.after, false);
@@ -1066,6 +1096,8 @@
     follow: function (on) { setFollow(!!on); },
     // 단위 하나의 마크다운 (복사 단추가 보내는 것과 같다). 시험이 DOM 없이 부른다
     markdown: function (unit, o) { return unitMarkdown(unit, o); },
+    // 페이지 전체의 마크다운 (제목의 복사 단추가 보내는 것과 같다). open 은 답을 펼쳐 둔 확인 문제의 id
+    pageMarkdown: function (page, open) { return pageMarkdown(page, open); },
     find: function (o) {
       try { find(o); } catch (e) { post({ type: "error", message: String(e && e.stack ? e.stack : e) }); }
     },

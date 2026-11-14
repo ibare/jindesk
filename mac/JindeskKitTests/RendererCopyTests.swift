@@ -5,15 +5,20 @@ import Testing
 // 마크다운 복사 (PAGES.md 의 마크다운 복사): 렌더러(renderer/page.js)가 단위 하나를 마크다운으로 바꾼다.
 // DOM 없이 JavaScriptCore 로 렌더러를 불러 window.jindesk.markdown 을 부른다. 단위는 페이지 조합(PageComposer)이 넘기는 모양이다.
 @Suite struct RendererCopyTests {
-  static func markdown(_ unit: [String: Any], answer: Bool = false) throws -> String {
+  // window.jindesk 의 함수 하나를 부른다
+  static func call(_ name: String, _ arguments: [Any]) throws -> String {
     let context = try #require(JSContext())
     var error: String?
     context.exceptionHandler = { _, e in error = e?.toString() }
     context.evaluateScript("var window = { addEventListener: function () {} }; var document = { addEventListener: function () {} };")
     context.evaluateScript(try String(contentsOf: repoRoot.appending(path: "renderer/page.js"), encoding: .utf8))
-    let result = context.evaluateScript("window.jindesk.markdown")?.call(withArguments: [unit, ["answer": answer]])
+    let result = context.evaluateScript("window.jindesk.\(name)")?.call(withArguments: arguments)
     #expect(error == nil, "\(error ?? "")")
     return try #require(result?.toString())
+  }
+
+  static func markdown(_ unit: [String: Any], answer: Bool = false) throws -> String {
+    try call("markdown", [unit, ["answer": answer]])
   }
 
   @Test func 문단은_원문_표기에_수식만_달러로_바꾼다() throws {
@@ -70,5 +75,40 @@ import Testing
     ]
     #expect(try Self.markdown(unit) == "**Check**\n\nFind $t$ when $h = 0$.")
     #expect(try Self.markdown(unit, answer: true) == "**Check**\n\nFind $t$ when $h = 0$.\n\n**Answer:** $t = 2$ s\n\nSet $h = 0$ and solve.")
+  }
+
+  // 페이지 전체 (DECISIONS.md 51): 영어 제목과, 단위 끝에 복사 단추가 있는 단위를 페이지 차례대로
+  @Test func 페이지_전체는_제목과_단추가_있는_단위를_차례대로_잇는다() throws {
+    let page: [String: Any] = [
+      "concept": "physics/a.1/projectile-motion", "title": "Projectile motion", "titleKo": "투사체 운동",
+      "units": [
+        ["id": "p1", "kind": "para", "text": "Gravity gives \\(g\\).", "ko": "중력은 g 를 준다."],
+        // 수식만 있는 블록과 풀이 블록 머리에는 단추가 없다
+        ["id": "b2", "kind": "block", "tex": "v = u + at"],
+        ["id": "b3", "kind": "block", "derivation": ["title": "Find the range"]],
+        ["id": "s4", "kind": "step", "parent": "b3", "tex": "x = u t", "text": "Constant velocity."],
+        ["id": "s5", "kind": "step", "parent": "b3", "tex": "R = 20"],
+        ["id": "n6", "kind": "note", "note": "key-idea", "text": "Solve each direction separately."],
+        // 설명이 없는 그림에는 단추가 없다
+        ["id": "b7", "kind": "block", "figure": ["src": "x", "title": "Paths"], "caption": "Compare the paths."],
+        ["id": "b8", "kind": "block", "figure": ["src": "y", "title": "No caption"]],
+        ["id": "c9", "kind": "check", "text": "Find \\(t\\).", "answer": "2 s"],
+        ["id": "c10", "kind": "check", "text": "Find \\(R\\).", "answer": "20 m"],
+        // 풀이 블록 밖에 떨어진 단계는 그리지 않는다
+        ["id": "s11", "kind": "step", "parent": "b3", "tex": "y = 0", "text": "Lands."],
+      ],
+    ]
+    let md = try Self.call("pageMarkdown", [page, ["c10"]])
+    #expect(
+      md == [
+        "# Projectile motion",
+        "Gravity gives $g$.",
+        "$$x = u t$$\n\nConstant velocity.",
+        "**Key idea**\n\nSolve each direction separately.",
+        "**Figure: Paths**\n\nCompare the paths.",
+        "**Check**\n\nFind $t$.",
+        "**Check**\n\nFind $R$.\n\n**Answer:** 20 m",
+      ].joined(separator: "\n\n"))
+    #expect(!md.contains("투사체") && !md.contains("중력"))
   }
 }

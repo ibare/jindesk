@@ -242,6 +242,13 @@
           m.snapshotDebug = .object(["scrollTo": .string(unit), "copy": .string(unit)])
           m.selection = snapshotConcept(m).map { .concept($0) }
         },
+        // 페이지 전체 복사: 한국어 제목 끝의 복사 단추를 누른다. 클립보드에 페이지 전체의 마크다운이 남는다
+        Scenario(name: "copy-page") { m in
+          m.phase = .ready
+          m.section = .subjects
+          m.snapshotDebug = .object(["copy": .string("h1")])
+          m.selection = snapshotConcept(m).map { .concept($0) }
+        },
         // 찾기 결과 (-snapshotSearch <말>, 없으면 log)
         Scenario(name: "search") { m in
           m.phase = .ready

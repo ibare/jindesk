@@ -330,6 +330,8 @@ final class MobileModel {
         if let unit = defaults.string(forKey: "copyUnit") { pageDebug = .object(["scrollTo": .string("#" + unit), "copy": .string("#" + unit)]) }
         // 한국어 제목 끝의 페이지 전체 복사 단추를 누른다
         if defaults.bool(forKey: "copyPage") { pageDebug = .object(["copy": .string("h1")]) }
+        // 첫 그림 블록까지 내려 이미지 복사 단추를 누른다
+        if defaults.bool(forKey: "copyFigure") { pageDebug = .object(["scrollTo": .string("figure.fig"), "copyImage": .string("figure.fig")]) }
         // 페이지 안 찾기 막대를 이 말로 연다
         open(id, find: defaults.string(forKey: "findText"))
       } else if let id = defaults.string(forKey: "openMap") {

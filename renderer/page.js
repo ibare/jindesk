@@ -5,6 +5,7 @@
 //   openMap { concept }           앞뒤 개념 지도의 "개념 지도에서 보기"를 눌렀다
 //   find { total, index }         페이지 안 찾기: 찾은 곳 수와 지금 몇 번째 (없으면 0)
 //   copy { text }                 마크다운 복사: 단위 하나나 페이지 전체의 영어 원문 (앱이 클립보드에 넣는다)
+//   copyImage { token, x, y, width, height }  그림 이미지 복사: 그림 블록의 문서 위 자리 (CSS 픽셀). 앱이 그려 넣고 window.jindesk.copied(token, ok) 로 알린다
 // page.readOnly 이면(폰 앱) 쓰는 단추(코멘트 남기기·지우기, 다시 만들기, 새 판 받아들이기)를 그리지 않는다.
 //   ready                         그릴 준비가 됐다
 (function () {
@@ -173,6 +174,29 @@
       b.classList.add("done");
       clearTimeout(timer);
       timer = setTimeout(function () { b.innerHTML = CLIP_ICON; b.classList.remove("done"); }, 1500);
+    });
+    return b;
+  }
+
+  // 그림 이미지 복사 (PAGES.md 의 그림 이미지 복사): 그림 블록 전체의 문서 위 자리를 앱에 보낸다.
+  // 앱이 그 자리를 그려(화면 밖까지) 클립보드에 PNG 로 넣고 window.jindesk.copied(token, ok) 로 알린다
+  var IMAGE_LABEL = CLIP_ICON + "<span>이미지 복사</span>", imageWaits = {}, imageSeq = 0;
+
+  function imageButton(block) {
+    var b = el("button", "blk-copy", IMAGE_LABEL), busy = false;
+    b.type = "button";
+    b.title = "그림을 이미지로 복사";
+    b.addEventListener("click", function () {
+      if (busy) return;
+      busy = true;
+      var token = "img" + (++imageSeq);
+      imageWaits[token] = function (ok) {
+        b.textContent = ok ? "✓ 복사했어요" : "복사하지 못했어요";
+        b.classList.toggle("done", ok);
+        setTimeout(function () { b.innerHTML = IMAGE_LABEL; b.classList.remove("done"); busy = false; }, 1500);
+      };
+      var r = block.getBoundingClientRect();
+      post({ type: "copyImage", token: token, x: r.left + window.scrollX, y: r.top + window.scrollY, width: r.width, height: r.height });
     });
     return b;
   }
@@ -606,6 +630,7 @@
     head.appendChild(el("span", "blk-kind", "Figure"));
     head.appendChild(el("span", "blk-title", esc(unit.figure.title)));
     if (canWrite() && unit.regen && unit.regen.length) { var rg = regenButton(unit, "↻ 다시 만들기"); rg.classList.add("blk-regen"); head.appendChild(rg); }
+    head.appendChild(imageButton(f));
     f.appendChild(head);
     var frame = document.createElement("iframe");
     frame.className = "fig-frame";
@@ -1030,6 +1055,8 @@
       if (page.debug.scrollTo) setTimeout(function () { var t = document.querySelector(page.debug.scrollTo); if (t) t.scrollIntoView({ block: "start" }); }, 400);
       // 그 단위의 복사 단추를 누른다 (마크다운 복사)
       if (page.debug.copy) setTimeout(function () { var b = document.querySelector(page.debug.copy + " .g-cp"); if (b) b.click(); }, 500);
+      // 그 그림 블록의 이미지 복사 단추를 누른다 (그림이 불러진 뒤)
+      if (page.debug.copyImage) setTimeout(function () { var b = document.querySelector(page.debug.copyImage + " .blk-copy"); if (b) b.click(); }, 900);
     }
     // 그림 블록까지 내려 연다 (화면 찍기)
     if (page.scrollToFigure) {
@@ -1098,6 +1125,12 @@
     markdown: function (unit, o) { return unitMarkdown(unit, o); },
     // 페이지 전체의 마크다운 (제목의 복사 단추가 보내는 것과 같다). open 은 답을 펼쳐 둔 확인 문제의 id
     pageMarkdown: function (page, open) { return pageMarkdown(page, open); },
+    // 그림 이미지 복사가 끝났다 (앱이 부른다)
+    copied: function (token, ok) {
+      var done = imageWaits[token];
+      delete imageWaits[token];
+      if (done) done(!!ok);
+    },
     find: function (o) {
       try { find(o); } catch (e) { post({ type: "error", message: String(e && e.stack ? e.stack : e) }); }
     },

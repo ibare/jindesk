@@ -2,6 +2,7 @@
 // 렌더러는 앱 전용 주소(jindesk-page://)로 앱 번들과 받아 둔 사본에서만 불러오고 네트워크를 쓰지 않는다. 읽기 전용이다.
 import JindeskKit
 import SwiftUI
+import UniformTypeIdentifiers
 import WebKit
 
 struct ConceptPage: View {
@@ -268,7 +269,30 @@ struct PageWebView: UIViewRepresentable {
         flushFind()
         return
       }
+      // 그림 이미지 복사는 보기를 그려야 하므로 여기서 받는다
+      if value["type"]?.stringValue == "copyImage" {
+        copyImage(value)
+        return
+      }
       onMessage(value)
+    }
+
+    // 그림 이미지 복사 (PAGES.md): 렌더러가 알린 문서 위 자리(CSS 픽셀)를 PDF 로 그려(화면 밖까지) PNG 로 바꿔 클립보드에 넣고 렌더러에 알린다.
+    // PDF 자리는 문서 좌표다 (맥과 같다)
+    func copyImage(_ message: JSONValue) {
+      guard let token = message["token"]?.stringValue, !token.isEmpty, token.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }),
+        let x = message["x"]?.numberValue, let y = message["y"]?.numberValue,
+        let width = message["width"]?.numberValue, let height = message["height"]?.numberValue, width > 0, height > 0
+      else { return }
+      let configuration = WKPDFConfiguration()
+      configuration.rect = CGRect(x: x, y: y, width: width, height: height)
+      let scale = view.traitCollection.displayScale
+      Task {
+        let pdf = try? await view.pdf(configuration: configuration)
+        let png = pdf.flatMap { FigureImage.png(pdf: $0, scale: scale) }
+        if let png { UIPasteboard.general.setData(png, forPasteboardType: UTType.png.identifier) }
+        _ = try? await view.evaluateJavaScript("window.jindesk.copied('\(token)', \(png != nil))")
+      }
     }
 
     // 렌더러 밖으로 나가는 이동은 막는다. 그림 블록의 iframe 은 같은 주소 체계다.

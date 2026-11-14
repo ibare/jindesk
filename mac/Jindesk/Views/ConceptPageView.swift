@@ -185,7 +185,38 @@ struct PageWebView: NSViewRepresentable {
         flushFind()
         return
       }
+      // 그림 이미지 복사는 보기를 찍어야 하므로 여기서 받는다
+      if value["type"]?.stringValue == "copyImage" {
+        copyImage(value)
+        return
+      }
       onMessage(value)
+    }
+
+    // 그림 이미지 복사 (PAGES.md): 렌더러가 알린 문서 위 자리(CSS 픽셀)를 PDF 로 그려(화면 밖까지) PNG 로 바꿔 클립보드에 넣고 렌더러에 알린다.
+    // 맥의 PDF 자리는 문서 좌표다
+    func copyImage(_ message: JSONValue) {
+      guard let view, let token = message["token"]?.stringValue, !token.isEmpty, token.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }),
+        let x = message["x"]?.numberValue, let y = message["y"]?.numberValue,
+        let width = message["width"]?.numberValue, let height = message["height"]?.numberValue, width > 0, height > 0
+      else { return }
+      let configuration = WKPDFConfiguration()
+      configuration.rect = CGRect(x: x, y: y, width: width, height: height)
+      let scale = view.window?.backingScaleFactor ?? 2
+      Task {
+        let pdf = try? await view.pdf(configuration: configuration)
+        let ok = pdf.flatMap { FigureImage.png(pdf: $0, scale: scale) }.map(Self.putImage) ?? false
+        _ = try? await view.evaluateJavaScript("window.jindesk.copied('\(token)', \(ok))")
+      }
+    }
+
+    // 붙여 넣는 앱이 고르게 PNG 와 TIFF 를 함께 넣는다
+    static func putImage(_ png: Data) -> Bool {
+      guard let tiff = NSImage(data: png)?.tiffRepresentation else { return false }
+      let board = NSPasteboard.general
+      board.clearContents()
+      board.declareTypes([.png, .tiff], owner: nil)
+      return board.setData(png, forType: .png) && board.setData(tiff, forType: .tiff)
     }
 
     // 렌더러 밖으로 나가는 이동은 막는다. 그림 블록의 iframe 은 같은 주소 체계다.

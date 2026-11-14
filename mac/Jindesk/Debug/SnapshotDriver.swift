@@ -242,6 +242,13 @@
           m.snapshotDebug = .object(["scrollTo": .string(unit), "copy": .string(unit)])
           m.selection = snapshotConcept(m).map { .concept($0) }
         },
+        // 그림 이미지 복사: 첫 그림 블록까지 내려 이미지 복사 단추를 누른다. 화면 밖까지 그리고, 클립보드에 PNG 가 남는다
+        Scenario(name: "copy-figure", dark: true) { m in
+          m.phase = .ready
+          m.section = .subjects
+          m.snapshotDebug = .object(["scrollTo": .string("figure.fig"), "copyImage": .string("figure.fig")])
+          m.selection = snapshotConcept(m).map { .concept($0) }
+        },
         // 페이지 전체 복사: 한국어 제목 끝의 복사 단추를 누른다. 클립보드에 페이지 전체의 마크다운이 남는다
         Scenario(name: "copy-page") { m in
           m.phase = .ready

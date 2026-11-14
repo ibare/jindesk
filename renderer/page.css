@@ -206,10 +206,20 @@ button.nm { transition: border-color .15s ease, box-shadow .15s ease; }
 .cm-send { align-self: flex-end; border: 1px solid var(--accent); background: var(--accent); color: var(--paper); border-radius: 6px; padding: 2px 12px; font-size: 12px; }
 .pc .g-cm.has { color: var(--ink-2); border-color: var(--ink-3); }
 
+/* 마크다운 복사: 클립보드 아이콘, 누른 뒤 잠깐 ✓ */
+.pc .g-cp { display: inline-flex; align-items: center; justify-content: center; }
+.pc .g-cp svg { display: block; }
+.pc .g-cp.done { color: var(--accent); border-color: var(--accent); }
+
 /* 다시 만들기 */
 .pc .g-rg, .pc .g-side { font-size: 11px; }
 .blk-regen { margin-left: 8px; border: 1px solid var(--line); background: var(--paper); border-radius: 4px; font-size: 11px; color: var(--ink-3); padding: 1px 8px; }
 .blk-regen:hover { color: var(--accent); border-color: var(--accent); }
+/* 그림 이미지 복사: 다시 만들기 옆, 같은 모양. 좁아서 다음 줄로 내려가도 오른쪽에 붙는다 */
+.blk-copy { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; border: 1px solid var(--line); background: var(--paper); border-radius: 4px; font-size: 11px; color: var(--ink-3); padding: 1px 8px; }
+.blk-copy:hover, .blk-copy.done { color: var(--accent); border-color: var(--accent); }
+.blk-copy svg { display: block; width: 11px; height: 11px; }
+.blk-head .blk-regen + .blk-copy { margin-left: 0; }
 .dir { display: flex; gap: 8px; align-items: center; margin-top: 6px; font-size: 12px; color: var(--ink-3); }
 .dir.candidate .dir-label { color: var(--accent); font-weight: 600; }
 .dir.failed .dir-label { color: var(--bad); }
